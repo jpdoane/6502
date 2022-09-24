@@ -1,0 +1,82 @@
+addr modes:
+
+impl	implied	                OPC	operand     implied
+
+A       Accumulator	            OPC A	        operand is AC (implied single byte instruction)
+    mask: a=0-3,b=2,c=2
+
+    T0: load/decode instruction
+        PCH/PCH, PCL/PCL, I/PC  #increment PC
+    T1: AC/DB, DB/ADD           #AC->BI
+
+abs (X/Y)	    absolute	            OPC $LLHH	    operand is address $HHLL *
+    abs mask: a=1,b=0,c=0 (JSR abs)
+    abs mask: b=3, except a=3&c=0 (JMP ind)
+    abs,X mask: b=7, except a=5&c=2 (LDX abs,Y)
+    abs,Y mask: b=6&c=1
+    abs,Y mask: b=7&a=5&c=2 (LDX abs,Y)
+
+    T0: addr: PC data: OPCODE
+        PC_FETCH                            #fetch op
+        PC_INC
+
+    T1: addr: PC+1 data: LL
+        PC_FETCH                            #fetch LL
+        DATA/ALU                            #LL -> ALU
+        PC_INC
+
+    T2: addr: PC+2 data: HH
+        PC_FETCH                            #fetch HH
+        DL/ADH                              #HH -> ADH
+
+        #abs:
+        O/ADD                               # add 0
+
+        #abs,X:
+        X/SB, SB/ADD                        # add X
+
+        #abs,Y:
+        Y/SB, SB/ADD                        # add Y        
+
+    T3: addr: $LLHH data: ($LLHH) 
+        DL/ADH, ADH/ABH                     #load high addr from ADH input data
+        ADD/ADL, ADL/ABL                    #load low addr from ALU
+        
+    T3: addr: ($LLHH) data: operand 
+        DL/DB                               #load data from $LLHH to data bus
+
+        #perform OP...
+
+        T <= 0                              #reset for next opcode
+
+
+
+ind	    indirect	            OPC ($LLHH)	    operand is address; effective address is contents of word at address: C.w($HHLL)
+mask: a=3,b=3,c=0 (JMP ind)
+
+builds from: abs
+action: (ALU1) -> ALU1
+
+#	    immediate	            OPC #$BB	    operand is byte BB
+mask: b=2&c=1
+mask: b=0,a=5-7 (LDY, CPY, CPX)
+
+
+X,ind	X-indexed, indirect	    OPC ($LL,X)	    operand is zeropage address; effective address is word in (LL + X, LL + X + 1), inc. without carry: C.w($00LL + X)
+mask: b=0,c=1
+
+ind,Y	indirect, Y-indexed	    OPC ($LL),Y	    operand is zeropage address; effective address is word in (LL, LL + 1) incremented by Y with carry: C.w($00LL) + Y
+mask: b=4,c=1
+
+rel	    relative	            OPC $BB	        branch target is PC + signed offset BB ***
+mask: b=4,c=0
+
+zpg	    zeropage	            OPC $LL	        operand is zeropage address (hi-byte is zero, address = $00LL)
+mask: b=1
+
+zpg,X/Y	zeropage, X-indexed	    OPC $LL,X	    operand is zeropage address; effective address is address incremented by X/Y without carry **
+mask: b=5,  index y if a=4-5,c=2 (STX, LDX)
+
+
+actions:
+

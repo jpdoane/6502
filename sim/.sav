@@ -1,0 +1,22 @@
+[*]
+[*] GTKWave Analyzer v3.3.86 (w)1999-2017 BSI
+[*] Sat Sep 24 18:39:25 2022
+[*]
+[dumpfile] "/home/jpdoane/dev/6502/build/cpu_tb.vcd"
+[dumpfile_mtime] "Sat Sep 24 18:39:09 2022"
+[dumpfile_size] 1212
+[savefile] "/home/jpdoane/dev/6502/sim/.sav"
+[timestart] 0
+[size] 1000 600
+[pos] -1 -1
+*-14.895959 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 212
+[signals_width] 78
+[sst_expanded] 1
+[sst_vpaned_height] 143
+@28
+cpu_tb.clk
+@29
+cpu_tb.rst
+[pattern_trace] 1
+[pattern_trace] 0

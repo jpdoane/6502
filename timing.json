@@ -1,0 +1,21 @@
+{ "signal": [
+    { "name": "PHI2", "wave":       "hLhLhLhLhLhLh"},
+    { "name": "CYCLE", "wave":      "x=.=.=.=.=.xx", "data": ["T0","T1","T2","T3","T4/T0"] },
+    { "name": "ADDR BUS", "wave":   "x=.=.=.3.=.xx", "data": ["PC","PC+1","PC+2","LLHH+","PC+3"]},
+    { "name": "DATA BUS", "wave":   "xx=x=x=x=x=xx", "data": ["OP","LL","HH","data","OP"]},
+    { "name": "DL", "wave":         "xxx=.=.=.=.=.", "data": ["OP","LL","HH","data","OP"] },
+    { "name": "DB", "wave":         "xxxxx=.xx=.xx", "data": ["DL","DL"] },
+    { "name": "SB", "wave":         "xxxxx5.xxxx4.", "data": ["X/Y", "ADD"] },
+    { "name": "AI", "wave":         "xxxxx5.xxxxxx", "data": ["0/SB"] },
+    { "name": "BI", "wave":         "xxxxx=.xx4.xx", "data": ["DB", "DB"] },
+    { "name": "ALU OP", "wave":     "xxxxx=.xx4.xx", "data": ["SUMS", "OP?"] },
+    { "name": "ADD", "wave":        "xxxxxxx3.xx4.", "data": ["LL+", "result"] },
+    { "name": "AC", "wave":         "xxxxxxxxxxx4.", "data": ["SB"] },
+    { "name": "PC", "wave":         "x3.3.3.=.3.xx", "data": ["PC","PC+1","PC+2","PC+2","PC+3"] },
+    { "name": "ADL", "wave":        "x=.=.=.3.=.xx", "data": ["PCL","PCL","PCL","ADD","PCL"] },
+    { "name": "ADH", "wave":        "x=.=.=.3.=.xx", "data": ["PCH","PCH","PCH","DL","PCH"] },
+],
+"head": {
+    "text":"Read Absolute 0/X/Y (no page crossing)",
+  }
+}
