@@ -95,7 +95,7 @@ module 6502(
     logic SYNC;
 
     // output address 
-    always_comb begin
+    always @(*) begin
         addr[15:8] = ADHABH ? adh : 8'b0;
         addr[7:0] = ADLABL ? adl : 8'b0;        
     end
@@ -114,7 +114,7 @@ module 6502(
     // to do this on FPGA w/o tristate logic, form intermediate muxes for each bus
     // which can be combined as needed without creating a latch
     logic [7:0] db_mux, sb_mux, adl_mux, adh_mux;
-    always_comb begin
+    always @(*) begin
         //multiple drivers are and-ed to reflect original 6502 behavior and support "illegal" opcodes
 
         adl_mux = {5'b1, !ZADL2,!ZADL1,!ZADL0};
@@ -162,7 +162,7 @@ module 6502(
     logic [7:0] alu_ai, alu_bi, alu_out;
     logic [7:0] alu_sum, alu_and, alu_xor, alu_or, alu_sr, alu_out;
     logic alu_sum_carry, alu_sr_carry;
-    always_comb begin
+    always @(*) begin
         alu_ai =    SBADD ? sb : 8'b0;
         alu_bi =    ADLADD ? adl :
                     DBADD ? db :
@@ -198,7 +198,7 @@ module 6502(
 
     // status reg
     logic _c, _z, _i, _d, _v, _n
-    always_comb begin
+    always @(*) begin
         _c =    DBZC ? db[0] :
                 IR5C ? ir[5] :
                 ACRC ? ACR :

@@ -4,17 +4,16 @@ module cpu_tb();
 
     logic clk, rst;
 
-    top u_top(
+    top #(`ROM_FILE_NAME)
+        u_top(
     	.i_clk (clk),
         .i_rst (rst)
     );
 
     initial begin
-        $printtimescale;
         clk = 0;
         rst = 1;
-        #20
-        $display("clearing rst at time %0d", $realtime);
+        #4
         rst = 0; 
     end
 
@@ -22,13 +21,12 @@ module cpu_tb();
 
     initial begin
         #100;
-        $display("Quitting at time %0d", $realtime);
         $finish;
     end
 
     initial begin
         $dumpfile(`DUMP_FILE_NAME);
-        $dumpvars;
+        $dumpvars(0, cpu_tb);
     end
 
 endmodule
