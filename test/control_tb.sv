@@ -1,6 +1,6 @@
 `timescale 1us/1ns
 
-module decode_tb();
+module control_tb();
 
     logic clk, rst;
 
@@ -14,7 +14,7 @@ module decode_tb();
     logic SYNC;
     st_ctl ctl;
 
-    decode u_decode(
+    control u_control(
     	.i_clk     (clk     ),
         .i_rst     (rst     ),
         .din       (din       ),
@@ -49,7 +49,7 @@ module decode_tb();
 
     initial begin
         $dumpfile(`DUMP_FILE_NAME);
-        $dumpvars(0, decode_tb);
+        $dumpvars(0, control_tb);
     end
 
 endmodule

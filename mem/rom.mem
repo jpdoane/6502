@@ -1,0 +1,4 @@
+69 01 // accumuator += 1
+69 02 // accumuator += 2
+69 03 // accumuator += 3
+00    // break

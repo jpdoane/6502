@@ -1,3 +1,25 @@
+//states
+typedef enum logic [4:0] {  T0,
+                            T1,
+                            T2_ZPG,
+                            T2_ZPGXY,
+                            T3_ZPGXY,
+                            T2_ABS,
+                            T3_ABS,
+                            T4_ABS,
+                            T2_XIND,
+                            T3_XIND,
+                            T4_XIND,
+                            T5_XIND,
+                            T2_INDY,
+                            T3_INDY,
+                            T4_INDY,
+                            T5_INDY,
+                            BOOT,
+                            UNIMPLEMENTED} e_state;
+
+typedef enum logic [1:0] {IZ,IX,IY} e_index;
+
 typedef struct packed {
     logic DLDB;       //input data latch to data bus
     logic PCLDB;      //PCL to DB

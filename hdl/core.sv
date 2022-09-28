@@ -1,4 +1,6 @@
-module core(
+module core #(
+    parameter BOOT_ADDR=16'h0)
+    (
     input  logic i_clk, i_rst,
     input  logic [7:0] i_data,
     input  logic READY,
@@ -15,9 +17,10 @@ module core(
     assign o_data = dor;
     assign dl = i_data;
 
+    logic ACR, AVR;
     st_ctl ctl;
 
-    decode u_decode(
+    control u_control(
     	.i_clk    (i_clk    ),
         .i_rst    (i_rst    ),
         .din      (dl      ),
@@ -25,8 +28,9 @@ module core(
         .SV       (SV       ),
         .NMI      (NMI      ),
         .IRQ      (IRQ      ),
+        .alu_carry (ACR),
         .ir       (ir),
-        .ctl        (ctl)
+        .ctl      (ctl)
     );
 
 
@@ -56,25 +60,24 @@ module core(
     end
 
     // register updates
+    // update s immediatly
     logic [7:0] rs;
-    assign s = ctl.SBS ? sb : rs; // s updated immediatly (pseudo-latch)
+    assign s = ctl.SBS ? sb : rs; 
     always @(posedge i_clk ) begin
         if (i_rst) begin
             a <= 8'b0;
             x <= 8'b0;
             y <= 8'b0;
-            dor <= 8'b0;
-            raddr <= 8'b0;
             rs <= 8'b0;
+            dor <= 8'b0;
+            raddr <= BOOT_ADDR;
         end else begin
             a <= ctl.SBAC ? sb : a;
             x <= ctl.SBX ? sb : x;
             y <= ctl.SBY ? sb : y;
-            dor <= !ctl.RW ? db : 8'b0;
-
-            //registers for pseudo-latch
-            raddr <= addr;
             rs <= s;
+            dor <= !ctl.RW ? db : 8'b0;
+            raddr <= addr;
         end
     end
 
@@ -120,12 +123,15 @@ module core(
         if (ctl.PDB) db_mux &= p;
         if (ctl.ACDB) db_mux &= a;
 
-        sb_mux = {ctl.ADDSB7 ? add[7] : 1'b1, ctl.ADDSB0_6 ? add[6:0] : 7'b1};
-        if (ctl.SBADH) sb_mux &= adh;
-        if (ctl.SSB) sb_mux &= s;
-        if (ctl.XSB) sb_mux &= x;
-        if (ctl.YSB) sb_mux &= y;
-        if (ctl.ACSB) sb_mux &= a;
+        sb_mux = 8'hff;
+        if (ctl.ADDSB7) sb_mux[7] &= add[7];
+        if (ctl.ADDSB0_6) sb_mux[6:0] &= add[6:0];
+        // if we are simultaneously writing and reading to/from reg,
+        // then ignore the read, since data is already on the bus...
+        if (ctl.SSB && !ctl.SBS) sb_mux &= s;
+        if (ctl.XSB && !ctl.SBX) sb_mux &= x;
+        if (ctl.YSB && !ctl.SBY) sb_mux &= y;
+        if (ctl.ACSB && !ctl.SBAC) sb_mux &= a;
 
         // tie busses together (AND)
         sb = sb_mux;
@@ -159,7 +165,6 @@ module core(
         if(ctl.ADLADD) bi &= adl;
     end
 
-    logic ACR, AVR;
     always @(posedge i_clk ) begin
         if (i_rst) begin
             add <= 8'b0;
