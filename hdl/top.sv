@@ -47,7 +47,7 @@ module top #(
         .NMI   (NMI   ),
         .IRQ   (IRQ   ),
         .addr  (addr  ),
-        .o_data  (dout  ),
+        .dor  (dout  ),
         .RW    (RW    )
     );
 

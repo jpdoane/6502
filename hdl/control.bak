@@ -1,0 +1,526 @@
+`include "defs.svi"
+
+module control(
+    input  logic i_clk, i_rst,
+    input  logic [7:0]	din,
+    input  logic READY,
+    input  logic SV,
+    input  logic NMI,
+    input  logic IRQ,
+    input  logic alu_carry,
+    input  logic [7:0] status,
+
+    output logic [7:0] ir,
+    output logic SYNC,
+    output st_ctl ctl
+    );
+
+    // state
+    e_state state, initial_state;
+    logic state_skip;
+    logic execute;
+    logic inc_alu;
+
+    // execution type
+    t_index idx_XYZ; // index pulled from X,Y,or Z;
+
+
+    // ir fetch
+    assign SYNC = state == T0;
+    always @(posedge i_clk ) begin
+        if (i_rst)          ir <= 8'hea; //NOP
+        else if (state==T1) ir <= din;
+    end
+    logic [7:0] current_op;
+    assign current_op = (state==T1) ? din : ir;
+
+    // decode opcode
+    // rather than a huge mux on full opcode, utilize layout patterns
+    // https://www.masswerk.at/6502/6502_instruction_set.html#layout
+    wire [2:0] op_a;
+    wire [2:0] op_b;
+    wire [1:0] op_c;
+    assign {op_a, op_b, op_c} = current_op;
+
+    // decode address mode, which determines initial state
+    // primarily differentiated by op_b
+    t_state initial_state;
+    logic op_SB;
+    logic idx_XY;           // select index X(1) or Y(0) for abs,X/Y and zpg,X/Y ops
+    always @(*) begin
+        op_SB = 0;
+        idx_XY = 1;
+        initial_state = JAM;
+        case(op_b)
+            3'h0:   if (op_c == 2'b?1) begin initial_state = T2_XIND;    // X,ind
+                    else if (op_a == 3'b000) initial_state = JAM;        // BRK, JSR, RTI, RTS
+                    else initial_state = T0;                             // LD/CP imm
+            3'h1:   initial_state = T2_ZPG;                              // all zpg
+            3'h2:   initial_state = T0;                                  // all imm or impl
+            3'h3:   if (op_a == 3'b01? && op_c == 3'b00) initial_state = JAM;      // jump abs,ind
+                    else initial_state = T2_ABS;                         // abs ops
+            3'h4:   if (op_c == 2'b00)   initial_state = JAM;            // branches
+                    else initial_state = T2_INDY;                        // alu ind,Y ops
+            3'h5:   begin
+                        initial_state = T2_ZPGXY;                        // zpg,X/Y
+                        idx_XY = (op_c==2 && op_a==3'b10?);
+                    end
+            3'h6:   if (op_c == 2'b?0) initial_state = T0;               // impl
+                    else begin
+                        initial_state = T2_ABSXY;                        // abs,Y
+                        idx_XY = 0;
+                    end
+            3'h7:   begin
+                        initial_state = T2_ABSXY;                        // abs,X/Y
+                        idx_XY = (op_c==2 && op_a==3'b10?);
+                    end
+        endcase
+    end
+
+    // decode opcode type and data access pattern
+    // primarily differentiated by op_a and op_c
+    t_mem_access access;     // memory access pattern (st,ld,rmw)
+    t_reg reg_src, reg_dst;  // op(reg_src, mem) -> reg_dst
+    logic update_reg;        // reg_dst updated on result
+    logic enable_alu;        // if low, bypass ALU  (for ld/st/transfer)
+    logic[7:0] set_mask, clear_mask;
+    t_alu_ctl alu;          // alu control
+    always @(*) begin
+        //default alu behavor: A + mem -> A
+        access = MEM_LD;
+        reg_src = RA;
+        reg_dst = RA;
+        update_reg = 1;
+        enable_alu = 1;  
+
+        alu.OP = ALU_ADD;
+        alu.ZEROAI = 0;
+        alu.ZEROBI = 0;
+        alu.INVAI = 0;
+        alu.INVBI = 0;
+        alu.AORB = 0;
+        alu.st_mask = 0;        // default do not update status flag
+        alu.carry_in = 2'b00;   // default carry in = 0
+
+        set_mask = 8'h0;
+        clear_mask = 8'h0;
+
+        case(op_c)
+            0: begin
+                //primarily control flow, special, and load/store/tranfer
+                //default to no memory access, no alu, no reg store
+                access = MEM_NO;
+                update_reg = 0;
+                enable_alu = 0;
+
+                if(op_b==2) // branch op
+                else if(op_b==6) begin   // set/clear flags
+                    case(op_a)
+                        0: clear_mask[0] = 1; // CLC
+                        1: set_mask[0] = 1;   // SEC
+                        2: clear_mask[2] = 1; // CLI
+                        3: set_mask[2] = 1; // SEI
+                        4:  begin //TYA
+                            reg_src = RY;
+                            // reg_dst = RA; //already default
+                            update_reg = 1;
+                            end
+                        5: clear_mask[6] = 1; // CLV
+                        6: clear_mask[3] = 1; // CLD
+                        7: set_mask[3] = 1; // SED
+                        default:
+                    endcase
+                end
+                else if(op_a == 3'b0??) begin // a=0:3, b != 6
+                    // control flow and special ops
+                    // TODO....
+                end
+                else if(op_b == 3'b010) begin // a=4:7, b=2
+                    //DEY, TAY, INY, INX
+                    update_reg = 1;
+                    if (op_a == 5) begin //TAY
+                        reg_src = RA;
+                        reg_dst = RY;
+                    end else begin // DEY, INY, INX
+                        enable_alu = 1;
+                        alu.ZEROBI = 1;
+                        alu.st_mask = 6'b110000; // status mask for inc/dec
+                        if(op_a==4) begin //DEY
+                            reg_src = RY;
+                            reg_dst = RY;
+                            alu.INVBI = 1; //bi = -1
+                            alu.carry_in = 2'b00; // C=0 
+                        end else if(op_a==6) begin //INY
+                            reg_src = RY;
+                            reg_dst = RY;
+                            alu.carry_in = 2'b01; // C=1
+                        end else if(op_a==7) begin //INX
+                            reg_src = RX;
+                            reg_dst = RX;
+                            alu.carry_in = 2'b01; // C=1
+                        end
+                    end
+                end
+                // remaining options are restriced to a>=4, b=0,1,3,5,7
+                else if(op_a==4) begin// STY
+                    access = MEM_ST;
+                    reg_src = RY;
+                end
+                else if(op_a == 5) begin //LDY
+                    access = MEM_LD;
+                    reg_dst = RY;
+                    update_reg = 1;
+                end
+                else begin // op_a=6-7: CPX/CPY
+                    access = MEM_LD;
+                    enable_alu = 1;
+                    // alu.OP = ALU_ADD;    //already default
+                    alu.carry_in = 2'b01; // C=1 (equivalent to borrow=0)
+                    alu.INVBI = 1; //sub
+                    alu.st_mask = 6'b111000;
+                    reg_src = op_a[0] ? RX : RY
+                end
+            end
+        1:  begin
+                // accumulator operations
+                access = MEM_LD;
+                // reg_src = RA;    //already default
+                // reg_dst = RA;    //already default
+                update_reg = 1;
+                case(op_a)
+                    0:  begin   //ORA
+                        alu.OP = ALU_OR;
+                        // alu.carry_in = 2'b00;
+                        alu.st_mask = 6'b110000;
+                        end
+                    1:  begin   //AND
+                        alu.OP = ALU_AND;
+                        // alu.carry_in = 2'b00;
+                        alu.st_mask = 6'b110000;
+                        end
+                    2:  begin   //EOR
+                        alu.OP = ALU_EOR;
+                        // alu.carry_in = 2'b00;
+                        alu.st_mask = 6'b110000;
+                        end
+                    3:  begin   //ADC
+                        // alu.OP = ALU_ADD;
+                        alu.carry_in = 2'b10;   // C=P[C]
+                        alu.st_mask = 6'b111001;
+                        end
+                    4:  begin
+                        access = MEM_ST; //STA
+                        enable_alu = 0;
+                        update_reg = 0;
+                        end
+                    5:  begin //LDA
+                        enable_alu = 0;
+                        end
+                    6:  begin // CMP;
+                        // alu.OP = ALU_ADD;
+                        alu.carry_in = 2'b01; // C=1 (borrow=0)
+                        alu.INVBI = 1;        // negate DB
+                        alu.st_mask = 6'b111000;
+                        update_reg = 0;
+                        end
+                    7:  begin // SBC;
+                        // alu.OP = ALU_ADD;
+                        alu.carry_in = 2'b10; // C=P[C]
+                        alu.INVBI = 1;        // negate DB
+                        alu.st_mask = 6'b111001;
+                        end
+                    default:
+                endcase
+            end
+        2:  begin
+                // mostly unary operations (shift, rot, inc, dec)
+                enable_alu = 1;  
+                if (op_b == 2 && op_b == 4) begin
+                    access = MEM_NO;
+                    alu.ZEROBI = 1; // op(reg,0)
+                    update_reg = 1;
+                end else begin
+                    access = MEM_RMW;
+                    alu.ZEROAI = 1; // op(0,MEM)
+                    update_reg = 0;
+                end
+                
+                // for shift ops, use op(AI | BI)
+                alu.AORB = op_a == 3'b0??;      
+
+                case(op_a)
+                    0:  begin // ASL: A+A+0
+                        // alu.OP = ALU_ADD;        //already default
+                        // alu.carry_in = 2'b00;    //already default
+                        alu.st_mask = 6'b111000;
+                        end
+                    1:  begin // ROL: A+A+C
+                        // alu.OP = ALU_ADD;        //already default
+                        alu.carry_in = 2'b10;       // C = P[C]
+                        alu.st_mask = 6'b111000;
+                        end
+                    2:  begin // LSR
+                        alu.OP = ALU_SR;
+                        // alu.carry_in = 2'b00;
+                        alu.st_mask = 6'b011000;
+                        end
+                    3:  begin // ROR
+                        alu.OP = ALU_SR;
+                        alu.carry_in = 2'b10; // C = P[C]
+                        alu.st_mask = 6'b111000;
+                        end
+                    4:  begin // copy from X: STX, TXA, TXY
+                        enable_alu = 0; 
+                        reg_src = RX;
+                        reg_dst = (op_b == 6) ? RS : RA;
+                        access = (op_b == 2 || op_b == 6) ? MEM_NO : MEM_ST;
+                        end
+                    5:  begin // copy to X: LDX, TAX, TSX
+                        enable_alu = 0; 
+                        reg_src = (op_b == 6) ? RS : RA;
+                        reg_dst = RX;
+                        update_reg = 1;
+                        access = (op_b == 2 || op_b == 6) ? MEM_NO : MEM_LD;
+                        end
+                    6:  begin // DEC
+                        // alu.OP = ALU_ADD;            //already default
+                        // alu.carry_in = 2'b00;        //already default
+                        if (op_b == 2)  alu.INVBI = 1;  // op(reg,-1)
+                        else            alu.INVAI = 1;  // op(-1,MEM)
+                        alu.st_mask = 6'b110000;
+                        end
+                    7:  begin // INC
+                        // alu.OP = ALU_ADD;
+                        alu.carry_in = 2'b01; // C=1
+                        alu.st_mask = 6'b110000;
+                        end
+                    default: // load/store...
+                endcase
+            end
+        endcase
+    end
+
+    integer cycle = 0;
+    always @(posedge i_clk ) begin
+        if (i_rst) cycle <= 0;
+        else if (state==BOOT) cycle <= 0;
+        else cycle <= cycle+1;
+    end
+
+    //state machine
+    always @(posedge i_clk ) begin
+        if (i_rst) state <= BOOT;
+        else case(state)
+            T0:       state <= T1;
+            T1:       state <= initial_state;
+            T2_ZPG:   state <= T0;
+            T2_ZPGXY: state <= T3_ZPGXY;
+            T3_ZPGXY: state <= T0;
+            T2_ABS:   state <= T3_ABS;
+            T3_ABS:   state <= state_skip ? T0 : T4_ABS;
+            T4_ABS:   state <= T0;
+            T2_XIND:  state <= T3_XIND;
+            T3_XIND:  state <= T4_XIND;
+            T4_XIND:  state <= T5_XIND;
+            T5_XIND:  state <= T0;
+            T2_INDY:  state <= T3_INDY;
+            T3_INDY:  state <= T4_INDY;
+            T4_INDY:  state <= state_skip ? T0 : T5_INDY;
+            T5_INDY:  state <= T0;
+            BOOT:     state <= T0;
+            default:  state <= JAM;
+        endcase
+    end
+
+    t_alu_ctl alu_addr;          // alu for addr ops
+
+    always @(*) begin
+
+        ctl.DLDB = 0;
+        ctl.PCLDB = 0;
+        ctl.SBDB = 0;
+        ctl.ACDB = 0;
+        ctl.PDB = 0;
+        ctl.PCLDB = 0;
+        ctl.PCHDB = 0;
+
+        ctl.XSB = 0;
+        ctl.YSB = 0;
+        ctl.DBSB = 0;
+        ctl.ADHSB = 0;
+        ctl.ADDSB0_6 = 0;
+        ctl.ADDSB7 = 0;
+        ctl.SSB = 0;
+        ctl.ACSB = 0;
+
+        // internal address bus
+        ctl.PCLADL = 0;
+        ctl.PCHADH = 0;
+        ctl.DLADL = 0;
+        ctl.ADDADL = 0;
+        ctl.SADL = 0;
+        ctl.ZADL0 = 0;
+        ctl.ZADL1 = 0;
+        ctl.ZADL2 = 0;
+        ctl.ZADH1_7 = 0;
+        ctl.ZADH0 = 0;
+        ctl.DLADH = 0;
+        ctl.SBADH = 0;
+
+        // external address update (default enable)
+        ctl.ADLABL = state != BOOT;
+        ctl.ADHABH = state != BOOT;
+
+        // alu sources
+        ctl.ADLADD = 0;
+        ctl.INVDBADD = 0;
+        ctl.DBADD = 0;
+        ctl.SBADD = 0;
+        ctl.ZADD = 0;
+        inc_alu = 0;
+
+        //register store
+        ctl.SBAC = 0;
+        ctl.SBX = 0;
+        ctl.SBY = 0;
+        ctl.SBS = 0;
+        ctl.SS = 0;
+
+        // pc source
+        ctl.ADLPCL = 0;
+        ctl.ADHPCH = 0;
+        ctl.IPC = 0;
+
+        state_skip = 0;
+        
+        ctl.RW = 1;
+        ctl.DAA = 0;
+        ctl.DSA = 0;
+
+        execute = 0;
+
+        case(state)
+            T0:     begin
+                    execute = 1;
+
+                    // exectution of prev OPCODE
+                    // for now, lets assume that we are performing alu op on db & acc
+                    ctl.DLDB = 1;
+                    ctl.ACSB = 1;
+                    ctl.DBADD = 1;
+                    ctl.SBADD = 1;
+
+                    // fetch next op @ pc
+                    ctl.PCLADL = 1;
+                    ctl.PCHADH = 1;
+                    // pc++
+                    ctl.IPC = 1;
+                    end
+            T1:     begin
+                    // storage of prev OPCODE
+                    // for now, lets assume that we putting the alu result back to acc
+                    ctl.ADDSB7 = 1;
+                    ctl.ADDSB0_6 = 1;
+                    ctl.SBAC = ir != 8'hea; // not NOP
+
+                    // fetch data @ pc+1
+                    ctl.PCLADL = 1;
+                    ctl.PCHADH = 1;
+                    // pc++ unless 1 byte opcode
+                    ctl.IPC = !op_SB;       
+                    end
+            T2_ZPG: begin
+                    // data->adl, adh=0 (fetch LL00)
+                    ctl.DLADL = 1;
+                    ctl.ZADH1_7 = 1;
+                    ctl.ZADH0 = 1;
+                    end
+            T2_ZPGXY:begin
+                    // no fetch, hold external bus
+                    ctl.ADLABL = 0;
+                    ctl.ADHABH = 0;
+                    // compute LL = data + X/Y
+                    ctl.DLDB = 1;
+                    ctl.DBADD = 1;
+                    ctl.XSB = idx_XYZ == IX;
+                    ctl.YSB = idx_XYZ == IY;
+                    ctl.SBADD = 1;
+                    end
+            T3_ZPGXY:begin
+                    // LL -> adl, adh=0 (fetch LL00)
+                    ctl.ADDADL = 1;
+                    ctl.ZADH1_7 = 1;
+                    ctl.ZADH0 = 1;
+                    end
+            T2_ABS: begin
+                    // compute LL = data + X/Y/Z
+                    ctl.DLDB = 1;
+                    ctl.DBADD = 1;
+                    ctl.XSB = idx_XYZ == IX;
+                    ctl.YSB = idx_XYZ == IY;
+                    if (idx_XYZ == IZ) ctl.ZADD = 1;
+                    else ctl.SBADD = 1;
+                    // fetch HH
+                    ctl.PCLADL = 1;
+                    ctl.PCHADH = 1;
+                    // pc++
+                    ctl.IPC = 1;
+                    end
+            T3_ABS: begin
+                    // fetch [LLHH], assuming no carry
+                    ctl.ADDADL = 1;
+                    ctl.DLADH = 1;
+                    // if no carry, skip T4_ABS
+                    state_skip = !alu_carry;
+                    // in case there was a carry, compute HH++
+                    ctl.DLDB = 1;
+                    ctl.DBADD = 1;
+                    ctl.ZADD = 1;
+                    inc_alu = 1;
+                    end
+            T4_ABS: begin
+                    // fetch [LLHH] with updated HH++ due to carry
+                    //hold ABL
+                    ctl.ADLABL = 0;
+                    // HH++ -> sb -> adh -> abh
+                    ctl.ADDSB7 = 1;
+                    ctl.ADDSB0_6 = 1;
+                    ctl.SBADH = 1;
+                    end
+            T2_XIND:begin
+                    // no address fetch, hold external AB
+                    ctl.ADLABL = 0;
+                    ctl.ADHABH = 0;
+                    end
+            T3_XIND:begin
+                    end
+            T4_XIND:begin
+                    ctl.ADLABL = 0; //hold ABL
+                    end
+            T5_XIND:begin
+                    end
+            T2_INDY:begin
+                    end
+            T3_INDY:begin
+                    end
+            T4_INDY:begin
+                    end
+            T5_INDY:begin
+                    ctl.ADLABL = 0; //hold ABL
+                    end
+            T0_EXEC:begin
+                    end
+            T_ST:   begin
+                    execute = 1;
+                    ctl.RW = 0;
+                    end
+            default:
+        endcase
+    end
+
+    control_view u_control_view(
+        .ctl        (ctl)
+    );
+
+
+endmodule

@@ -1,27 +1,28 @@
 [*]
 [*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
-[*] Tue Sep 27 22:45:24 2022
+[*] Fri Sep 30 14:40:27 2022
 [*]
 [dumpfile] "/home/jpdoane/6502/build/cpu_tb.vcd"
-[dumpfile_mtime] "Tue Sep 27 22:35:08 2022"
-[dumpfile_size] 11165
+[dumpfile_mtime] "Fri Sep 30 14:39:10 2022"
+[dumpfile_size] 7096
 [savefile] "/home/jpdoane/6502/test/cpu_tb.sav"
 [timestart] 0
-[size] 1374 1376
+[size] 1042 1376
 [pos] -1 -1
-*-12.940628 13870 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-12.940628 7900 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] cpu_tb.
 [treeopen] cpu_tb.u_top.
 [treeopen] cpu_tb.u_top.u_core.
-[treeopen] cpu_tb.u_top.u_core.u_control.
 [sst_width] 233
-[signals_width] 142
+[signals_width] 150
 [sst_expanded] 1
 [sst_vpaned_height] 414
 @28
+cpu_tb.u_top.u_core.i_clk
 cpu_tb.u_top.i_rst
-@420
-cpu_tb.u_top.u_core.u_control.cycle
+@2022
+^1 /home/jpdoane/6502/test/states.txt
+cpu_tb.u_top.u_core.state[4:0]
 @800200
 -mem_bus
 @22
@@ -33,20 +34,23 @@ cpu_tb.u_top.dout[7:0]
 @22
 cpu_tb.u_top.u_core.pc[15:0]
 @2022
-^1 /home/jpdoane/6502/test/states.txt
-cpu_tb.u_top.u_core.u_control.state[4:0]
-@22
-cpu_tb.u_top.u_core.ir[7:0]
-@2023
 ^2 /home/jpdoane/6502/test/6502_opcodes.txt
 cpu_tb.u_top.u_core.ir[7:0]
 @800200
 -bus
+@28
+cpu_tb.u_top.u_core.db_src[1:0]
 @22
 cpu_tb.u_top.u_core.db[7:0]
+@28
+cpu_tb.u_top.u_core.sb_src[2:0]
+@22
 cpu_tb.u_top.u_core.sb[7:0]
-cpu_tb.u_top.u_core.adl[7:0]
-cpu_tb.u_top.u_core.adh[7:0]
+@28
+cpu_tb.u_top.u_core.res_src[1:0]
+@22
+cpu_tb.u_top.u_core.res[7:0]
+cpu_tb.u_top.u_core.res_dst[3:0]
 @1000200
 -bus
 @800200
