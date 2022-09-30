@@ -8,7 +8,10 @@ e8          //  INX         impl        X = 0+1   = 1
 c8          //  INY         impl        Y = 0+1   = 1
 c8          //  INY         impl        Y = 1+1   = 2
 51 f7       //  EOR ($f7),Y xor ind,Y   A = 0a^ad = a7
-00          //  break
+55 f4       //  EOR $f4,X   xor zpg,X   A = a7^ad = 0a
+5d f4 00    //  EOR $f4,X   xor abs,X   A = 0a^ad = a7
+59 f3 00    //  EOR $f3,Y   xor abs,Y   A = a7^ad = 0a
+00          //  jam
 00
 
 @f0 // DATA
