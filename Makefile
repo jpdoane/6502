@@ -1,31 +1,46 @@
 HDLDIR=hdl
-TESTDIR=test
+SIMDIR=sim
+ASMDIR=src
 BUILDDIR=build
+TBDIR=testbench
 
+HDLEXT=sv
+ASMEXT=s
 SIMEXT=vvp
 WAVEEXT=vcd
+ROMEXT=o
 
-SOURCES = $(wildcard $(HDLDIR)/*.sv)
-ROM_FILE_NAME=mem/rom.mem
+HDLSOURCES = $(wildcard $(HDLDIR)/*.$(HDLEXT))
+HDLTESTBENCH=$(TBDIR)/cpu_tb.sv
 
-TARGETNAME=cpu_tb
-TARGET=$(BUILDDIR)/$(TARGETNAME).$(WAVEEXT)
+OBJTARGETNAME=test
+OBJTARGET=$(BUILDDIR)/$(OBJTARGETNAME).$(ROMEXT)
+SIMTARGET=$(BUILDDIR)/$(OBJTARGETNAME).$(SIMEXT)
+WAVETARGET=$(BUILDDIR)/$(OBJTARGETNAME).$(WAVEEXT)
+OBJDUMP=$(BUILDDIR)/$(OBJTARGETNAME).dump
 
 .PHONY: all
-all: $(TARGET)
-
+all: $(WAVETARGET)
 
 .PHONY: view
-view: $(BUILDDIR)/$(TARGETNAME).$(WAVEEXT)
-	gtkwave $^ -a $(TESTDIR)/$(TARGETNAME).sav &
+view: $(WAVETARGET)
+	gtkwave $^ -a $(SIMDIR)/$(OBJTARGETNAME).sav &
 
-
-$(BUILDDIR)/%.$(SIMEXT): $(TESTDIR)/%.sv $(SOURCES) $(ROM_FILE_NAME)
+# compute 6502 obj from asm
+$(BUILDDIR)/%.$(ROMEXT): $(ASMDIR)/%.$(ASMEXT)
 	@mkdir -p $(@D)
-	iverilog -g2012 -o $@ -D'DUMP_FILE_NAME="$(patsubst %.$(SIMEXT),%.$(WAVEEXT),$@)"' \
-				-D'ROM_FILE_NAME="$(ROM_FILE_NAME)"' -I $(HDLDIR) $(SOURCES) $<
+	xa -o $@ $^ 
 
-$(BUILDDIR)/%.$(WAVEEXT): $(BUILDDIR)/%.$(SIMEXT)
+# compute verilog sim
+$(SIMTARGET): $(HDLTESTBENCH) $(HDLSOURCES) $(OBJTARGET)
+	@mkdir -p $(@D)
+	iverilog -g2012 -o $@ \
+				-D'DUMP_WAVE_FILE="$(WAVETARGET)"' \
+				-D'ROM_FILE="$(OBJTARGET)"' \
+				-I $(HDLDIR) $(HDLSOURCES) $<
+
+# run verilog sim
+$(WAVETARGET): $(SIMTARGET)
 	vvp $^
 
 .PHONY: clean

@@ -2,7 +2,7 @@
 
 
 module core #(
-    parameter T_BOOT_ADDR=16'h0)
+    parameter BOOT_ADDR=16'h0)
     (
     input  logic i_clk, i_rst,
     input  logic [7:0] i_data,
@@ -40,7 +40,7 @@ module core #(
             dor <= 0;
             radh <= 0;
             radl <= 0;
-            pc <= T_BOOT_ADDR;
+            pc <= BOOT_ADDR;
             //p updated elsewhere...
         end else begin
             a <= a;

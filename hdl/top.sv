@@ -1,8 +1,12 @@
 
 module top #(
     parameter ROM_FILE="",
-    parameter RAM_DEPTH=1024)
-    ( input  logic i_clk, i_rst );
+    // parameter DUMP_ROM_FILE="",
+    parameter RAM_DEPTH=1024,
+    parameter BOOT_ADDR=16'h00f0)
+    ( input  logic i_clk, i_rst,
+      input logic dump_rom
+    );
     
     //RAM
     logic [7:0] BRAM [RAM_DEPTH-1:0];
@@ -20,17 +24,35 @@ module top #(
             BRAM[addr_lo] <= dout;
     end
 
-    generate
-        if (ROM_FILE != "") begin: use_init_file
-            initial
-            $readmemh(ROM_FILE, BRAM, 0, RAM_DEPTH-1);
-        end else begin: init_bram_to_zero
-            integer ram_index;
-            initial
-            for (ram_index = 0; ram_index < RAM_DEPTH; ram_index = ram_index + 1)
-                BRAM[ram_index] = 8'b0;
+    integer file, cnt;
+    initial begin
+        if (ROM_FILE != "") begin
+            file=$fopen(ROM_FILE,"rb");
+            cnt = $fread(BRAM, file,0, RAM_DEPTH-1);
+            $fclose(file);
         end
-    endgenerate
+    end
+
+    // final begin
+    //     if (DUMP_ROM_FILE != "") begin
+    //         file=$fopen(DUMP_ROM_FILE,"wb");
+    //         $fwrite(file, BRAM[0],0, RAM_DEPTH-1);
+    //         $fclose(file);
+    //     end
+    // end
+
+
+    // generate
+    //     if (ROM_FILE != "") begin: use_init_file
+    //         initial
+    //         // $readmemh(ROM_FILE, BRAM, 0, RAM_DEPTH-1);
+    //     end else begin: init_bram_to_zero
+    //         integer ram_index;
+    //         initial
+    //         for (ram_index = 0; ram_index < RAM_DEPTH; ram_index = ram_index + 1)
+    //             BRAM[ram_index] = 8'b0;
+    //     end
+    // endgenerate
 
     logic READY = 1;
     logic SV = 0;
@@ -38,7 +60,7 @@ module top #(
     logic IRQ = 0;
 
 
-    core u_core(
+    core #(BOOT_ADDR) u_core (
         .i_clk   (i_clk   ),
         .i_rst   (i_rst   ),
         .i_data  (din  ),
