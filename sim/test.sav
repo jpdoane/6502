@@ -1,27 +1,31 @@
 [*]
 [*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
-[*] Fri Sep 30 14:40:27 2022
+[*] Sat Oct  1 12:51:06 2022
 [*]
-[dumpfile] "/home/jpdoane/6502/build/cpu_tb.vcd"
-[dumpfile_mtime] "Fri Sep 30 14:39:10 2022"
-[dumpfile_size] 7096
-[savefile] "/home/jpdoane/6502/test/cpu_tb.sav"
-[timestart] 0
-[size] 1042 1376
+[dumpfile] "/home/jpdoane/6502/build/test.vcd"
+[dumpfile_mtime] "Sat Oct  1 12:50:03 2022"
+[dumpfile_size] 11726
+[savefile] "/home/jpdoane/6502/sim/test.sav"
+[timestart] 36190
+[size] 1243 1376
 [pos] -1 -1
-*-12.940628 7900 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-12.940628 50340 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] cpu_tb.
 [treeopen] cpu_tb.u_top.
 [treeopen] cpu_tb.u_top.u_core.
 [sst_width] 233
-[signals_width] 150
+[signals_width] 192
 [sst_expanded] 1
 [sst_vpaned_height] 414
 @28
 cpu_tb.u_top.u_core.i_clk
 cpu_tb.u_top.i_rst
+@22
+cpu_tb.u_top.u_core.pc[15:0]
 @2022
-^1 /home/jpdoane/6502/test/states.txt
+^1 /home/jpdoane/6502/sim/6502_opcodes.txt
+cpu_tb.u_top.u_core.ir[7:0]
+^2 /home/jpdoane/6502/sim/states.txt
 cpu_tb.u_top.u_core.state[4:0]
 @800200
 -mem_bus
@@ -31,30 +35,19 @@ cpu_tb.u_top.din[7:0]
 cpu_tb.u_top.dout[7:0]
 @1000200
 -mem_bus
-@22
-cpu_tb.u_top.u_core.pc[15:0]
-@2022
-^2 /home/jpdoane/6502/test/6502_opcodes.txt
-cpu_tb.u_top.u_core.ir[7:0]
 @800200
 -bus
-@28
-cpu_tb.u_top.u_core.db_src[1:0]
 @22
 cpu_tb.u_top.u_core.db[7:0]
-@28
-cpu_tb.u_top.u_core.sb_src[2:0]
-@22
 cpu_tb.u_top.u_core.sb[7:0]
-@28
-cpu_tb.u_top.u_core.res_src[1:0]
-@22
 cpu_tb.u_top.u_core.res[7:0]
-cpu_tb.u_top.u_core.res_dst[3:0]
 @1000200
 -bus
 @800200
 -alu
+@2022
+^3 /home/jpdoane/6502/sim/alu.txt
+cpu_tb.u_top.u_core.alu_OP[2:0]
 @22
 cpu_tb.u_top.u_core.ai[7:0]
 cpu_tb.u_top.u_core.bi[7:0]
@@ -71,5 +64,23 @@ cpu_tb.u_top.u_core.s[7:0]
 cpu_tb.u_top.u_core.p[7:0]
 @1000200
 -reg
+@800200
+-decode
+@22
+cpu_tb.u_top.u_core.current_op[7:0]
+cpu_tb.u_top.u_core.op_a[2:0]
+cpu_tb.u_top.u_core.op_b[2:0]
+cpu_tb.u_top.u_core.op_c[1:0]
+@2023
+^4 /home/jpdoane/6502/sim/regs.txt
+cpu_tb.u_top.u_core.ex_sb_src[2:0]
+@22
+cpu_tb.u_top.u_core.ex_db_src[1:0]
+cpu_tb.u_top.u_core.ex_res_src[1:0]
+@2022
+^4 /home/jpdoane/6502/sim/regs.txt
+cpu_tb.u_top.u_core.ex_res_dst[2:0]
+@1000200
+-decode
 [pattern_trace] 1
 [pattern_trace] 0

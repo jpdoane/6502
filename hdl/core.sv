@@ -234,9 +234,9 @@ module core #(
 
     // decode opcode type and data access pattern
     // primarily differentiated by op_a and op_c
-    logic [3:0] ex_sb_src;   // sb bus source (registers)
-    logic [2:0] ex_db_src;   // db bus source (data/addr)
-    logic [2:0] ex_res_src;  // source of result (alu, sb, db)
+    logic [2:0] ex_sb_src;   // sb bus source (registers)
+    logic [1:0] ex_db_src;   // db bus source (data/addr)
+    logic [1:0] ex_res_src;  // source of result (alu, sb, db)
     logic [2:0] ex_res_dst;  // location to store result (registers, mem)
 
     logic [2:0] ex_alu_OP;
@@ -389,7 +389,7 @@ module core #(
             end
         2:  begin
                 // mostly unary operations (shift, rot, inc, dec)
-                if (op_b == 2 && op_b == 4) begin
+                if (op_b == 2 || op_b == 4) begin
                     // defaults:
                     // ex_sb_src <= REG_A;
                     // ex_res_src <= RES_ADD;
@@ -469,98 +469,117 @@ module core #(
         else cycle <= cycle+1;
     end
 
+
+    // memory write modes
+    logic store, rmw, wb;
+    always @(*) begin
+        store = 0;
+        rmw = 0;
+        if(ex_res_dst == REG_D)
+            if(ex_res_src == RES_SB) store = 1; //reg -> mem
+            else rmw = 1;                       //alu -> mem
+        wb = store || rmw;                      //result-> mem
+    end
+
     //state machine
     always @(posedge i_clk ) begin
         if (i_rst) state <= T_BOOT;
         else case(state)
             T0:       state <= T1;
             T1:       state <= initial_state;
-            T2_ZPG:   state <= T0;
+            T2_ZPG:   state <= rmw ? T_RMW_EXEC : T0;
             T2_ZPGXY: state <= T3_ZPGXY;
-            T3_ZPGXY: state <= T0;
+            T3_ZPGXY: state <= rmw ? T_RMW_EXEC : T0;
             T2_ABS:   state <= T3_ABS;
-            T3_ABS:   state <= T0;
+            T3_ABS:   state <= rmw ? T_RMW_EXEC : T0;
             T2_ABSXY: state <= T3_ABSXY;
-            T3_ABSXY: state <= state_skip ? T0 : T4_ABSXY;
-            T4_ABSXY: state <= T0;
+            T3_ABSXY: state <= !state_skip ? T4_ABSXY : rmw ? T_RMW_EXEC : T0;
+            T4_ABSXY: state <= rmw ? T_RMW_EXEC : T0;
             T2_XIND:  state <= T3_XIND;
             T3_XIND:  state <= T4_XIND;
             T4_XIND:  state <= T5_XIND;
-            T5_XIND:  state <= T0;
+            T5_XIND:  state <= rmw ? T_RMW_EXEC : T0;
             T2_INDY:  state <= T3_INDY;
             T3_INDY:  state <= T4_INDY;
-            T4_INDY:  state <= state_skip ? T0 : T5_INDY;
-            T5_INDY:  state <= T0;
-            T_BOOT:     state <= T0;
+            T4_INDY:  state <= !state_skip ? T5_INDY : rmw ? T_RMW_EXEC : T0;
+            T5_INDY:  state <= rmw ? T_RMW_EXEC : T0;
+            T_RMW_EXEC:  state <= T_RMW_STORE;
+            T_RMW_STORE: state <= T0;
+            T_BOOT:   state <= T0;
             default:  state <= T_JAM;
         endcase
     end
 
     // addr control
     logic [7:0] zeropage = 8'h00;
+    logic compute_result, save_result;
     always @(*) begin
         addr = pc;
         IPC = 0;
 
-        // default alu ops:
+        compute_result = 0;
+        save_result = 0;
+    
+        // default alu when not processing result:
         // result = data + idx_XY
+        // cin = 0, st_mask = 0, do not store result
         db_src = DB_DL;
         sb_src = idx_XY ? REG_X : REG_Y;
-        res_src = RES_ADD;
-        res_dst = REG_Z;
-
-        alu_OP = ALU_ADD;
+        alu_OP = alu_OP;
         alu_INVAI = 0;
         alu_INVBI = 0;
         alu_AORB = 0;
-        alu_st_mask = 0;        // do not update status flag
-        alu_carry_in = 2'b00;   // carry in = 0
+        alu_carry_in = 0;
+        alu_st_mask = 0;
+        res_src = RES_ADD;
+        res_dst = REG_Z;
 
         case(state)
             T0:         begin
                         IPC = 1;                // fetch pc, pc++
-
-                        //execute op
-                        db_src = ex_db_src;
-                        sb_src = ex_sb_src;
-                        alu_OP = ex_alu_OP;
-                        alu_INVAI = ex_alu_INVAI;
-                        alu_INVBI = ex_alu_INVBI;
-                        alu_AORB = ex_alu_AORB;
-                        alu_carry_in = ex_alu_carry_in;
-
+                        compute_result = !wb;   // compute result unless mem wb
                         end
 
             T1:         begin
                         IPC = !op_SB;           // fetch pc, pc++ unless new opcode is only 1 byte
-
-                        alu_st_mask = ex_alu_st_mask;
-                        db_src = ex_db_src;
-                        sb_src = ex_sb_src;
-                        res_src = ex_res_src;
-                        res_dst = ex_res_dst;
-
+                        save_result = !wb;      // compute result unless mem wb
                         end
 
-            T2_ZPG:     addr = {zeropage, db};  // fetch {0,BAL}
+            T2_ZPG:     begin
+                        addr = {zeropage, db};  // fetch {0,BAL}
+                        save_result = store;
+                        end
 
             T2_ZPGXY:   addr = {radh,radl};     // hold addr, compute LL = BAL + X/Y
-            T3_ZPGXY:   addr = {zeropage,res};  // fetch {0,LL}
+            T3_ZPGXY:   begin
+                        addr = {zeropage,res};  // fetch {0,LL}
+                        save_result = store;
+                        end
 
             T2_ABS:     begin
                         sb_src = REG_Z;         // alu nop: hold LL in add
                         IPC = 1;                // fetch BAH
                         end
-            T3_ABS:     addr = {db,res};        // fetch {BAH,BAL}
+            T3_ABS:     begin
+                        addr = {db,res};        // fetch {BAH,BAL}
+                        save_result = store;
+                        end
 
             T2_ABSXY:   IPC = 1;                // compute LL = BAL + X/Y, fetch BAH
             T3_ABSXY:   begin
                         addr = {db,res};        // fetch {BAH,LL}, assuming no carry
-                        sb_src = REG_Z;         // compute HH = BAH+1
-                        alu_carry_in = 2'b01;
-                        state_skip = !carry_out;// if no carry, skip T4_ABS
+                        if (carry_out) begin
+                            sb_src = REG_Z;       // inc BAH
+                            alu_carry_in = 2'b01;
+                        end else begin
+                            state_skip = 1;
+                            save_result = store;
                         end
-            T4_ABSXY:   addr = {res,radl};      // fetch {HH,LL}
+                        end
+            T4_ABSXY:   begin
+                        addr = {res,radl};      // fetch {HH,LL}
+                        save_result = store;
+                        end
 
             T2_XIND:    addr = {zeropage, db};  // fetch {0,BAL} (discarded), compute BAL+X
             T3_XIND:    begin
@@ -573,7 +592,10 @@ module core #(
                         sb_src = REG_Z;         // hold LL in add
                         addr = {zeropage, res}; // fetch {0,BAL+X+1}
                         end
-            T5_XIND:    addr = {db, res};       // fetch {HH,LL}
+            T5_XIND:    begin
+                        addr = {db, res};       // fetch {HH,LL}
+                        save_result = store;
+                        end
 
             T2_INDY:    begin
                         addr = {zeropage, db};  // fetch BAL = {00,IAL}
@@ -583,12 +605,46 @@ module core #(
             T3_INDY:    addr = {zeropage, res}; // fetch BAH = {00,IAL+1}, compute BAL + Y
             T4_INDY:    begin
                         addr = {db, res};       // fetch {BAH,BAL+Y}, assuming no carry
-                        sb_src = REG_Z;         // compute BAH+1
-                        alu_carry_in = 2'b01;
-                        state_skip = !carry_out;// if no carry, skip T5
+                        if (carry_out) begin
+                            sb_src = REG_Z;         // inc BAH
+                            alu_carry_in = 2'b01;
+                        end else begin
+                            state_skip = 1;
+                            save_result = store;
                         end
-            T5_INDY:    addr = {res, radl};     // fetch {BAH+1,BAL+Y}
+                        end
+            T5_INDY:    begin
+                        addr = {res, radl};     // fetch {BAH+1,BAL+Y}
+                        save_result = store;
+                        end
+            T_RMW_EXEC: begin
+                        addr = {radh,radl};     // hold addr
+                        compute_result = 1;
+                        end
+            T_RMW_STORE:begin
+                        addr = {radh,radl};     // hold addr
+                        save_result = 1;
+                        end
         endcase
+
+        // compute and save result
+        if (compute_result || save_result) begin
+            db_src = ex_db_src;
+            sb_src = ex_sb_src;
+        end
+        if (compute_result) begin
+            alu_OP = ex_alu_OP;
+            alu_INVAI = ex_alu_INVAI;
+            alu_INVBI = ex_alu_INVBI;
+            alu_AORB = ex_alu_AORB;
+            alu_carry_in = ex_alu_carry_in;
+        end
+        if (save_result) begin
+            alu_st_mask = ex_alu_st_mask;
+            res_src = ex_res_src;
+            res_dst = ex_res_dst;
+        end
+
     end
 
 

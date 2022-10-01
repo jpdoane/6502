@@ -3,7 +3,7 @@ module top #(
     parameter ROM_FILE="",
     // parameter DUMP_ROM_FILE="",
     parameter RAM_DEPTH=1024,
-    parameter BOOT_ADDR=16'h00f0)
+    parameter BOOT_ADDR=16'h00a0)
     ( input  logic i_clk, i_rst,
       input logic dump_rom
     );

@@ -12,7 +12,7 @@ $ sudo apt install iverilog gtkwave xa65
 
 Simulate testbench and view in gtkwave
 ```
-$ make sim/cpu_tb.vcd
-$ gtkwave sim/cpu_tb.vcd
+$ make 
+$ make view
 ```
 

@@ -19,7 +19,8 @@ parameter T3_INDY       =5'h10;
 parameter T4_INDY       =5'h11;
 parameter T5_INDY       =5'h12;
 parameter T_RMW_EXEC    =5'h13;
-parameter T_STORE       =5'h14;
+parameter T_RMW_STORE   =5'h14;
+parameter T0_EXEC       =5'h14;
 parameter T_BOOT        =5'h15;
 parameter T_JAM         =5'h16;
 

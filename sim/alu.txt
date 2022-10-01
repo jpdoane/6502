@@ -1,0 +1,7 @@
+#
+# states
+0 ADD
+1 AND
+2 OR
+3 XOR
+4 SR
