@@ -1,13 +1,19 @@
 
 module top #(
     parameter ROM_FILE="",
-    // parameter DUMP_ROM_FILE="",
-    parameter RAM_DEPTH=1024,
+    parameter DUMP_WAVE_FILE="",
+    parameter RAM_DEPTH=256,
     parameter BOOT_ADDR=16'h00a0)
-    ( input  logic i_clk, i_rst,
-      input logic dump_rom
+    ( input  logic i_clk, i_rst
     );
     
+    integer cycle = 0;
+    always @(posedge i_clk ) begin
+        if (i_rst) cycle <= 0;
+        else cycle <= cycle+1;
+    end
+
+
     //RAM
     logic [7:0] BRAM [RAM_DEPTH-1:0];
     logic [15:0] addr;
@@ -73,6 +79,9 @@ module top #(
         .RW    (RW    )
     );
 
-    
+    initial begin
+        $dumpfile(`DUMP_WAVE_FILE);
+        $dumpvars(0, top);
+    end    
 
 endmodule

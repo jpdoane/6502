@@ -23,6 +23,12 @@ lsr             ; A = 0a
 sec             ; set carry bit
 ror             ; A = 85
 rol             ; A = 0a
+
+sta <d4         ; write A=0a to [d4] (zpg)
+inc <d4         ; [d4]+1 = 0b (zpg)
+inc d4          ; [d4]+1 = 0c (abs)
+ldx d4          ; read [d4]=0c (abs)
+
 nop
 
 .dsb $0100 - *   ; zero pad until end of page

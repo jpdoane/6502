@@ -30,14 +30,13 @@ module core #(
     logic [7:0] add;
     logic IPC;
 
-    logic [3:0] res_dst;
+    logic [2:0] res_dst;
     always @(posedge i_clk ) begin
         if (i_rst) begin
             a <= 0;
             x <= 0;
             y <= 0;
             s <= 0;
-            dor <= 0;
             radh <= 0;
             radl <= 0;
             pc <= BOOT_ADDR;
@@ -51,22 +50,20 @@ module core #(
             radh <= addr[15:8];
             radl <= addr[7:0];
             pc <= IPC ? pc+1 : pc;
-            RW <= 1;
 
             case(res_dst)
                 REG_A: a <= res;
                 REG_X: x <= res;
                 REG_Y: y <= res;
                 REG_S: s <= res;
-                REG_D:  begin
-                        // critical that address is also set properly!!
-                        dor <= res;
-                        RW <= 0;
-                        end
+                default: begin end
             endcase
         end
     end
-    
+
+    assign RW = !(res_dst == REG_DATA);
+    assign dor = RW ? 0 : res;
+
     // bus source select
     logic [1:0] db_src;
     logic [2:0] sb_src;
@@ -74,7 +71,6 @@ module core #(
     always @(*) begin
         case(db_src)
             DB_DL:      db = i_data;
-            DB_AL:      db = addr[7:0];
             default:    db = 8'h0;
         endcase
         case(sb_src)
@@ -82,6 +78,7 @@ module core #(
             REG_X: sb = x;
             REG_Y: sb = y;
             REG_S: sb = s;
+            REG_ADD: sb = add;
             default: sb = 8'h0;
         endcase
         case(res_src)
@@ -122,12 +119,18 @@ module core #(
 
         ci = alu_carry_in[1] ? p[0] : alu_carry_in[0];
 
+        alu_out = 0;
+        aluC = 0;
+
         case(alu_OP)
+            // verilator lint_off WIDTH
             ALU_ADD:    {aluC, alu_out} = ai + bi + ci;
+            // verilator lint_on WIDTH
             ALU_AND:    alu_out = ai & bi;
             ALU_OR:     alu_out = ai | bi;
             ALU_XOR:    alu_out = ai ^ bi;
             ALU_SR:     {alu_out, aluC} = {ci, ai};
+            default:    begin end
         endcase
 
         aluZ = ~|alu_out;
@@ -173,7 +176,7 @@ module core #(
     logic state_skip;
 
     // ir fetch
-    assign SYNC = state == T0;
+    // assign SYNC = state == T0;
     always @(posedge i_clk ) begin
         if (i_rst)          ir <= 8'hea; //NOP
         else if (state==T1) ir <= i_data;
@@ -321,7 +324,7 @@ module core #(
                 else if(op_a==4) begin// STY
                     ex_sb_src <= REG_Y;
                     ex_res_src <= RES_SB;
-                    ex_res_dst <= REG_D;
+                    ex_res_dst <= REG_DATA;
                 end
                 else if(op_a == 5) begin //LDY
                     ex_res_src <= RES_DB;
@@ -367,7 +370,7 @@ module core #(
                     4:  begin //STA
                         // ex_sb_src <= REG_A;
                         ex_res_src <= RES_SB;
-                        ex_res_dst <= REG_D;
+                        ex_res_dst <= REG_DATA;
                         end
                     5:  begin //LDA
                         ex_res_src <= RES_DB;
@@ -400,7 +403,7 @@ module core #(
                     // ex_db_src <= DB_DL;
                     // ex_res_src <= RES_ADD;
                     ex_sb_src <= REG_Z; // op(0,MEM)
-                    ex_res_dst <= REG_D;
+                    ex_res_dst <= REG_DATA;
                 end
                 
                 // for shift ops, use op(AI | BI)
@@ -433,7 +436,7 @@ module core #(
                         case(op_b)
                             2:          ex_res_dst <= REG_A;
                             6:          ex_res_dst <= REG_S;
-                            default:    ex_res_dst <= REG_D;
+                            default:    ex_res_dst <= REG_DATA;
                         endcase
                         end
                     5:  begin // copy to X: LDX, TAX, TSX
@@ -462,24 +465,21 @@ module core #(
         endcase
     end
 
-    integer cycle = 0;
-    always @(posedge i_clk ) begin
-        if (i_rst) cycle <= 0;
-        else if (state==T_BOOT) cycle <= 0;
-        else cycle <= cycle+1;
-    end
 
-
-    // memory write modes
-    logic store, rmw, wb;
+    // memory modes
+    logic rd_op, ld_op, st_op, rmw_op;
     always @(*) begin
-        store = 0;
-        rmw = 0;
-        if(ex_res_dst == REG_D)
-            if(ex_res_src == RES_SB) store = 1; //reg -> mem
-            else rmw = 1;                       //alu -> mem
-        wb = store || rmw;                      //result-> mem
-    end
+        rd_op = 0;
+        ld_op = 0;
+        st_op = 0;
+        rmw_op = 0;
+        if(ex_res_dst == REG_DATA)
+            if(ex_res_src == RES_SB) st_op = 1;
+            else rmw_op = 1;                   
+        else
+            if(ex_res_src == RES_DB) ld_op = 1;
+            else rd_op = 1;
+    end    
 
     //state machine
     always @(posedge i_clk ) begin
@@ -487,22 +487,22 @@ module core #(
         else case(state)
             T0:       state <= T1;
             T1:       state <= initial_state;
-            T2_ZPG:   state <= rmw ? T_RMW_EXEC : T0;
+            T2_ZPG:   state <= rmw_op ? T_RMW_EXEC : T0;
             T2_ZPGXY: state <= T3_ZPGXY;
-            T3_ZPGXY: state <= rmw ? T_RMW_EXEC : T0;
+            T3_ZPGXY: state <= rmw_op ? T_RMW_EXEC : T0;
             T2_ABS:   state <= T3_ABS;
-            T3_ABS:   state <= rmw ? T_RMW_EXEC : T0;
+            T3_ABS:   state <= rmw_op ? T_RMW_EXEC : T0;
             T2_ABSXY: state <= T3_ABSXY;
-            T3_ABSXY: state <= !state_skip ? T4_ABSXY : rmw ? T_RMW_EXEC : T0;
-            T4_ABSXY: state <= rmw ? T_RMW_EXEC : T0;
+            T3_ABSXY: state <= !state_skip ? T4_ABSXY : rmw_op ? T_RMW_EXEC : T0;
+            T4_ABSXY: state <= rmw_op ? T_RMW_EXEC : T0;
             T2_XIND:  state <= T3_XIND;
             T3_XIND:  state <= T4_XIND;
             T4_XIND:  state <= T5_XIND;
-            T5_XIND:  state <= rmw ? T_RMW_EXEC : T0;
+            T5_XIND:  state <= rmw_op ? T_RMW_EXEC : T0;
             T2_INDY:  state <= T3_INDY;
             T3_INDY:  state <= T4_INDY;
-            T4_INDY:  state <= !state_skip ? T5_INDY : rmw ? T_RMW_EXEC : T0;
-            T5_INDY:  state <= rmw ? T_RMW_EXEC : T0;
+            T4_INDY:  state <= !state_skip ? T5_INDY : rmw_op ? T_RMW_EXEC : T0;
+            T5_INDY:  state <= rmw_op ? T_RMW_EXEC : T0;
             T_RMW_EXEC:  state <= T_RMW_STORE;
             T_RMW_STORE: state <= T0;
             T_BOOT:   state <= T0;
@@ -517,6 +517,7 @@ module core #(
         addr = pc;
         IPC = 0;
 
+        state_skip = 0;
         compute_result = 0;
         save_result = 0;
     
@@ -525,7 +526,7 @@ module core #(
         // cin = 0, st_mask = 0, do not store result
         db_src = DB_DL;
         sb_src = idx_XY ? REG_X : REG_Y;
-        alu_OP = alu_OP;
+        alu_OP = ALU_ADD;
         alu_INVAI = 0;
         alu_INVBI = 0;
         alu_AORB = 0;
@@ -537,23 +538,24 @@ module core #(
         case(state)
             T0:         begin
                         IPC = 1;                // fetch pc, pc++
-                        compute_result = !wb;   // compute result unless mem wb
+                        compute_result = rd_op; // compute read op
+                        save_result = ld_op;    // save load op
                         end
 
             T1:         begin
                         IPC = !op_SB;           // fetch pc, pc++ unless new opcode is only 1 byte
-                        save_result = !wb;      // compute result unless mem wb
+                        save_result = rd_op;    // store result of read op
                         end
 
             T2_ZPG:     begin
                         addr = {zeropage, db};  // fetch {0,BAL}
-                        save_result = store;
+                        save_result = st_op;
                         end
 
             T2_ZPGXY:   addr = {radh,radl};     // hold addr, compute LL = BAL + X/Y
             T3_ZPGXY:   begin
                         addr = {zeropage,res};  // fetch {0,LL}
-                        save_result = store;
+                        save_result = st_op;
                         end
 
             T2_ABS:     begin
@@ -562,7 +564,7 @@ module core #(
                         end
             T3_ABS:     begin
                         addr = {db,res};        // fetch {BAH,BAL}
-                        save_result = store;
+                        save_result = st_op;
                         end
 
             T2_ABSXY:   IPC = 1;                // compute LL = BAL + X/Y, fetch BAH
@@ -573,19 +575,19 @@ module core #(
                             alu_carry_in = 2'b01;
                         end else begin
                             state_skip = 1;
-                            save_result = store;
+                            save_result = st_op;
                         end
                         end
             T4_ABSXY:   begin
                         addr = {res,radl};      // fetch {HH,LL}
-                        save_result = store;
+                        save_result = st_op;
                         end
 
             T2_XIND:    addr = {zeropage, db};  // fetch {0,BAL} (discarded), compute BAL+X
             T3_XIND:    begin
                         addr = {zeropage, res}; // fetch LL = {0,BAL+X}
-                        db_src = DB_AL;         // compute BAL+X+1;
-                        sb_src = REG_Z;
+                        db_src = DB_Z;         // compute BAL+X+1;
+                        sb_src = REG_ADD;
                         alu_carry_in = 2'b01;
                         end
             T4_XIND:    begin
@@ -594,7 +596,7 @@ module core #(
                         end
             T5_XIND:    begin
                         addr = {db, res};       // fetch {HH,LL}
-                        save_result = store;
+                        save_result = st_op;
                         end
 
             T2_INDY:    begin
@@ -610,12 +612,12 @@ module core #(
                             alu_carry_in = 2'b01;
                         end else begin
                             state_skip = 1;
-                            save_result = store;
+                            save_result = st_op;
                         end
                         end
             T5_INDY:    begin
                         addr = {res, radl};     // fetch {BAH+1,BAL+Y}
-                        save_result = store;
+                        save_result = st_op;
                         end
             T_RMW_EXEC: begin
                         addr = {radh,radl};     // hold addr
@@ -625,6 +627,7 @@ module core #(
                         addr = {radh,radl};     // hold addr
                         save_result = 1;
                         end
+            default:    begin end
         endcase
 
         // compute and save result

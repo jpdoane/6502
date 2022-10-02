@@ -37,11 +37,11 @@ parameter REG_A      =3'h1;
 parameter REG_X      =3'h2;
 parameter REG_Y      =3'h3;
 parameter REG_S      =3'h4;
-parameter REG_D      =3'h5;
+parameter REG_ADD    =3'h5;
+parameter REG_DATA   =3'h6;
 
 parameter DB_Z      =2'h0;
 parameter DB_DL     =2'h1;
-parameter DB_AL     =2'h2;
 
 parameter RES_DB    =2'h0;  // loads
 parameter RES_SB    =2'h1;  // transfers/stores

@@ -43,6 +43,13 @@ $(SIMTARGET): $(HDLTESTBENCH) $(HDLSOURCES) $(OBJTARGET)
 $(WAVETARGET): $(SIMTARGET)
 	vvp $^
 
+verilate: verilator/sim_main.cpp $(HDLSOURCES) $(OBJTARGET)
+	verilator --cc --exe --build --trace -I$(HDLDIR) \
+				-D'DUMP_WAVE_FILE="$(WAVETARGET)"' \
+				-D'ROM_FILE="$(OBJTARGET)"' \
+				--Mdir $(BUILDDIR) \
+				$< hdl/top.sv
+
 .PHONY: clean
 clean:
 	rm -rf $(BUILDDIR)
