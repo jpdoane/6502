@@ -23,7 +23,13 @@ module core #(
     logic [7:0] db, sb, res;
 
     // registers
-    logic [15:0] pc;
+    logic [15:0] pc, pcsel, nextpc;
+
+    // pc logic
+    logic jump, pc_inc;
+    assign pcsel = jump ? addr : pc;
+    assign nextpc = pc_inc ? pcsel : pcsel + 1;
+
     logic [7:0] a, s, x, y, p;
     logic [7:0] radl, radh;
     logic [7:0] ir;
@@ -31,6 +37,7 @@ module core #(
     logic IPC;
 
     logic [2:0] res_dst;
+
     always @(posedge i_clk ) begin
         if (i_rst) begin
             a <= 0;
@@ -49,7 +56,7 @@ module core #(
 
             radh <= addr[15:8];
             radl <= addr[7:0];
-            pc <= IPC ? pc+1 : pc;
+            pc <= nextpc;
 
             case(res_dst)
                 REG_A: a <= res;
@@ -65,12 +72,15 @@ module core #(
     assign dor = RW ? 0 : res;
 
     // bus source select
-    logic [1:0] db_src;
+    logic [2:0] db_src;
     logic [2:0] sb_src;
     logic [1:0] res_src;
     always @(*) begin
         case(db_src)
-            DB_DL:      db = i_data;
+            DB_DATA:    db = i_data;
+            DB_PCL:     db = pc[7:0];
+            DB_PCH:     db = pc[15:8];
+            DB_S:       db = s;
             default:    db = 8'h0;
         endcase
         case(sb_src)
@@ -79,6 +89,7 @@ module core #(
             REG_Y: sb = y;
             REG_S: sb = s;
             REG_ADD: sb = add;
+            REG_DATA: sb = i_data;
             default: sb = 8'h0;
         endcase
         case(res_src)
@@ -139,13 +150,14 @@ module core #(
     end
 
     // register alu and p
-    logic carry_out; // also register carry out
+    logic carry_out, of_out; // also register carry out
     logic[7:0] set_mask, clear_mask;
     always @(posedge i_clk ) begin
         if (i_rst) begin
             add <= 8'b0;
             p <= 8'b0;
             carry_out <= 0;
+            of_out <= 0;
         end else begin
             add <= alu_out;
 
@@ -167,6 +179,7 @@ module core #(
             // p[1] <= !clear_mask[1] && (p[1] || set_mask[1] || (aluZ && alu_st_mask[4]));
             // p[0] <= !clear_mask[0] && (p[0] || set_mask[0] || (aluC && alu_st_mask[3]));
             carry_out <= aluC;
+            of_out <= aluV;
         end
     end
 
@@ -192,6 +205,21 @@ module core #(
     logic [1:0] op_c;
     assign {op_a, op_b, op_c} = current_op;
 
+    // branch logic
+    logic take_branch;
+    always @(*) begin
+        case(op_a)
+            3'h0:   take_branch = !p[7]; // BPL
+            3'h1:   take_branch = p[7]; // BMI
+            3'h2:   take_branch = !p[6]; // BVC
+            3'h3:   take_branch = p[6]; // BVS
+            3'h4:   take_branch = !p[0]; // BCC
+            3'h5:   take_branch = p[0]; // BCS
+            3'h6:   take_branch = !p[1]; // BNE
+            3'h7:   take_branch = p[1]; // BEQ
+        endcase
+    end
+
     // decode address mode, which determines initial state
     // primarily differentiated by op_b
     logic op_SB;
@@ -209,9 +237,11 @@ module core #(
                         initial_state = T0;                              // all imm or impl
                         op_SB = !op_c[0];                                // impl are single byte
                     end
-            3'h3:   if (op_a[2:1] == 'b01 && op_c == 'b00) initial_state = T_JAM;      // jump abs,ind
+            3'h3:   if (op_a == 2 && op_c == 0) initial_state = T_JMP;
+                    else if (op_a[2:1] == 'b01 && op_c == 'b00) initial_state = T_JAM;      // jump abs,ind
                     else initial_state = T2_ABS;                         // abs ops
-            3'h4:   if (op_c == 'b00)   initial_state = T_JAM;            // branches
+            3'h4:   if (op_c == 'b00)
+                        initial_state = take_branch ? T2_BRANCH : T0;    // branches
                     else begin
                         idx_XY = 0;
                         initial_state = T2_INDY;                        // alu ind,Y ops
@@ -238,7 +268,7 @@ module core #(
     // decode opcode type and data access pattern
     // primarily differentiated by op_a and op_c
     logic [2:0] ex_sb_src;   // sb bus source (registers)
-    logic [1:0] ex_db_src;   // db bus source (data/addr)
+    logic [2:0] ex_db_src;   // db bus source (data/addr)
     logic [1:0] ex_res_src;  // source of result (alu, sb, db)
     logic [2:0] ex_res_dst;  // location to store result (registers, mem)
 
@@ -254,7 +284,7 @@ module core #(
 
     always @(posedge i_clk ) begin
         //default alu behavor: A + mem -> A
-        ex_db_src <= DB_DL;
+        ex_db_src <= DB_DATA;
         ex_sb_src <= REG_A;
         ex_res_src <= RES_ADD;
         ex_res_dst <= REG_A;
@@ -343,7 +373,7 @@ module core #(
                 // accumulator operations
                 // already default:
                 // ex_sb_src <= REG_A;
-                // ex_db_src <= DB_DL;
+                // ex_db_src <= DB_DATA;
                 // ex_res_src <= RES_ADD;
                 // ex_res_dst <= REG_A;
                 case(op_a)
@@ -400,7 +430,7 @@ module core #(
                     ex_db_src <= DB_Z; // op(reg,0)
                 end else begin
                     // defaults
-                    // ex_db_src <= DB_DL;
+                    // ex_db_src <= DB_DATA;
                     // ex_res_src <= RES_ADD;
                     ex_sb_src <= REG_Z; // op(0,MEM)
                     ex_res_dst <= REG_DATA;
@@ -505,6 +535,14 @@ module core #(
             T5_INDY:  state <= rmw_op ? T_RMW_EXEC : T0;
             T_RMW_EXEC:  state <= T_RMW_STORE;
             T_RMW_STORE: state <= T0;
+
+            T_JMP:   state <= T0_JMP;
+            T0_JMP:   state <= T1;
+
+            T2_BRANCH:   state <= T0_BRANCH;
+            T0_BRANCH:   state <= state_skip ? T1 : T0_BRANCH;
+            T0_BRANCH2:   state <= T1;
+
             T_BOOT:   state <= T0;
             default:  state <= T_JAM;
         endcase
@@ -515,16 +553,16 @@ module core #(
     logic compute_result, save_result;
     always @(*) begin
         addr = pc;
-        IPC = 0;
 
         state_skip = 0;
         compute_result = 0;
         save_result = 0;
+        jump = 0;
     
         // default alu when not processing result:
         // result = data + idx_XY
         // cin = 0, st_mask = 0, do not store result
-        db_src = DB_DL;
+        db_src = DB_DATA;
         sb_src = idx_XY ? REG_X : REG_Y;
         alu_OP = ALU_ADD;
         alu_INVAI = 0;
@@ -535,15 +573,19 @@ module core #(
         res_src = RES_ADD;
         res_dst = REG_Z;
 
+        jump = 0;
+        pc_inc = 0;
+
         case(state)
             T0:         begin
-                        IPC = 1;                // fetch pc, pc++
+                        pc_inc = 1;             // next pc = pc++
                         compute_result = rd_op; // compute read op
                         save_result = ld_op;    // save load op
                         end
 
             T1:         begin
-                        IPC = !op_SB;           // fetch pc, pc++ unless new opcode is only 1 byte
+                        // fetch pc, next pc = pc++ unless new opcode is only 1 byte
+                        pc_inc = !op_SB;
                         save_result = rd_op;    // store result of read op
                         end
 
@@ -558,16 +600,22 @@ module core #(
                         save_result = st_op;
                         end
 
+            T_JMP,
             T2_ABS:     begin
                         sb_src = REG_Z;         // alu nop: hold LL in add
-                        IPC = 1;                // fetch BAH
+                        // fetch BAH
+                        pc_inc = 1;             // next pc = pc++
                         end
             T3_ABS:     begin
                         addr = {db,res};        // fetch {BAH,BAL}
                         save_result = st_op;
                         end
 
-            T2_ABSXY:   IPC = 1;                // compute LL = BAL + X/Y, fetch BAH
+            T2_ABSXY:   begin
+                        // compute LL = BAL + X/Y
+                        //fetch BAH
+                        pc_inc = 1;                // fetch pc, pc++
+                        end                
             T3_ABSXY:   begin
                         addr = {db,res};        // fetch {BAH,LL}, assuming no carry
                         if (carry_out) begin
@@ -627,6 +675,46 @@ module core #(
                         addr = {radh,radl};     // hold addr
                         save_result = 1;
                         end
+
+            T2_BRANCH:   begin
+                        addr = {radh,radl};     // hold addr
+                        // pcl = offset + pcl
+                        db_src = DB_PCL;        
+                        sb_src = REG_DATA;
+                        end
+
+            T0_BRANCH:  begin
+                        addr = {radh,add};     // {pch, offset + pcl}
+                        jump = 1;              // addr -> pc
+                        if (carry_out) begin
+                            // pcl overflowed, pch must be incremented
+                            db_src = DB_PCH;         // inc PCH
+                            sb_src = REG_Z;
+                            alu_carry_in = 2'b01;
+                        end else if (of_out) begin
+                            // pcl underflowed, pch must be decremented
+                            db_src = DB_PCH;         // dec PCH
+                            sb_src = REG_Z;
+                            alu_INVBI = 1;
+                        end else begin
+                            // pch is valid, this will be valid T0 fetch
+                            // nextpc = pc++
+                            pc_inc = 1;         
+                            state_skip = 1;
+                        end
+                        end
+
+            T0_BRANCH2: begin
+                        addr = {add,radl};     // {pch, offset + pcl}
+                        jump = 1;              // addr -> pc
+                        pc_inc = 1;            // nextpc = pc++
+                        end
+
+            T0_JMP:     begin
+                        addr = {db,add};        // fetch new pc
+                        jump = 1;               // update pc
+                        end
+
             default:    begin end
         endcase
 
