@@ -102,7 +102,7 @@ module core #(
 
 
     //alu
-    logic [7:0] ai, bi, alu_out;
+    logic [7:0] ai, bi, aorb, alu_out;
     logic ci;
     logic aluN, aluZ, aluC, aluV;
 
@@ -113,20 +113,14 @@ module core #(
     logic alu_ZEROBI;   // force bi=0
     logic alu_INVAI;    // invert ai
     logic alu_INVBI;    // invert bi
-    logic alu_AORB;     // operate on (AI|BI)
-                    // (unary op from either port and self-add for left-shifts)
     logic [1:0] alu_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
     logic [7:0] status, rstatus, alu_status_mask;
-
 
     always @(*) begin
         ai = alu_INVAI ? ~sb : sb;
         bi = alu_INVBI ? ~db : db;
 
-        if (alu_AORB) begin
-            ai |= bi;
-            bi = ai;
-        end
+        aorb = ai | bi;
 
         ci = alu_carry_in[1] ? p[0] : alu_carry_in[0];
 
@@ -137,17 +131,26 @@ module core #(
             // verilator lint_off WIDTH
             ALU_ADD:    {aluC, alu_out} = ai + bi + ci;
             // verilator lint_on WIDTH
+            ALU_BIT,
             ALU_AND:    alu_out = ai & bi;
-            ALU_OR:     alu_out = ai | bi;
+            ALU_OR:     alu_out = aorb;
             ALU_XOR:    alu_out = ai ^ bi;
-            ALU_SR:     {alu_out, aluC} = {ci, ai};
+            // unary shifts operate on ai|bi, so unused port must be zeroed
+            ALU_SR:     {alu_out, aluC} = {ci, aorb};
+            ALU_SL:     {aluC, alu_out} = {aorb, ci};
             default:    begin end
         endcase
 
         aluZ = ~|alu_out;
-        aluN = alu_out[7];
-        aluV = ai[7] ^ bi[7] ^ aluC ^ aluN;
 
+        if(alu_OP == ALU_BIT) begin
+            aluN = bi[7];
+            aluV = bi[6];
+        end else begin
+            aluN = alu_out[7];
+            aluV = ai[7] ^ bi[7] ^ aluC ^ aluN;
+        end
+            
         status = {aluN, aluV, 4'b0, aluZ, aluC};
     end
 
@@ -257,8 +260,6 @@ module core #(
     logic [2:0] ex_alu_OP;
     logic ex_alu_INVAI;    // invert ai (ai=ff if alu_ZEROAI)
     logic ex_alu_INVBI;    // invert bi (ai=ff if alu_ZEROBI)
-    logic ex_alu_AORB;     // operate on (AI|BI)
-                    // (unary op from either port and self-add for left-shifts)
     logic [1:0] ex_alu_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
     logic [7:0] ex_alu_status_mask;  // mask to update status flags: NZCIDV
 
@@ -272,7 +273,6 @@ module core #(
         ex_alu_OP <= ALU_ADD;
         ex_alu_INVAI <= 0;
         ex_alu_INVBI <= 0;
-        ex_alu_AORB <= 0;
         ex_alu_status_mask <= 0;        // default do not update status flag
         ex_alu_carry_in <= 2'b00;   // default carry in <= 0
 
@@ -302,6 +302,13 @@ module core #(
                     endcase
                 end
                 else if(op_a[2] == 0) begin // a=0:3, b != 6
+                    if (op_a[1:0] == 2'b01 && op_b[0]) begin// BIT
+                        // ex_sb_src <= REG_A;
+                        // ex_db_src <= DB_DATA;
+                        ex_alu_OP <= ALU_BIT;
+                        ex_res_dst <= REG_Z;
+                        ex_alu_status_mask <= 8'b11000010;
+                    end
                     // control flow and special ops
                     // TODO....
                 end
@@ -415,17 +422,14 @@ module core #(
                     ex_res_dst <= REG_DATA;
                 end
                 
-                // for shift ops, use op(AI | BI)
-                ex_alu_AORB <= op_a[2] == 0;      
-
                 case(op_a)
-                    0:  begin // ASL: A+A+0
-                        // ex_alu_OP <= ALU_ADD;        //already default
+                    0:  begin // ASL
+                        ex_alu_OP <= ALU_SL;
                         // ex_alu_carry_in <= 2'b00;    //already default
                         ex_alu_status_mask <= 8'b10000011;
                         end
-                    1:  begin // ROL: A+A+C
-                        // ex_alu_OP <= ALU_ADD;        //already default
+                    1:  begin // ROL
+                        ex_alu_OP <= ALU_SL;
                         ex_alu_carry_in <= 2'b10;       // C <= P[C]
                         ex_alu_status_mask <=8'b10000011;
                         end
@@ -551,7 +555,6 @@ module core #(
         alu_OP = ALU_ADD;
         alu_INVAI = 0;
         alu_INVBI = 0;
-        alu_AORB = 0;
         alu_carry_in = 0;
         alu_status_mask = 0;
         res_src = RES_ADD;
@@ -711,7 +714,6 @@ module core #(
             alu_OP = ex_alu_OP;
             alu_INVAI = ex_alu_INVAI;
             alu_INVBI = ex_alu_INVBI;
-            alu_AORB = ex_alu_AORB;
             alu_carry_in = ex_alu_carry_in;
             alu_status_mask = ex_alu_status_mask;
         end

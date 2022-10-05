@@ -34,11 +34,10 @@ ldx d4          ; read [d4]=0c (abs)
 
 txs             ; s = 0c
 inx             ; x = 0d
-tsx             ; x= 0c
-
-loop:
-dex
-bne loop
+tsx             ; x = 0c
+loop:           ; 
+dex             ; x--
+bne loop        ; loop until x==0
 
 
 nop

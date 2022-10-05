@@ -28,7 +28,6 @@ parameter T2_BRANCH     =5'h19;
 parameter T3_BRANCH     =5'h1a;
 parameter T4_BRANCH    =5'h1b;
 
-
 parameter REG_Z      =3'h0;
 parameter REG_A      =3'h1;
 parameter REG_X      =3'h2;
@@ -47,18 +46,10 @@ parameter RES_DB    =2'h0;  // loads
 parameter RES_SB    =2'h1;  // transfers/stores
 parameter RES_ADD   =2'h2;  // alu
 
-parameter PC_INC  = 2'h0;  
-parameter PC_RES   =2'h1;  
-parameter PC_HOLD  =2'h2;  
-
-parameter MEM_NO    =2'h0;
-parameter MEM_LD    =2'h1;
-parameter MEM_ST    =2'h2;
-parameter MEM_RW    =2'h3;
-
 parameter ALU_ADD   =3'h0;
 parameter ALU_AND   =3'h1;
 parameter ALU_OR    =3'h2;
 parameter ALU_XOR   =3'h3;
 parameter ALU_SR    =3'h4;
-
+parameter ALU_SL    =3'h5;
+parameter ALU_BIT   =3'h6;
