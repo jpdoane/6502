@@ -1,7 +1,7 @@
 //states
 
-parameter T0            =5'h0;
-parameter T1            =5'h1;
+parameter T0_FETCH      =5'h0;
+parameter T1_DECODE     =5'h1;
 parameter T2_ZPG        =5'h2;
 parameter T2_ZPGXY      =5'h3;
 parameter T3_ZPGXY      =5'h4;
@@ -20,14 +20,13 @@ parameter T4_INDY       =5'h11;
 parameter T5_INDY       =5'h12;
 parameter T_RMW_EXEC    =5'h13;
 parameter T_RMW_STORE   =5'h14;
-parameter T0_EXEC       =5'h14;
 parameter T_BOOT        =5'h15;
 parameter T_JAM         =5'h16;
-parameter T_JMP         =5'h17;
-parameter T0_JMP        =5'h18;
+parameter T2_JMP         =5'h17;
+parameter T3_JMP        =5'h18;
 parameter T2_BRANCH     =5'h19;
-parameter T0_BRANCH     =5'h1a;
-parameter T0_BRANCH2    =5'h1b;
+parameter T3_BRANCH     =5'h1a;
+parameter T4_BRANCH    =5'h1b;
 
 
 parameter REG_Z      =3'h0;

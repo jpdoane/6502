@@ -32,9 +32,14 @@ inc <d4         ; [d4]+1 = 0b (zpg)
 inc d4          ; [d4]+1 = 0c (abs)
 ldx d4          ; read [d4]=0c (abs)
 
-txs
-inx
-tsx
+txs             ; s = 0c
+inx             ; x = 0d
+tsx             ; x= 0c
+
+loop:
+dex
+bne loop
+
 
 nop
 nop
