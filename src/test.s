@@ -7,6 +7,7 @@ d2: .byt $01
 d3: .byt d4
 .dsb 10
 d4: .byt $0f
+d5: .byt $ff
 
 .dsb text - *   ; zero pad until text
 
@@ -15,7 +16,7 @@ adc <d1         ; A = 1+aa  = ab
 sec             ; set carry bit
 sbc <d2         ; A = ab-1  = aa
 inx             ; X = 0+1   = 1
-jmp label
+jmp (ind_label)
 brk             ; these will jam is jmp doesnt work
 brk
 label:
@@ -31,6 +32,7 @@ sta <d4         ; write A=0a to [d4] (zpg)
 inc <d4         ; [d4]+1 = 0b (zpg)
 inc d4          ; [d4]+1 = 0c (abs)
 ldx d4          ; read [d4]=0c (abs)
+bit d4          ; NVZ = 0          
 
 txs             ; s = 0c
 inx             ; x = 0d
@@ -39,8 +41,22 @@ loop:           ;
 dex             ; x--
 bne loop        ; loop until x==0
 
+stx d5          ; d5 = 0
+and $0          ; Z = 0
+bit d5          ; Z = 1
 
-nop
-nop
+php
+pha
+plp
+pla
+
+
+brk             ; halt
+
+.dsb 10
+
+ind_label:
+.byt <label
+.byt >label
 
 .dsb $0100 - *   ; zero pad until end of page

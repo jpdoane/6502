@@ -5,3 +5,5 @@
 2 OR
 3 XOR
 4 SR
+5 SL
+6 BIT

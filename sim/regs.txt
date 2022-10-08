@@ -3,4 +3,6 @@
 2 X
 3 Y
 4 S
-5 mem
+5 P
+6 add
+7 mem

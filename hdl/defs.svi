@@ -22,19 +22,22 @@ parameter T_RMW_EXEC    =5'h13;
 parameter T_RMW_STORE   =5'h14;
 parameter T_BOOT        =5'h15;
 parameter T_JAM         =5'h16;
-parameter T2_JMP         =5'h17;
+parameter T2_JMP        =5'h17;
 parameter T3_JMP        =5'h18;
 parameter T2_BRANCH     =5'h19;
 parameter T3_BRANCH     =5'h1a;
-parameter T4_BRANCH    =5'h1b;
+parameter T4_BRANCH     =5'h1b;
+parameter T2_STACK      =5'h1c;
+parameter T2_STACKPULL  =5'h1d;
 
 parameter REG_Z      =3'h0;
 parameter REG_A      =3'h1;
 parameter REG_X      =3'h2;
 parameter REG_Y      =3'h3;
 parameter REG_S      =3'h4;
-parameter REG_ADD    =3'h5;
-parameter REG_DATA   =3'h6;
+parameter REG_P      =3'h5;
+parameter REG_ADD    =3'h6;
+parameter REG_DATA   =3'h7;
 
 parameter DB_Z       =3'h0;
 parameter DB_DATA    =3'h1;

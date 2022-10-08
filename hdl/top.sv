@@ -2,7 +2,7 @@
 module top #(
     parameter ROM_FILE="",
     parameter DUMP_WAVE_FILE="",
-    parameter RAM_DEPTH=256,
+    parameter RAM_DEPTH=65536,
     parameter BOOT_ADDR=16'h00a0)
     ( input  logic i_clk, i_rst
     );
@@ -20,14 +20,14 @@ module top #(
     logic [7:0] dout;
     logic [7:0] din = 8'b0;
     logic RW;
-    logic [7:0] addr_hi;
-    logic [7:0] addr_lo;
-    assign addr_hi = addr[15:8];
-    assign addr_lo = addr[7:0];
+    // logic [7:0] addr_hi;
+    // logic [7:0] addr_lo;
+    // assign addr_hi = addr[15:8];
+    // assign addr_lo = addr[7:0];
     always @(posedge i_clk) begin
-        din <= BRAM[addr_lo];
+        din <= BRAM[addr];
         if (!RW)
-            BRAM[addr_lo] <= dout;
+            BRAM[addr] <= dout;
     end
 
     integer file, cnt;
