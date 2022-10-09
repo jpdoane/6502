@@ -45,10 +45,11 @@ stx d5          ; d5 = 0
 and $0          ; Z = 0
 bit d5          ; Z = 1
 
-php
-pha
-plp
-pla
+php             ; push p (0000011)
+pha             ; push a (0a)
+sbc $1          ; a = 09, p = 0000001
+pla             ; pull a (0a)
+plp             ; pull p (0000011)
 
 
 brk             ; halt

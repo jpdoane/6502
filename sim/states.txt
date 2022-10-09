@@ -27,3 +27,5 @@
 19  T2_BRANCH     
 1a  T3_BRANCH     
 1b  T4_BRANCH    
+1c  T2_STACK
+1d  T3_STACK

@@ -28,7 +28,7 @@ parameter T2_BRANCH     =5'h19;
 parameter T3_BRANCH     =5'h1a;
 parameter T4_BRANCH     =5'h1b;
 parameter T2_STACK      =5'h1c;
-parameter T2_STACKPULL  =5'h1d;
+parameter T3_STACK      =5'h1d;
 
 parameter REG_Z      =3'h0;
 parameter REG_A      =3'h1;
@@ -44,6 +44,8 @@ parameter DB_DATA    =3'h1;
 parameter DB_PCL     =3'h2;
 parameter DB_PCH     =3'h3;
 parameter DB_S       =3'h4;
+parameter DB_P       =3'h5;
+parameter DB_A       =3'h6;
 
 parameter RES_DB    =2'h0;  // loads
 parameter RES_SB    =2'h1;  // transfers/stores
@@ -56,3 +58,8 @@ parameter ALU_XOR   =3'h3;
 parameter ALU_SR    =3'h4;
 parameter ALU_SL    =3'h5;
 parameter ALU_BIT   =3'h6;
+
+parameter ADD_BUS   =2'h0;
+parameter ADD_INVBUS =2'h1;
+parameter ADD_Z     =2'h2;
+parameter ADD_N     =2'h3;

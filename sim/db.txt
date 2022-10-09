@@ -1,0 +1,7 @@
+0 Z
+1 mem
+2 pcl
+3 pch
+4 S
+5 P
+6 A

@@ -82,6 +82,8 @@ module core #(
             DB_PCL:     db = pc[7:0];
             DB_PCH:     db = pc[15:8];
             DB_S:       db = s;
+            DB_P:       db = p;
+            DB_A:       db = a;
             default:    db = 8'h0;
         endcase
         case(sb_src)
@@ -102,28 +104,35 @@ module core #(
         endcase
     end
 
+    // alu source select
+    logic [1:0] ai_src, bi_src;
+    logic [7:0] ai, bi;
+    always @(*) begin
+        case(ai_src)
+            ADD_BUS:    ai = sb;
+            ADD_INVBUS: ai = ~sb;
+            ADD_N:      ai = 8'hff;
+            default:    ai = 8'h0;
+        endcase
+        case(bi_src)
+            ADD_BUS:    bi = db;
+            ADD_INVBUS: bi = ~db;
+            ADD_N:      bi = 8'hff;
+            default:    bi = 8'h0;
+        endcase
+    end
 
     //alu
-    logic [7:0] ai, bi, aorb, alu_out;
+    logic [7:0] aorb, alu_out;
     logic ci;
     logic aluN, aluZ, aluC, aluV;
 
-    logic [2:0] ai_src;
-
     logic [2:0] alu_OP;
-    logic alu_ZEROAI;   // force ai=0
-    logic alu_ZEROBI;   // force bi=0
-    logic alu_INVAI;    // invert ai
-    logic alu_INVBI;    // invert bi
     logic [1:0] alu_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
     logic [7:0] status, rstatus, status_mask;
 
     always @(*) begin
-        ai = alu_INVAI ? ~sb : sb;
-        bi = alu_INVBI ? ~db : db;
-
         aorb = ai | bi;
-
         ci = alu_carry_in[1] ? p[0] : alu_carry_in[0];
 
         alu_out = 0;
@@ -261,8 +270,8 @@ module core #(
     logic [2:0] ex_res_dst;  // location to store result (registers, mem)
 
     logic [2:0] ex_alu_OP;
-    logic ex_alu_INVAI;    // invert ai (ai=ff if alu_ZEROAI)
-    logic ex_alu_INVBI;    // invert bi (ai=ff if alu_ZEROBI)
+    logic [1:0] ex_ai_src;   // alu ai src
+    logic [1:0] ex_bi_src;   // alu bi src
     logic [1:0] ex_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
     logic [7:0] ex_status_mask;  // mask to update status flags: NZCIDV
     logic stack_push, stack_pull;
@@ -271,19 +280,17 @@ module core #(
         //default alu behavor: A + mem -> A
         ex_db_src <= DB_DATA;
         ex_sb_src <= REG_A;
+        ex_ai_src <= ADD_BUS;
+        ex_bi_src <= ADD_BUS;
         ex_res_src <= RES_ADD;
         ex_res_dst <= REG_A;
 
         ex_alu_OP <= ALU_ADD;
-        ex_alu_INVAI <= 0;
-        ex_alu_INVBI <= 0;
         ex_status_mask <= 0;        // default do not update status flag
         ex_carry_in <= 2'b00;   // default carry in <= 0
 
         set_mask <= 8'h0;
         clear_mask <= 8'h0;
-        stack_push <= 0;
-        stack_pull <= 0;
 
         case(op_c)
             0: begin
@@ -309,16 +316,15 @@ module core #(
                 end
                 else if(op_a[2] == 0) begin // a=0:3, b != 6
                     if (op_b == 3'h2) begin //Stack push/pull
-                        stack_pull <= a[0];
-                        stack_push <= ~stack_pull;
-                        // we can set both src and dst here regardless of push/pull
-                        // since only the appropriate one will be used.
-                        if (a[1]) begin
-                            ex_res_dst <= REG_P;
-                            ex_res_src <= REG_P;
+                        ex_res_src <= RES_DB;
+                        if (op_a[0]) begin
+                            // pull
+                            ex_res_src <= RES_DB;
+                            ex_res_dst <= op_a[1] ? REG_A : REG_P;
                         end else begin
-                            ex_res_dst <= REG_A;
-                            ex_res_src <= REG_A;
+                            // push
+                            ex_db_src <= op_a[1] ? DB_A : DB_P;
+                            ex_res_dst <= REG_DATA;
                         end
                     end if (op_a[1:0] == 2'b01 && op_b[0]) begin// BIT
                         // ex_sb_src <= REG_A;
@@ -338,12 +344,12 @@ module core #(
                         ex_res_src <= RES_SB;
                     end else begin // DEY, INY, INX
                         ex_sb_src <= REG_Y;
-                        ex_db_src <= DB_Z;
+                        ex_bi_src <= ADD_Z;
                         ex_res_src <= RES_ADD;
                         ex_res_dst <= REG_Y;
                         ex_status_mask <= 8'b10000010; // status mask for inc/dec
                         if(op_a==4) begin //DEY
-                            ex_alu_INVBI <= 1; //bi <= -1
+                            ex_bi_src <= ADD_N; //bi <= -1
                             ex_carry_in <= 2'b00; // C=0 
                         end else if(op_a==6) begin //INY
                             ex_carry_in <= 2'b01; // C=1
@@ -367,7 +373,7 @@ module core #(
                 else begin // op_a=6-7: CPX/CPY
                     // ex_alu_OP <= ALU_ADD;    //already default
                     ex_carry_in <= 2'b01; // C=1 (equivalent to borrow=0)
-                    ex_alu_INVBI <= 1; // ai-bi
+                    ex_bi_src <= ADD_INVBUS; // ai-bi
                     ex_sb_src <= op_a[0] ? REG_X : REG_Y;
                     ex_res_dst <= REG_Z; //dont store result, just status mask
                     ex_status_mask <= 8'b10000011;
@@ -412,14 +418,14 @@ module core #(
                     6:  begin // CMP;
                         // ex_alu_OP <= ALU_ADD;
                         ex_carry_in <= 2'b01; // C=1 (borrow=0)
-                        ex_alu_INVBI <= 1;        // negate DB
+                        ex_bi_src <= ADD_INVBUS;        // negate DB
                         ex_status_mask <= 8'b10000011;
                         ex_res_dst <= REG_Z; //dont update registers
                         end
                     7:  begin // SBC;
                         // ex_alu_OP <= ALU_ADD;
                         ex_carry_in <= 2'b10; // C=P[C]
-                        ex_alu_INVBI <= 1;        // negate DB
+                        ex_bi_src <= ADD_INVBUS;        // negate DB
                         ex_status_mask <= 8'b11000011;
                         end
                 endcase
@@ -431,12 +437,12 @@ module core #(
                     // ex_sb_src <= REG_A;
                     // ex_res_src <= RES_ADD;
                     // ex_res_dst <= REG_A;
-                    ex_db_src <= DB_Z; // op(reg,0)
+                    ex_bi_src <= ADD_Z; // op(reg,0)
                 end else begin
                     // defaults
                     // ex_db_src <= DB_DATA;
                     // ex_res_src <= RES_ADD;
-                    ex_sb_src <= REG_Z; // op(0,MEM)
+                    ex_ai_src <= ADD_Z; // op(0,MEM)
                     ex_res_dst <= REG_DATA;
                 end
                 
@@ -482,9 +488,9 @@ module core #(
                                         //DEX
                                         ex_sb_src <= REG_X;
                                         ex_res_dst <= REG_X; 
-                                        ex_alu_INVBI <= 1;  // op(reg,-1)
+                                        ex_bi_src <= ADD_N; // op(reg,-1)
                                         end
-                        else            ex_alu_INVAI <= 1;  // op(-1,MEM)
+                        else            ex_ai_src <= ADD_N;  // op(-1,MEM)
                         ex_status_mask <= 8'b10000010;
                         end
                     7:  begin // INC, NOP
@@ -503,6 +509,7 @@ module core #(
 
 
     // memory modes
+    // determined by: ex_res_src and ex_res_dst
     logic rd_op, ld_op, st_op, rmw_op;
     always @(*) begin
         rd_op = 0;
@@ -510,8 +517,8 @@ module core #(
         st_op = 0; //also stack push
         rmw_op = 0;
         if(ex_res_dst == REG_DATA)
-            if(ex_res_src == RES_SB) st_op = 1;
-            else rmw_op = 1;                   
+            if(ex_res_src == RES_ADD) rmw_op = 1;
+            else st_op = 1;                   
         else
             if(ex_res_src == RES_DB) ld_op = 1;
             else rd_op = 1;
@@ -563,8 +570,8 @@ module core #(
             T3_BRANCH:   state <= state_skip ? T1_DECODE : T4_BRANCH;
             T4_BRANCH:   state <= T1_DECODE;
 
-            T2_STACK: state <= stack_push ? T0_FETCH : T2_STACKPULL;
-            T2_STACKPULL:     state <= T0_FETCH;
+            T2_STACK:    state <= T3_STACK;
+            T3_STACK:    state <= st_op ? T1_DECODE : T0_FETCH;
             
             T_BOOT:   state <= T0_FETCH;
             default:  state <= T_JAM;
@@ -587,11 +594,11 @@ module core #(
         // default alu when not processing result:
         // result = data + idx_XY
         // cin = 0, st_mask = 0, do not store result
+        ai_src = ADD_BUS;
+        bi_src = ADD_BUS;
         db_src = DB_DATA;
         sb_src = idx_XY ? REG_X : REG_Y;
         alu_OP = ALU_ADD;
-        alu_INVAI = 0;
-        alu_INVBI = 0;
         alu_carry_in = 0;
         status_mask = 0;
         res_src = RES_ADD;
@@ -713,13 +720,12 @@ module core #(
                         if (rstatus[0] && !rstatus[7]) begin
                              // C=1, N=0: jumped to higher page, pch must be incremented
                             db_src = DB_PCH;         // inc PCH
-                            sb_src = REG_Z;
+                            ai_src = ADD_Z;
                             alu_carry_in = 2'b01;
                         end else if (rstatus[6] && rstatus[7]) begin
                              // V=1, N=1: jumped to lower page, pch must be decremented
                             db_src = DB_PCH;         // dec PCH
-                            sb_src = REG_Z;
-                            alu_INVBI = 1;
+                            ai_src = ADD_N;
                         end else begin
                             // pch is valid, this will be valid T0_FETCH fetch
                             // nextpc = pc++
@@ -739,21 +745,40 @@ module core #(
                         jump = 1;               // update pc
                         end
 
+
+            // stack data movement is on db (ptr arithmetic on sb)
+            // to push:
+            // ex_db_src: what to push
+            // ex_res_src: RES_DB
+            // ex_res_dst: REG_DATA
+            // to pull:
+            // ex_db_src: DB_DATA
+            // ex_res_src: RES_DB
+            // ex_res_dst: what to pull
             T2_STACK:    begin
                         addr = {stackpage,s};
-                        save_result = st_op; //push
+                        if (st_op) begin
+                            //push to stack
+                            db_src = ex_db_src;
+                            res_src = RES_DB;
+                            res_dst = REG_DATA;
+                        end
                         // inc/dec s
-                        db_src = DB_Z;
                         sb_src = REG_S;
-                        alu_INVBI = st_op;                 // push: s--
+                        bi_src = st_op ? ADD_N : ADD_Z;    // push: s--
                         alu_carry_in = ld_op ? 'b01 : 0;   // pull: s++
                         end
 
             T3_STACK:   begin
+                        // update stack register
                         res_src = REG_ADD;
                         res_dst = REG_S;
-                        addr = {stackpage,add};   // load (s++)
-                        // for pull, (s++) saved to ex_res_dst during T0
+                        
+                        // for push, this is T0 and we need to fetch next addr
+                        pc_inc = st_op;             // next pc = pc++
+
+                        // for pull, (s++) loaded to ex_res_dst during next T0
+                        if(ld_op) addr = {stackpage,add};
                         end
 
 
@@ -767,8 +792,8 @@ module core #(
         end
         if (compute_result) begin
             alu_OP = ex_alu_OP;
-            alu_INVAI = ex_alu_INVAI;
-            alu_INVBI = ex_alu_INVBI;
+            ai_src = ex_ai_src;
+            bi_src = ex_bi_src;
             alu_carry_in = ex_carry_in;
             status_mask = ex_status_mask;
         end

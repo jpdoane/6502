@@ -20,7 +20,7 @@ module cpu_tb();
     always #1 clk = ~clk;
 
     initial begin
-        #300;
+        #500;
         $finish;
     end
 
