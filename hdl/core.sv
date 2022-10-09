@@ -123,59 +123,37 @@ module core #(
     end
 
     //alu
-    logic [7:0] aorb, alu_out;
-    logic ci;
-    logic aluN, aluZ, aluC, aluV;
-
     logic [2:0] alu_OP;
+    logic [7:0] alu_out;
     logic [1:0] alu_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
-    logic [7:0] status, rstatus, status_mask;
+    logic ci, aluN, aluZ, aluC, aluV;
 
-    always @(*) begin
-        aorb = ai | bi;
-        ci = alu_carry_in[1] ? p[0] : alu_carry_in[0];
-
-        alu_out = 0;
-        aluC = 0;
-
-        case(alu_OP)
-            // verilator lint_off WIDTH
-            ALU_ADD:    {aluC, alu_out} = ai + bi + ci;
-            // verilator lint_on WIDTH
-            ALU_BIT,
-            ALU_AND:    alu_out = ai & bi;
-            ALU_OR:     alu_out = aorb;
-            ALU_XOR:    alu_out = ai ^ bi;
-            // unary shifts operate on ai|bi, so unused port must be zeroed
-            ALU_SR:     {alu_out, aluC} = {ci, aorb};
-            ALU_SL:     {aluC, alu_out} = {aorb, ci};
-            default:    begin end
-        endcase
-
-        aluZ = ~|alu_out;
-
-        if(alu_OP == ALU_BIT) begin
-            aluN = bi[7];
-            aluV = bi[6];
-        end else begin
-            aluN = alu_out[7];
-            aluV = ai[7] ^ bi[7] ^ aluC ^ aluN;
-        end
-            
-        status = {aluN, aluV, 4'b0, aluZ, aluC};
-    end
+    assign ci = alu_carry_in[1] ? p[0] : alu_carry_in[0];
+    alu u_alu(
+        .ai  (ai  ),
+        .bi  (bi  ),
+        .ci  (ci  ),
+        .op  (alu_OP),
+        .out (alu_out),
+        .N   (aluN),
+        .V   (aluV),
+        .Z   (aluZ),
+        .C   (aluC)
+    );
 
     // register alu and p
+    logic [7:0] alu_status, ralu_status, alu_mask;
     logic[7:0] set_mask, clear_mask;
+    assign alu_status = {aluN, aluV, 4'b0, aluZ, aluC};
     always @(posedge i_clk ) begin
         if (i_rst) begin
             add <= 8'b0;
             p <= 8'b0;
-            rstatus <= 8'h0;
+            ralu_status <= 8'h0;
         end else begin
             add <= alu_out;
-            rstatus <= status;
-            p <= ~clear_mask & (set_mask | (status_mask & status) | (~status_mask & p));
+            ralu_status <= alu_status;
+            p <= ~clear_mask & (set_mask | (alu_mask & alu_status) | (~alu_mask & p));
         end
     end
 
@@ -186,84 +164,17 @@ module core #(
 
     // ir fetch
     // assign SYNC = state == T0_FETCH;
+    logic [7:0] opcode;
     always @(posedge i_clk ) begin
         if (i_rst)          ir <= 8'hea; //NOP
         else if (state==T1_DECODE) ir <= i_data;
     end
-    logic [7:0] current_op;
-    assign current_op = (state==T1_DECODE) ? i_data : ir;
+    assign opcode = (state==T1_DECODE) ? i_data : ir;
 
-    // decode opcode
-    // rather than a huge mux on full opcode, utilize layout patterns
-    // https://www.masswerk.at/6502/6502_instruction_set.html#layout
-    logic [2:0] op_a;
-    logic [2:0] op_b;
-    logic [1:0] op_c;
-    assign {op_a, op_b, op_c} = current_op;
-
-    // branch logic
-    logic take_branch;
-    always @(*) begin
-        case(op_a)
-            3'h0:   take_branch = !p[7]; // BPL
-            3'h1:   take_branch = p[7]; // BMI
-            3'h2:   take_branch = !p[6]; // BVC
-            3'h3:   take_branch = p[6]; // BVS
-            3'h4:   take_branch = !p[0]; // BCC
-            3'h5:   take_branch = p[0]; // BCS
-            3'h6:   take_branch = !p[1]; // BNE
-            3'h7:   take_branch = p[1]; // BEQ
-        endcase
-    end
-
-    // decode address mode, which determines initialtake_branch state
-    // primarily differentiated by op_b
     logic op_SB;
     logic idx_XY;           // select index X(1) or Y(0) for abs,X/Y and zpg,X/Y ops
-    always @(*) begin
-        op_SB = 0;
-        idx_XY = 1;
-        initial_state = T_JAM;
-        case(op_b)
-            3'h0:   if (op_c[0] == 1) initial_state = T2_XIND;           // X,ind
-                    else if (op_a[2] == 0) initial_state = T_JAM;        // BRK, JSR, RTI, RTS
-                    else initial_state = T0_FETCH;                             // LD/CP imm
-            3'h1:   initial_state = T2_ZPG;                              // all zpg
-            3'h2:   begin
-                        initial_state = (op_c == 0 && !op_a[2]) ? T2_STACK : // c=0, a<4 stack ops
-                                                                 T0_FETCH ;  // others imm or impl 
-                        op_SB = !op_c[0];                                     // c=0,2 are single byte
-                    end
-            3'h3:   if (op_a[2:1] == 'b01 && op_c == 0) initial_state = T2_JMP;
-                    else if (op_a[2:1] == 'b01 && op_c == 'b00) initial_state = T_JAM;      // jump abs,ind
-                    else initial_state = T2_ABS;                         // abs ops
-            3'h4:   if (op_c == 'b00)
-                        initial_state =  take_branch ? T2_BRANCH : T0_FETCH; // branches
-                    else begin
-                        idx_XY = 0;
-                        initial_state = T2_INDY;                        // alu ind,Y ops
-                    end
-            3'h5:   begin
-                        initial_state = T2_ZPGXY;                        // zpg,X/Y
-                        idx_XY = !(op_c==2 && op_a[2:1]=='b10);
-                    end
-            3'h6:   if (op_c[0] == 0) begin
-                        op_SB = 1;
-                        initial_state = T0_FETCH;               // impl
-                    end 
-                    else begin
-                        initial_state = T2_ABSXY;                        // abs,Y
-                        idx_XY = 0;
-                    end
-            3'h7:   begin
-                        initial_state = T2_ABSXY;                        // abs,X/Y
-                        idx_XY = !(op_c==2 && op_a[2:1]=='b10);
-                    end
-        endcase
-    end
+    logic rd_op, ld_op, st_op, rmw_op;
 
-    // decode opcode type and data access pattern
-    // primarily differentiated by op_a and op_c
     logic [2:0] ex_sb_src;   // sb bus source (registers)
     logic [2:0] ex_db_src;   // db bus source (data/addr)
     logic [1:0] ex_res_src;  // source of result (alu, sb, db)
@@ -273,256 +184,32 @@ module core #(
     logic [1:0] ex_ai_src;   // alu ai src
     logic [1:0] ex_bi_src;   // alu bi src
     logic [1:0] ex_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
-    logic [7:0] ex_status_mask;  // mask to update status flags: NZCIDV
-    logic stack_push, stack_pull;
+    logic [7:0] ex_alu_mask, ex_set_mask, ex_clear_mask;  // masks to update status
 
-    always @(posedge i_clk ) begin
-        //default alu behavor: A + mem -> A
-        ex_db_src <= DB_DATA;
-        ex_sb_src <= REG_A;
-        ex_ai_src <= ADD_BUS;
-        ex_bi_src <= ADD_BUS;
-        ex_res_src <= RES_ADD;
-        ex_res_dst <= REG_A;
-
-        ex_alu_OP <= ALU_ADD;
-        ex_status_mask <= 0;        // default do not update status flag
-        ex_carry_in <= 2'b00;   // default carry in <= 0
-
-        set_mask <= 8'h0;
-        clear_mask <= 8'h0;
-
-        case(op_c)
-            0: begin
-                //primarily control flow, special, and load/store/tranfer
-                ex_res_dst <= REG_Z; // default no register update
-
-                if(op_b==4) begin end// branch op
-                else if(op_b==6) begin   // set/clear flags
-                    case(op_a)
-                        0: clear_mask[0] <= 1; // CLC
-                        1: set_mask[0] <= 1;   // SEC
-                        2: clear_mask[2] <= 1; // CLI
-                        3: set_mask[2] <= 1; // SEI
-                        4:  begin //TYA
-                            ex_sb_src <= REG_Y;
-                            ex_res_src <= RES_SB;
-                            ex_res_dst <= REG_A;
-                            end
-                        5: clear_mask[6] <= 1; // CLV
-                        6: clear_mask[3] <= 1; // CLD
-                        7: set_mask[3] <= 1; // SED
-                    endcase
-                end
-                else if(op_a[2] == 0) begin // a=0:3, b != 6
-                    if (op_b == 3'h2) begin //Stack push/pull
-                        ex_res_src <= RES_DB;
-                        if (op_a[0]) begin
-                            // pull
-                            ex_res_src <= RES_DB;
-                            ex_res_dst <= op_a[1] ? REG_A : REG_P;
-                        end else begin
-                            // push
-                            ex_db_src <= op_a[1] ? DB_A : DB_P;
-                            ex_res_dst <= REG_DATA;
-                        end
-                    end if (op_a[1:0] == 2'b01 && op_b[0]) begin// BIT
-                        // ex_sb_src <= REG_A;
-                        // ex_db_src <= DB_DATA;
-                        ex_alu_OP <= ALU_BIT;
-                        ex_res_dst <= REG_Z;
-                        ex_status_mask <= 8'b11000010;
-                    end
-                    // control flow and special ops
-                    // TODO....
-                end
-                else if(op_b == 3'b010) begin // a=4:7, b=2
-                    //DEY, TAY, INY, INX
-                    if (op_a == 5) begin //TAY
-                        ex_res_dst <= REG_Y;
-                        ex_sb_src <= REG_A;
-                        ex_res_src <= RES_SB;
-                    end else begin // DEY, INY, INX
-                        ex_sb_src <= REG_Y;
-                        ex_bi_src <= ADD_Z;
-                        ex_res_src <= RES_ADD;
-                        ex_res_dst <= REG_Y;
-                        ex_status_mask <= 8'b10000010; // status mask for inc/dec
-                        if(op_a==4) begin //DEY
-                            ex_bi_src <= ADD_N; //bi <= -1
-                            ex_carry_in <= 2'b00; // C=0 
-                        end else if(op_a==6) begin //INY
-                            ex_carry_in <= 2'b01; // C=1
-                        end else if(op_a==7) begin //INX
-                            ex_sb_src <= REG_X;
-                            ex_res_dst <= REG_X;
-                            ex_carry_in <= 2'b01; // C=1
-                        end
-                    end
-                end
-                // remaining options are restriced to a>=4, b=0,1,3,5,7
-                else if(op_a==4) begin// STY
-                    ex_sb_src <= REG_Y;
-                    ex_res_src <= RES_SB;
-                    ex_res_dst <= REG_DATA;
-                end
-                else if(op_a == 5) begin //LDY
-                    ex_res_src <= RES_DB;
-                    ex_res_dst <= REG_Y;
-                end
-                else begin // op_a=6-7: CPX/CPY
-                    // ex_alu_OP <= ALU_ADD;    //already default
-                    ex_carry_in <= 2'b01; // C=1 (equivalent to borrow=0)
-                    ex_bi_src <= ADD_INVBUS; // ai-bi
-                    ex_sb_src <= op_a[0] ? REG_X : REG_Y;
-                    ex_res_dst <= REG_Z; //dont store result, just status mask
-                    ex_status_mask <= 8'b10000011;
-                end
-            end
-        1:  begin
-                // accumulator operations
-                // already default:
-                // ex_sb_src <= REG_A;
-                // ex_db_src <= DB_DATA;
-                // ex_res_src <= RES_ADD;
-                // ex_res_dst <= REG_A;
-                case(op_a)
-                    0:  begin   //ORA
-                        ex_alu_OP <= ALU_OR;
-                        // ex_carry_in <= 2'b00;
-                        ex_status_mask <= 8'b10000010;
-                        end
-                    1:  begin   //AND
-                        ex_alu_OP <= ALU_AND;
-                        // ex_carry_in <= 2'b00;
-                        ex_status_mask <= 8'b10000010;
-                        end
-                    2:  begin   //EOR
-                        ex_alu_OP <= ALU_XOR;
-                        // ex_carry_in <= 2'b00;
-                        ex_status_mask <= 8'b10000010;
-                        end
-                    3:  begin   //ADC
-                        // ex_alu_OP <= ALU_ADD;
-                        ex_carry_in <= 2'b10;   // C=P[C]
-                        ex_status_mask <= 8'b11000011;
-                        end
-                    4:  begin //STA
-                        // ex_sb_src <= REG_A;
-                        ex_res_src <= RES_SB;
-                        ex_res_dst <= REG_DATA;
-                        end
-                    5:  begin //LDA
-                        ex_res_src <= RES_DB;
-                        end
-                    6:  begin // CMP;
-                        // ex_alu_OP <= ALU_ADD;
-                        ex_carry_in <= 2'b01; // C=1 (borrow=0)
-                        ex_bi_src <= ADD_INVBUS;        // negate DB
-                        ex_status_mask <= 8'b10000011;
-                        ex_res_dst <= REG_Z; //dont update registers
-                        end
-                    7:  begin // SBC;
-                        // ex_alu_OP <= ALU_ADD;
-                        ex_carry_in <= 2'b10; // C=P[C]
-                        ex_bi_src <= ADD_INVBUS;        // negate DB
-                        ex_status_mask <= 8'b11000011;
-                        end
-                endcase
-            end
-        2:  begin
-                // mostly unary operations (shift, rot, inc, dec)
-                if (op_b == 2 || op_b == 4) begin
-                    // defaults:
-                    // ex_sb_src <= REG_A;
-                    // ex_res_src <= RES_ADD;
-                    // ex_res_dst <= REG_A;
-                    ex_bi_src <= ADD_Z; // op(reg,0)
-                end else begin
-                    // defaults
-                    // ex_db_src <= DB_DATA;
-                    // ex_res_src <= RES_ADD;
-                    ex_ai_src <= ADD_Z; // op(0,MEM)
-                    ex_res_dst <= REG_DATA;
-                end
-                
-                case(op_a)
-                    0:  begin // ASL
-                        ex_alu_OP <= ALU_SL;
-                        // ex_carry_in <= 2'b00;    //already default
-                        ex_status_mask <= 8'b10000011;
-                        end
-                    1:  begin // ROL
-                        ex_alu_OP <= ALU_SL;
-                        ex_carry_in <= 2'b10;       // C <= P[C]
-                        ex_status_mask <=8'b10000011;
-                        end
-                    2:  begin // LSR
-                        ex_alu_OP <= ALU_SR;
-                        // ex_carry_in <= 2'b00;
-                        ex_status_mask <= 8'b00000011;
-                        end
-                    3:  begin // ROR
-                        ex_alu_OP <= ALU_SR;
-                        ex_carry_in <= 2'b10; // C <= P[C]
-                        ex_status_mask <= 8'b10000011;
-                        end
-                    4:  begin // copy from X: STX, TXA, TXY
-                        ex_sb_src <= REG_X;
-                        ex_res_src <= RES_SB; 
-                        case(op_b)
-                            2:          ex_res_dst <= REG_A;
-                            6:          ex_res_dst <= REG_S;
-                            default:    ex_res_dst <= REG_DATA;
-                        endcase
-                        end
-                    5:  begin // copy to X: LDX, TAX, TSX
-                        ex_res_dst <= REG_X;
-                        ex_res_src <= (op_b == 2 || op_b == 6) ? RES_SB : RES_DB; 
-                        ex_sb_src <= (op_b == 6) ? REG_S : REG_A;
-                        end
-                    6:  begin // DEC
-                        // ex_alu_OP <= ALU_ADD;            //already default
-                        // ex_carry_in <= 2'b00;        //already default
-                        if (op_b == 2)  begin
-                                        //DEX
-                                        ex_sb_src <= REG_X;
-                                        ex_res_dst <= REG_X; 
-                                        ex_bi_src <= ADD_N; // op(reg,-1)
-                                        end
-                        else            ex_ai_src <= ADD_N;  // op(-1,MEM)
-                        ex_status_mask <= 8'b10000010;
-                        end
-                    7:  begin // INC, NOP
-                        // ex_alu_OP <= ALU_ADD;
-                        ex_carry_in <= 2'b01; // C=1
-                        ex_status_mask <= 8'b10000010;
-                        if (op_b==2) begin
-                            ex_status_mask <= 0;
-                            ex_res_dst <= REG_Z;
-                        end
-                        end
-                endcase
-            end
-        endcase
-    end
-
-
-    // memory modes
-    // determined by: ex_res_src and ex_res_dst
-    logic rd_op, ld_op, st_op, rmw_op;
-    always @(*) begin
-        rd_op = 0;
-        ld_op = 0; //also stack pull
-        st_op = 0; //also stack push
-        rmw_op = 0;
-        if(ex_res_dst == REG_DATA)
-            if(ex_res_src == RES_ADD) rmw_op = 1;
-            else st_op = 1;                   
-        else
-            if(ex_res_src == RES_DB) ld_op = 1;
-            else rd_op = 1;
-    end    
+    decode u_decode(
+        .i_clk         (i_clk         ),
+        .i_rst         (i_rst         ),
+        .opcode        (opcode        ),
+        .pstatus       (p             ),
+        .initial_state (initial_state ),
+        .single_byte   (op_SB   ),
+        .idx_XY        (idx_XY   ),
+        .read          (rd_op          ),
+        .load          (ld_op          ),
+        .store         (st_op         ),
+        .rmw           (rmw_op           ),
+        .sb_src        (ex_sb_src        ),
+        .db_src        (ex_db_src        ),
+        .res_src       (ex_res_src       ),
+        .res_dst       (ex_res_dst       ),
+        .alu_OP        (ex_alu_OP        ),
+        .ai_src        (ex_ai_src        ),
+        .bi_src        (ex_bi_src        ),
+        .carry_in      (ex_carry_in      ),
+        .alu_mask      (ex_alu_mask      ),
+        .set_mask      (ex_set_mask      ),
+        .clear_mask    (ex_clear_mask    )
+    );
 
     //state machine
     logic jump_ind;
@@ -600,7 +287,7 @@ module core #(
         sb_src = idx_XY ? REG_X : REG_Y;
         alu_OP = ALU_ADD;
         alu_carry_in = 0;
-        status_mask = 0;
+        alu_mask = 0;
         res_src = RES_ADD;
         res_dst = REG_Z;
 
@@ -649,7 +336,7 @@ module core #(
                         end                
             T3_ABSXY:   begin
                         addr = {db,res};        // fetch {BAH,LL}, assuming no carry
-                        if (rstatus[0]) begin //carry
+                        if (ralu_status[0]) begin //carry
                             sb_src = REG_Z;       // inc BAH
                             alu_carry_in = 2'b01;
                         end else begin
@@ -686,7 +373,7 @@ module core #(
             T3_INDY:    addr = {zeropage, res}; // fetch BAH = {00,IAL+1}, compute BAL + Y
             T4_INDY:    begin
                         addr = {db, res};       // fetch {BAH,BAL+Y}, assuming no carry
-                        if (rstatus[0]) begin
+                        if (ralu_status[0]) begin
                             sb_src = REG_Z;         // inc BAH
                             alu_carry_in = 2'b01;
                         end else begin
@@ -717,12 +404,12 @@ module core #(
             T3_BRANCH:  begin
                         addr = {radh,add};     // {pch, offset + pcl}
                         jump = 1;              // addr -> pc
-                        if (rstatus[0] && !rstatus[7]) begin
+                        if (ralu_status[0] && !ralu_status[7]) begin
                              // C=1, N=0: jumped to higher page, pch must be incremented
                             db_src = DB_PCH;         // inc PCH
                             ai_src = ADD_Z;
                             alu_carry_in = 2'b01;
-                        end else if (rstatus[6] && rstatus[7]) begin
+                        end else if (ralu_status[6] && ralu_status[7]) begin
                              // V=1, N=1: jumped to lower page, pch must be decremented
                             db_src = DB_PCH;         // dec PCH
                             ai_src = ADD_N;
@@ -795,7 +482,9 @@ module core #(
             ai_src = ex_ai_src;
             bi_src = ex_bi_src;
             alu_carry_in = ex_carry_in;
-            status_mask = ex_status_mask;
+            alu_mask = ex_alu_mask;
+            set_mask = ex_set_mask;
+            clear_mask = ex_clear_mask;
         end
         if (save_result) begin
             res_src = ex_res_src;
