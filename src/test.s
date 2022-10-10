@@ -11,6 +11,13 @@ d5: .byt $ff
 
 .dsb text - *   ; zero pad until text
 
+sei             ;disable interrupts (set interrupt disable flag)
+cld             ;turn decimal mode off
+ldx #$ff        ; initialize stack
+txs    
+ldx #0          ; zero X
+
+
 adc #$1         ; A = 0+1   = 1
 adc <d1         ; A = 1+aa  = ab
 sec             ; set carry bit
@@ -34,9 +41,6 @@ inc d4          ; [d4]+1 = 0c (abs)
 ldx d4          ; read [d4]=0c (abs)
 bit d4          ; NVZ = 0          
 
-txs             ; s = 0c
-inx             ; x = 0d
-tsx             ; x = 0c
 loop:           ; 
 dex             ; x--
 bne loop        ; loop until x==0

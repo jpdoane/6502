@@ -2,12 +2,13 @@
 
 module cpu_tb();
 
-    logic clk, rst;
+    logic clk, rst, JAM;
 
     top #(`ROM_FILE, `DUMP_WAVE_FILE) //, `DUMP_ROM_FILE)
         u_top(
     	.i_clk (clk),
-        .i_rst (rst)
+        .i_rst (rst),
+        .JAM (JAM)
     );
 
     initial begin
@@ -19,8 +20,16 @@ module cpu_tb();
 
     always #1 clk = ~clk;
 
+    // stop sim on JAM state
     initial begin
-        #500;
+        wait (JAM)
+        #5
+        $finish;
+    end
+
+    // limit max sim duration
+    initial begin
+        #5000
         $finish;
     end
 

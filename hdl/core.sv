@@ -2,7 +2,9 @@
 
 
 module core #(
-    parameter BOOT_ADDR=16'h0)
+    parameter NMI_VECTOR=16'hfffa,
+    parameter RST_VECTOR=16'hfffc,
+    parameter IRQ_VECTOR=16'hfffe)
     (
     input  logic i_clk, i_rst,
     input  logic [7:0] i_data,
@@ -13,7 +15,9 @@ module core #(
 
     output logic [15:0] addr,
     output logic [7:0] dor,
-    output logic RW
+    output logic RW,
+    output logic SYNC,
+    output logic JAM
     );
 
     // busses
@@ -46,7 +50,7 @@ module core #(
             s <= 0;
             radh <= 0;
             radl <= 0;
-            pc <= BOOT_ADDR;
+            pc <= RST_VECTOR;
             //p updated elsewhere...
         end else begin
             a <= a;
@@ -148,7 +152,7 @@ module core #(
     always @(posedge i_clk ) begin
         if (i_rst) begin
             add <= 8'b0;
-            p <= 8'b0;
+            p <= 8'h4;              //set IRQ disable on reset
             ralu_status <= 8'h0;
         end else begin
             add <= alu_out;
@@ -166,7 +170,7 @@ module core #(
     // assign SYNC = state == T0_FETCH;
     logic [7:0] opcode;
     always @(posedge i_clk ) begin
-        if (i_rst)          ir <= 8'hea; //NOP
+        if (i_rst)          ir <= 8'h4c; //jmp (from RESET_VECTOR)
         else if (state==T1_DECODE) ir <= i_data;
     end
     assign opcode = (state==T1_DECODE) ? i_data : ir;
@@ -179,7 +183,6 @@ module core #(
     logic [2:0] ex_db_src;   // db bus source (data/addr)
     logic [1:0] ex_res_src;  // source of result (alu, sb, db)
     logic [2:0] ex_res_dst;  // location to store result (registers, mem)
-
     logic [2:0] ex_alu_OP;
     logic [1:0] ex_ai_src;   // alu ai src
     logic [1:0] ex_bi_src;   // alu bi src
@@ -260,7 +263,7 @@ module core #(
             T2_STACK:    state <= T3_STACK;
             T3_STACK:    state <= st_op ? T1_DECODE : T0_FETCH;
             
-            T_BOOT:   state <= T0_FETCH;
+            T_BOOT:   state <= T2_JMP;
             default:  state <= T_JAM;
         endcase
     end
@@ -273,6 +276,8 @@ module core #(
     always @(*) begin
         addr = pc;
 
+        set_mask = 0;
+        clear_mask = 0;
         state_skip = 0;
         compute_result = 0;
         save_result = 0;
@@ -293,9 +298,12 @@ module core #(
 
         jump = 0;
         pc_inc = 0;
-
+        SYNC = 0;
+        JAM = 0;
+        
         case(state)
             T0_FETCH:         begin
+                        SYNC = 1;
                         pc_inc = 1;             // next pc = pc++
                         compute_result = rd_op; // compute read op
                         save_result = ld_op;    // save load op
@@ -417,6 +425,7 @@ module core #(
                             // pch is valid, this will be valid T0_FETCH fetch
                             // nextpc = pc++
                             pc_inc = 1;         
+                            SYNC = 1;
                             state_skip = 1;
                         end
                         end
@@ -425,11 +434,13 @@ module core #(
                         addr = {add,radl};     // {pch, offset + pcl}
                         jump = 1;              // addr -> pc
                         pc_inc = 1;            // nextpc = pc++
+                        SYNC = 1;
                         end
 
             T3_JMP:     begin
                         addr = {db,add};        // fetch new pc
                         jump = 1;               // update pc
+                        SYNC = !jump_ind;       //
                         end
 
 
@@ -462,14 +473,20 @@ module core #(
                         res_dst = REG_S;
                         
                         // for push, this is T0 and we need to fetch next addr
-                        pc_inc = st_op;             // next pc = pc++
+                        if (st_op) begin
+                            pc_inc = 1;             // next pc = pc++
+                            SYNC = 1;
+                        end
+                        
 
                         // for pull, (s++) loaded to ex_res_dst during next T0
                         if(ld_op) addr = {stackpage,add};
                         end
 
+            T_BOOT:     pc_inc = 1; // fetch low reset addr
 
-            default:    begin end
+
+            default:    JAM = 1;
         endcase
 
         // compute and save result

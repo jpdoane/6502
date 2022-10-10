@@ -4,7 +4,8 @@ module top #(
     parameter DUMP_WAVE_FILE="",
     parameter RAM_DEPTH=65536,
     parameter BOOT_ADDR=16'h00a0)
-    ( input  logic i_clk, i_rst
+    ( input  logic i_clk, i_rst,
+      output logic JAM
     );
     
     integer cycle = 0;
@@ -37,6 +38,10 @@ module top #(
             cnt = $fread(BRAM, file,0, RAM_DEPTH-1);
             $fclose(file);
         end
+
+        BRAM['hfffc] = BOOT_ADDR[7:0];
+        BRAM['hfffd] = BOOT_ADDR[15:8];
+        
     end
 
     // final begin
@@ -64,9 +69,10 @@ module top #(
     logic SV = 0;
     logic NMI = 0;
     logic IRQ = 0;
+    logic SYNC;
 
 
-    core #(BOOT_ADDR) u_core (
+    core u_core (
         .i_clk   (i_clk   ),
         .i_rst   (i_rst   ),
         .i_data  (din  ),
@@ -76,7 +82,9 @@ module top #(
         .IRQ   (IRQ   ),
         .addr  (addr  ),
         .dor  (dout  ),
-        .RW    (RW    )
+        .RW    (RW    ),
+        .SYNC    (SYNC    ),
+        .JAM    (JAM    )
     );
 
     initial begin
