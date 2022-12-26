@@ -41,6 +41,9 @@ module core #(
     logic IPC;
 
     logic [2:0] res_dst;
+    logic [7:0] stack_op;
+    logic stack_dec, stack_inc;
+    assign stack_op = stack_dec ? 8'hff : stack_inc ? 8'h1 : 8'h0;
 
     always @(posedge i_clk ) begin
         if (i_rst) begin
@@ -56,7 +59,7 @@ module core #(
             a <= a;
             x <= x;
             y <= y;
-            s <= s;
+            s <= s+stack_op;
 
             radh <= addr[15:8];
             radl <= addr[7:0];
@@ -86,7 +89,7 @@ module core #(
             DB_PCL:     db = pc[7:0];
             DB_PCH:     db = pc[15:8];
             DB_S:       db = s;
-            DB_P:       db = p;
+            DB_P:       db = p & 8'hef; // ignore break flag on p read
             DB_A:       db = a;
             default:    db = 8'h0;
         endcase
@@ -163,7 +166,7 @@ module core #(
 
 
     // state
-    logic [4:0] state, initial_state;
+    logic [5:0] state, initial_state;
     logic state_skip;
 
     // ir fetch
@@ -177,6 +180,7 @@ module core #(
 
     logic op_SB;
     logic idx_XY;           // select index X(1) or Y(0) for abs,X/Y and zpg,X/Y ops
+    logic brk;
     logic rd_op, ld_op, st_op, rmw_op;
 
     logic [2:0] ex_sb_src;   // sb bus source (registers)
@@ -197,6 +201,7 @@ module core #(
         .initial_state (initial_state ),
         .single_byte   (op_SB   ),
         .idx_XY        (idx_XY   ),
+        .brk           (brk          ),
         .read          (rd_op          ),
         .load          (ld_op          ),
         .store         (st_op         ),
@@ -213,6 +218,18 @@ module core #(
         .set_mask      (ex_set_mask      ),
         .clear_mask    (ex_clear_mask    )
     );
+
+    // interrupt
+    logic nmi, irq, clr_int;
+    always @(posedge i_clk ) begin
+        if (i_rst) begin
+            nmi <= 0;
+            irq <= 0;
+        end else begin
+            nmi <= NMI ? 1 : brk || (nmi & ~clr_int);
+            irq <= IRQ ? 1 : irq & ~clr_int;
+        end
+    end
 
     //state machine
     logic jump_ind;
@@ -245,7 +262,7 @@ module core #(
 
             T2_JMP:   begin
                         // register whether we are on 1st step of indirect jump
-                        jump_ind <= ir[5] & !jump_ind;
+                        jump_ind <= (ir[2] & ir[5]) & !jump_ind;
                         state <= T3_JMP;
                       end 
             // fetching new address
@@ -263,6 +280,11 @@ module core #(
             T2_STACK:    state <= T3_STACK;
             T3_STACK:    state <= st_op ? T1_DECODE : T0_FETCH;
             
+            T2_BRK:      state <= T3_BRK;
+            T3_BRK:      state <= T4_BRK;
+            T4_BRK:      state <= T5_BRK;
+            T5_BRK:      state <= T2_JMP;
+
             T_BOOT:   state <= T2_JMP;
             default:  state <= T_JAM;
         endcase
@@ -296,10 +318,14 @@ module core #(
         res_src = RES_ADD;
         res_dst = REG_Z;
 
+        stack_inc = 0;
+        stack_dec = 0;
+
         jump = 0;
         pc_inc = 0;
         SYNC = 0;
         JAM = 0;
+        clr_int = 0;
         
         case(state)
             T0_FETCH:         begin
@@ -333,7 +359,7 @@ module core #(
                         pc_inc = 1;             // next pc = pc++
                         end
             T3_ABS:     begin
-                        addr = {db,res};        // fetch {BAH,BAL}
+                        addr = {db,add};        // fetch {BAH,BAL}
                         save_result = st_op;
                         end
 
@@ -460,27 +486,55 @@ module core #(
                             db_src = ex_db_src;
                             res_src = RES_DB;
                             res_dst = REG_DATA;
+                            stack_dec = 1;
                         end
-                        // inc/dec s
-                        sb_src = REG_S;
-                        bi_src = st_op ? ADD_N : ADD_Z;    // push: s--
-                        alu_carry_in = ld_op ? 'b01 : 0;   // pull: s++
+                        else stack_inc = 1;
                         end
 
             T3_STACK:   begin
-                        // update stack register
-                        res_src = REG_ADD;
-                        res_dst = REG_S;
-                        
                         // for push, this is T0 and we need to fetch next addr
                         if (st_op) begin
                             pc_inc = 1;             // next pc = pc++
                             SYNC = 1;
                         end
-                        
-
                         // for pull, (s++) loaded to ex_res_dst during next T0
-                        if(ld_op) addr = {stackpage,add};
+                        else addr = {stackpage,s};
+                        end
+
+
+            T2_BRK:    begin
+                        addr = {stackpage,s};
+                        //push pch
+                        db_src = DB_PCH;
+                        res_src = RES_DB;
+                        res_dst = REG_DATA;
+                        stack_dec = 1;
+                        end
+
+            T3_BRK:    begin
+                        addr = {stackpage,s};
+                        //push pcl
+                        db_src = DB_PCL;
+                        res_src = RES_DB;
+                        res_dst = REG_DATA;
+                        stack_dec = 1;
+                        end
+
+            T4_BRK:    begin
+                        addr = {stackpage,s};
+                        //push p
+                        db_src = DB_P;
+                        res_src = RES_DB;
+                        res_dst = REG_DATA;
+                        stack_dec = 1;
+                        clr_int = 1;
+                        end
+
+            T5_BRK:    begin
+                        addr = irq ? IRQ_VECTOR : NMI_VECTOR;
+                        jump = 1;
+                        sb_src = REG_Z;         // alu nop: hold LL in add
+                        pc_inc = 1;             // next pc = pc++
                         end
 
             T_BOOT:     pc_inc = 1; // fetch low reset addr

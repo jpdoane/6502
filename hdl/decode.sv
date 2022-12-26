@@ -3,10 +3,11 @@ module decode (
     input  logic [7:0] opcode,
     input  logic [7:0] pstatus,
 
-    output logic [4:0] initial_state,
+    output logic [5:0] initial_state,
 
     output logic    single_byte,  //single byte opcode
                     idx_XY, // index on X(1) or Y(0)
+                    brk,
 
     // memory access pattern
     output logic read, load, store, rmw,
@@ -55,12 +56,18 @@ module decode (
     always @(*) begin
         single_byte = 0;
         idx_XY = 1;
+        brk = 0;
         initial_state = T_JAM;
         case(op_b)
-            3'h0:   if (op_c[0] == 1) initial_state = T2_XIND;           // X,ind
-                    else if (op_a[2] == 0) initial_state = T_JAM;        // BRK, JSR, RTI, RTS
-                    else initial_state = T0_FETCH;                             // LD/CP imm
-            3'h1:   initial_state = T2_ZPG;                              // all zpg
+            3'h0:   if (opcode == 0) begin
+                        initial_state = T2_BRK;
+                        brk = 1;
+                    end
+                    else if (op_c[0] == 1) initial_state = T2_XIND;            // X,ind
+                    else if (op_a[2] == 1) initial_state = T0_FETCH;                        // LD/CP imm
+                    else if (op_c[1] == 0) initial_state = T2_JMP;        // JSR, RTI, RTS
+                    else initial_state = T_JAM; // a<4, c=2
+            3'h1:   initial_state = T2_ZPG;                               // all zpg
             3'h2:   begin
                         initial_state = (op_c == 0 && !op_a[2]) ? T2_STACK : // c=0, a<4 stack ops
                                                                  T0_FETCH ;  // others imm or impl 

@@ -1,6 +1,7 @@
 data=$0000
 text=$00a0
 
+jam=$02
 *=data
 d1: .byt $aa
 d2: .byt $01
@@ -15,8 +16,20 @@ sei             ;disable interrupts (set interrupt disable flag)
 cld             ;turn decimal mode off
 ldx #$ff        ; initialize stack
 txs    
-ldx #0          ; zero X
 
+; initialize and test nmi vector
+ldx #<nmi         
+stx $fffa
+ldx #>nmi         
+stx $fffb
+brk
+
+.byt jam
+.byt jam
+nmi:
+
+
+ldx #0          ; zero X
 
 adc #$1         ; A = 0+1   = 1
 adc <d1         ; A = 1+aa  = ab
@@ -24,8 +37,8 @@ sec             ; set carry bit
 sbc <d2         ; A = ab-1  = aa
 inx             ; X = 0+1   = 1
 jmp (ind_label)
-brk             ; these will jam is jmp doesnt work
-brk
+.byt jam
+.byt jam
 label:
 inx             ; X = 0+2   = 2
 and (<d1,x)     ; A = aa&0f = 0a

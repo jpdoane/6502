@@ -13,18 +13,17 @@ ROMEXT=o
 HDLSOURCES = $(wildcard $(HDLDIR)/*.$(HDLEXT))
 HDLTESTBENCH=$(TBDIR)/cpu_tb.sv
 
-OBJTARGETNAME=test
-OBJTARGET=$(BUILDDIR)/$(OBJTARGETNAME).$(ROMEXT)
-SIMTARGET=$(BUILDDIR)/$(OBJTARGETNAME).$(SIMEXT)
-WAVETARGET=$(BUILDDIR)/$(OBJTARGETNAME).$(WAVEEXT)
-OBJDUMP=$(BUILDDIR)/$(OBJTARGETNAME).dump
+ASMSOURCE =  $(wildcard $(ASMDIR)/*.$(ASMEXT))
+ASMOBJ = $(patsubst $(ASMDIR)%,$(BUILDDIR)%,$(ASMSOURCE:.$(ASMEXT)=.$(ROMEXT)))
+WAVEOBJ = $(patsubst %.$(ROMEXT),%.$(WAVEEXT),$(ASMOBJ))
+WAVESAVEFILE=$(SIMDIR)/test.sav
 
 .PHONY: all
-all: $(WAVETARGET)
+all: $(WAVEOBJ)
 
 .PHONY: view
 view: $(WAVETARGET)
-	gtkwave $^ -a $(SIMDIR)/$(OBJTARGETNAME).sav &
+	gtkwave $^ -a $(WAVESAVEFILE) &
 
 # compute 6502 obj from asm
 $(BUILDDIR)/%.$(ROMEXT): $(ASMDIR)/%.$(ASMEXT)
@@ -32,23 +31,15 @@ $(BUILDDIR)/%.$(ROMEXT): $(ASMDIR)/%.$(ASMEXT)
 	xa -o $@ $^ 
 
 # compute verilog sim
-$(SIMTARGET): $(HDLTESTBENCH) $(HDLSOURCES) $(OBJTARGET)
-	@mkdir -p $(@D)
+$(BUILDDIR)/%.$(SIMEXT): $(BUILDDIR)/%.$(ROMEXT) $(HDLTESTBENCH) $(HDLSOURCES)
 	iverilog -g2012 -o $@ \
-				-D'DUMP_WAVE_FILE="$(WAVETARGET)"' \
-				-D'ROM_FILE="$(OBJTARGET)"' \
-				-I $(HDLDIR) $(HDLSOURCES) $<
+				-D'DUMP_WAVE_FILE="$(patsubst %.o,%.vcd,$<)"' \
+				-D'ROM_FILE="$<"' \
+				-I $(HDLDIR) $(HDLSOURCES) $(HDLTESTBENCH)
 
 # run verilog sim
-$(WAVETARGET): $(SIMTARGET)
+$(BUILDDIR)/%.$(WAVEEXT): $(BUILDDIR)/%.$(SIMEXT)
 	vvp $^
-
-verilate: verilator/sim_main.cpp $(HDLSOURCES) $(OBJTARGET)
-	verilator --cc --exe --build --trace -I$(HDLDIR) \
-				-D'DUMP_WAVE_FILE="$(WAVETARGET)"' \
-				-D'ROM_FILE="$(OBJTARGET)"' \
-				--Mdir $(BUILDDIR) \
-				$< hdl/top.sv
 
 .PHONY: clean
 clean:
