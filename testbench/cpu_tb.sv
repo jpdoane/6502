@@ -25,7 +25,7 @@ module cpu_tb();
     integer exit_code, Ntests;
     initial begin
         wait (JAM)
-        #5
+        #100
         exit_code = u_top.u_core.y;
         Ntests = u_top.u_core.x;
         if (exit_code== 0) $display("%0d of %0d tests pass!", Ntests, Ntests);
