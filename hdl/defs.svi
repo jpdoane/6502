@@ -1,3 +1,5 @@
+parameter STACKPAGE = 8'h01;
+
 //states
 
 parameter T0_FETCH      =6'h0;
@@ -22,8 +24,8 @@ parameter T_RMW_EXEC    =6'h13;
 parameter T_RMW_STORE   =6'h14;
 parameter T_BOOT        =6'h15;
 parameter T_JAM         =6'h16;
-parameter T2_JMP        =6'h17;
-parameter T3_JMP        =6'h18;
+parameter T2_JUMP        =6'h17;
+parameter T3_JUMP        =6'h18;
 parameter T2_BRANCH     =6'h19;
 parameter T3_BRANCH     =6'h1a;
 parameter T4_BRANCH     =6'h1b;
@@ -56,6 +58,16 @@ parameter RES_DB    =2'h0;  // loads
 parameter RES_SB    =2'h1;  // transfers/stores
 parameter RES_ADD   =2'h2;  // alu
 
+    
+parameter ADDR_PC   = 3'h0;
+parameter ADDR_DB   = 3'h1;
+parameter ADDR_RES  = 3'h2;
+parameter ADDR_ADD  = 3'h3;
+parameter ADDR_Z    = 3'h4;
+parameter ADDR_HOLD = 3'h5; 
+parameter ADDR_STACK = 3'h6; 
+parameter ADDR_INT = 3'h7; 
+
 parameter ALU_ADD   =3'h0;
 parameter ALU_AND   =3'h1;
 parameter ALU_OR    =3'h2;
@@ -64,11 +76,6 @@ parameter ALU_SR    =3'h4;
 parameter ALU_SL    =3'h5;
 parameter ALU_BIT   =3'h6;
 
-parameter ADD_BUS   =2'h0;
-parameter ADD_INVBUS =2'h1;
-parameter ADD_Z     =2'h2;
-parameter ADD_N     =2'h3;
-
 
 parameter IDX_X     =1'b1;
 parameter IDX_Y     =1'b0;
@@ -76,3 +83,13 @@ parameter IDX_Y     =1'b0;
 parameter CARRY_Z   =2'b00;
 parameter CARRY_P   =2'b01;
 parameter CARRY_C   =2'b10;
+
+parameter FL_NONE = 8'b00000000;   // No flags set
+parameter FL_N = 8'b10000000;   // Negative
+parameter FL_V = 8'b01000000;   // Overflow
+                                 // 8'b00100000 ignored
+parameter FL_B = 8'b00010000;   // Break
+parameter FL_D = 8'b00001000;   // Decimal (use BCD for arithmetics)
+parameter FL_I = 8'b00000100;   // Interrupt (IRQ disable)
+parameter FL_Z = 8'b00000010;   // Zero
+parameter FL_C = 8'b00000001;   // Carry

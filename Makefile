@@ -5,12 +5,13 @@ BUILDDIR=build
 TBDIR=testbench
 
 HDLEXT=sv
+HDLINCEXT=svi
 ASMEXT=s
 SIMEXT=vvp
 WAVEEXT=vcd
 ROMEXT=o
 
-HDLSOURCES = $(wildcard $(HDLDIR)/*.$(HDLEXT))
+HDLSOURCES = $(wildcard $(HDLDIR)/*.$(HDLEXT)) $(wildcard $(HDLDIR)/*.$(HDLINCEXT))
 HDLTESTBENCH=$(TBDIR)/cpu_tb.sv
 
 ASMSOURCE =  $(wildcard $(ASMDIR)/*.$(ASMEXT))

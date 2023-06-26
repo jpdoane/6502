@@ -1,6 +1,3 @@
-`include "defs.svi"
-
-
 module core #(
     parameter NMI_VECTOR=16'hfffa,
     parameter RST_VECTOR=16'hfffc,
@@ -16,8 +13,8 @@ module core #(
     output logic [15:0] addr,
     output logic [7:0] dor,
     output logic RW,
-    output logic SYNC,
-    output logic JAM
+    output logic sync,
+    output logic jam
     );
 
     // busses
@@ -28,24 +25,74 @@ module core #(
 
     // registers
     logic [15:0] pc, pcsel, nextpc;
-
-    // pc logic
-    logic jump, pc_inc;
-    assign pcsel = jump ? addr : pc;
-    assign nextpc = (pc_inc || jump) ? pcsel + 1 : pcsel;
-
     logic [7:0] a, s, x, y, p;
     logic [7:0] radl, radh;
     logic [7:0] ir;
     logic [7:0] add;
-    logic IPC;
 
-    logic [2:0] res_dst;
-    logic [7:0] stack_op;
-    logic stack_dec, stack_inc;
-    assign stack_op = stack_dec ? 8'hff : stack_inc ? 8'h1 : 8'h0;
+    // control signals
+    logic [2:0] adl_src,adh_src;
+    logic ipc;
+    logic inc_pc;
+    logic inc_db;
+    logic dec_db;
+    logic inc_sb;
+    logic dec_sb;
+    logic inc_s;
+    logic dec_s;
+    logic skip;
+    logic exec;
+    logic save;
+    logic jump;
 
+    // pc logic
+    assign pcsel = jump ? addr : pc;
+    assign nextpc = (inc_pc || jump) ? pcsel + 1 : pcsel;
+
+    // interrupt
+    logic nmi, irq, cli;
     always @(posedge i_clk ) begin
+        if (i_rst) begin
+            nmi <= 0;
+            irq <= 0;
+        end else begin
+            nmi <= NMI ? 1 : brk || (nmi & ~cli);
+            irq <= IRQ ? 1 : irq & ~cli;
+        end
+    end
+
+    logic [7:0] stack_op;
+    assign stack_op = dec_s ? 8'hff : inc_s ? 8'h1 : 8'h0;
+
+    logic [7:0] adl,adh;
+    always @(*) begin
+        case(adl_src)
+            ADDR_PC: adl = pc[15:8];
+            ADDR_DB: adl = db;
+            ADDR_RES: adl = res;
+            ADDR_ADD: adl = add;
+            ADDR_Z: adl = 8'b0;
+            ADDR_STACK: adl = s; 
+            ADDR_INT: adl = irq ? IRQ_VECTOR[15:8]: NMI_VECTOR[15:8];
+            default: adl = radl; //ADDR_HOLD
+        endcase
+        case(adh_src)
+            ADDR_PC: adh = pc[7:0];
+            ADDR_DB: adh = db;
+            ADDR_RES: adh = res;
+            ADDR_ADD: adh = add;
+            ADDR_Z: adh = 8'b0;
+            ADDR_STACK: adh = STACKPAGE; 
+            ADDR_INT: adh = irq ? IRQ_VECTOR[7:0]: NMI_VECTOR[7:0];
+            default: adh = radh; //ADDR_HOLD
+        endcase
+    end
+
+
+    logic [2:0] res_dst, op_res_dst, ctl_res_dst;
+    assign res_dst = save ? op_res_dst : ctl_res_dst;
+    always @(posedge i_clk ) begin
+        
         if (i_rst) begin
             a <= 0;
             x <= 0;
@@ -61,8 +108,8 @@ module core #(
             y <= y;
             s <= s+stack_op;
 
-            radh <= addr[15:8];
-            radl <= addr[7:0];
+            radl <= adl;
+            radh <= adh;
             pc <= nextpc;
 
             case(res_dst)
@@ -80,10 +127,13 @@ module core #(
     assign dor = RW ? 0 : res;
 
     // bus source select
-    logic [2:0] db_src;
-    logic [2:0] sb_src;
-    logic [1:0] res_src;
+    logic [2:0] db_src, ctl_db_src, op_db_src;
+    logic [2:0] sb_src, ctl_sb_src, op_sb_src;
+    logic [1:0] res_src, ctl_res_src, op_res_src;
     always @(*) begin
+        db_src = (exec || save) ? op_db_src : (inc_sb || dec_sb) ? DB_Z : ctl_db_src;
+        sb_src = (exec || save) ? op_sb_src : (inc_db || dec_db) ? REG_Z : ctl_sb_src;
+        res_src = (save) ? op_res_src : ctl_res_src;
         case(db_src)
             DB_DATA:    db = i_data;
             DB_PCL:     db = pc[7:0];
@@ -111,31 +161,37 @@ module core #(
         endcase
     end
 
-    // alu source select
-    logic [1:0] ai_src, bi_src;
-    logic [7:0] ai, bi;
-    always @(*) begin
-        case(ai_src)
-            ADD_BUS:    ai = sb;
-            ADD_INVBUS: ai = ~sb;
-            ADD_N:      ai = 8'hff;
-            default:    ai = 8'h0;
-        endcase
-        case(bi_src)
-            ADD_BUS:    bi = db;
-            ADD_INVBUS: bi = ~db;
-            ADD_N:      bi = 8'hff;
-            default:    bi = 8'h0;
-        endcase
-    end
-
     //alu
     logic [2:0] alu_OP;
     logic [7:0] alu_out;
-    logic [1:0] alu_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
+    logic [1:0] alu_carry_in;
     logic ci, aluN, aluZ, aluC, aluV;
+    logic ai_inv, bi_inv;
+    logic [7:0] ai, bi;
+    assign ai = ai_inv ? ~sb : sb;
+    assign bi = bi_inv ? ~db : db;
+    assign ci = alu_carry_in==CARRY_C ? p[0] : alu_carry_in==CARRY_P ? 1 : 0;
 
-    assign ci = alu_carry_in[1] ? p[0] : alu_carry_in[0];
+    always @(*) begin
+        if (exec) begin
+            alu_OP = op_alu_OP;
+            ai_inv = op_ai_inv;
+            bi_inv = op_bi_inv;
+            alu_carry_in = op_carry_in;
+            alu_mask = op_alu_mask;
+            set_mask = op_set_mask;
+            clear_mask = op_clear_mask;
+        end else begin
+            alu_OP = ALU_ADD;
+            ai_inv = dec_db;
+            bi_inv = dec_sb;
+            alu_carry_in = (inc_db || inc_sb) ? CARRY_P : CARRY_Z;
+            alu_mask = '0;
+            set_mask = '0;
+            clear_mask = '0;
+        end
+    end
+
     alu u_alu(
         .ai  (ai  ),
         .bi  (bi  ),
@@ -167,10 +223,9 @@ module core #(
 
     // state
     logic [5:0] state, initial_state;
-    logic state_skip;
 
     // ir fetch
-    // assign SYNC = state == T0_FETCH;
+    // assign sync = state == T0_FETCH;
     logic [7:0] opcode;
     always @(posedge i_clk ) begin
         if (i_rst)          ir <= 8'h4c; //jmp (from RESET_VECTOR)
@@ -183,15 +238,11 @@ module core #(
     logic brk;
     logic rd_op, ld_op, st_op, rmw_op;
 
-    logic [2:0] ex_sb_src;   // sb bus source (registers)
-    logic [2:0] ex_db_src;   // db bus source (data/addr)
-    logic [1:0] ex_res_src;  // source of result (alu, sb, db)
-    logic [2:0] ex_res_dst;  // location to store result (registers, mem)
-    logic [2:0] ex_alu_OP;
-    logic [1:0] ex_ai_src;   // alu ai src
-    logic [1:0] ex_bi_src;   // alu bi src
-    logic [1:0] ex_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
-    logic [7:0] ex_alu_mask, ex_set_mask, ex_clear_mask;  // masks to update status
+    logic [2:0] op_alu_OP;
+    logic op_ai_inv;   // alu ai src
+    logic op_bi_inv;   // alu bi src
+    logic [1:0] op_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
+    logic [7:0] op_alu_mask, op_set_mask, op_clear_mask;  // masks to update status
 
     decode u_decode(
         .i_clk         (i_clk         ),
@@ -206,30 +257,18 @@ module core #(
         .load          (ld_op          ),
         .store         (st_op         ),
         .rmw           (rmw_op           ),
-        .sb_src        (ex_sb_src        ),
-        .db_src        (ex_db_src        ),
-        .res_src       (ex_res_src       ),
-        .res_dst       (ex_res_dst       ),
-        .alu_OP        (ex_alu_OP        ),
-        .ai_src        (ex_ai_src        ),
-        .bi_src        (ex_bi_src        ),
-        .carry_in      (ex_carry_in      ),
-        .alu_mask      (ex_alu_mask      ),
-        .set_mask      (ex_set_mask      ),
-        .clear_mask    (ex_clear_mask    )
+        .sb_src        (op_sb_src        ),
+        .db_src        (op_db_src        ),
+        .res_src       (op_res_src       ),
+        .res_dst       (op_res_dst       ),
+        .alu_OP        (op_alu_OP        ),
+        .ai_inv        (op_ai_inv        ),
+        .bi_inv        (op_bi_inv        ),
+        .carry_in      (op_carry_in      ),
+        .alu_mask      (op_alu_mask      ),
+        .set_mask      (op_set_mask      ),
+        .clear_mask    (op_clear_mask    )
     );
-
-    // interrupt
-    logic nmi, irq, clr_int;
-    always @(posedge i_clk ) begin
-        if (i_rst) begin
-            nmi <= 0;
-            irq <= 0;
-        end else begin
-            nmi <= NMI ? 1 : brk || (nmi & ~clr_int);
-            irq <= IRQ ? 1 : irq & ~clr_int;
-        end
-    end
 
     //state machine
     logic jump_ind;
@@ -247,7 +286,7 @@ module core #(
             T2_ABS:   state <= T3_ABS;
             T3_ABS:   state <= rmw_op ? T_RMW_EXEC : T0_FETCH;
             T2_ABSXY: state <= T3_ABSXY;
-            T3_ABSXY: state <= !state_skip ? T4_ABSXY : rmw_op ? T_RMW_EXEC : T0_FETCH;
+            T3_ABSXY: state <= !skip ? T4_ABSXY : rmw_op ? T_RMW_EXEC : T0_FETCH;
             T4_ABSXY: state <= rmw_op ? T_RMW_EXEC : T0_FETCH;
             T2_XIND:  state <= T3_XIND;
             T3_XIND:  state <= T4_XIND;
@@ -255,26 +294,26 @@ module core #(
             T5_XIND:  state <= rmw_op ? T_RMW_EXEC : T0_FETCH;
             T2_INDY:  state <= T3_INDY;
             T3_INDY:  state <= T4_INDY;
-            T4_INDY:  state <= !state_skip ? T5_INDY : rmw_op ? T_RMW_EXEC : T0_FETCH;
+            T4_INDY:  state <= !skip ? T5_INDY : rmw_op ? T_RMW_EXEC : T0_FETCH;
             T5_INDY:  state <= rmw_op ? T_RMW_EXEC : T0_FETCH;
             T_RMW_EXEC:  state <= T_RMW_STORE;
             T_RMW_STORE: state <= T0_FETCH;
 
-            T2_JMP:   begin
+            T2_JUMP:   begin
                         // register whether we are on 1st step of indirect jump
                         jump_ind <= (ir[2] & ir[5]) & !jump_ind;
-                        state <= T3_JMP;
+                        state <= T3_JUMP;
                       end 
             // fetching new address
             // if abs jump, this is new opcode, go to decode
             // if ind jump, this is new pc, redo jump
-            T3_JMP:   begin
-                        state <= jump_ind ? T2_JMP : T1_DECODE;
+            T3_JUMP:   begin
+                        state <= jump_ind ? T2_JUMP : T1_DECODE;
                         jump_ind <= jump_ind;
                       end
 
             T2_BRANCH:   state <= T3_BRANCH;
-            T3_BRANCH:   state <= state_skip ? T1_DECODE : T4_BRANCH;
+            T3_BRANCH:   state <= skip ? T1_DECODE : T4_BRANCH;
             T4_BRANCH:   state <= T1_DECODE;
 
             T2_STACK:    state <= T3_STACK;
@@ -283,285 +322,259 @@ module core #(
             T2_BRK:      state <= T3_BRK;
             T3_BRK:      state <= T4_BRK;
             T4_BRK:      state <= T5_BRK;
-            T5_BRK:      state <= T2_JMP;
+            T5_BRK:      state <= T2_JUMP;
 
-            T_BOOT:   state <= T2_JMP;
+            T_BOOT:   state <= T2_JUMP;
             default:  state <= T_JAM;
         endcase
     end
 
-    // addr control
-    logic [7:0] zeropage = 8'h00;
-    logic [7:0] stackpage = 8'h01;
-    logic compute_result, save_result;
-
+    // control
     always @(*) begin
-        addr = pc;
+        adl_src     = ADDR_PC;
+        adh_src     = ADDR_PC;
+        inc_pc      = 0;
+        ctl_db_src      = DB_DATA;
+        ctl_sb_src      = idx_XY ? REG_X : REG_Y;
+        ctl_res_src     = RES_ADD;
+        ctl_res_dst     = REG_Z;
+        inc_db      = 0;
+        dec_db      = 0;
+        inc_sb      = 0;
+        dec_sb      = 0;
+        inc_s       = 0;
+        dec_s       = 0;
+        skip        = 0;
+        exec        = 0;
+        save        = 0;
+        jump        = 0;
+        jam         = 0;
+        cli         = 0;
+        sync        = 0;
 
-        set_mask = 0;
-        clear_mask = 0;
-        state_skip = 0;
-        compute_result = 0;
-        save_result = 0;
-        jump = 0;
-    
-        // default alu when not processing result:
-        // result = data + idx_XY
-        // cin = 0, st_mask = 0, do not store result
-        ai_src = ADD_BUS;
-        bi_src = ADD_BUS;
-        db_src = DB_DATA;
-        sb_src = idx_XY ? REG_X : REG_Y;
-        alu_OP = ALU_ADD;
-        alu_carry_in = 0;
-        alu_mask = 0;
-        res_src = RES_ADD;
-        res_dst = REG_Z;
-
-        stack_inc = 0;
-        stack_dec = 0;
-
-        jump = 0;
-        pc_inc = 0;
-        SYNC = 0;
-        JAM = 0;
-        clr_int = 0;
-        
         case(state)
-            T0_FETCH:         begin
-                        SYNC = 1;
-                        pc_inc = 1;             // next pc = pc++
-                        compute_result = rd_op; // compute read op
-                        save_result = ld_op;    // save load op
+            T0_FETCH:   begin
+                        sync = 1;               // signal new instruction
+                        inc_pc = 1;             // increment pc
+                        exec = rd_op;           // on read, execute instruction
+                        save = ld_op;           // on load, save result
                         end
 
             T1_DECODE:  begin
-                        // fetch pc, next pc = pc++ unless new opcode is only 1 byte
-                        pc_inc = !op_SB;
-                        save_result = rd_op;    // store result of read op
+                        inc_pc = !op_SB;        // increment pc unless this is single byte opcode
+                        save = rd_op;           // on read, save result
                         end
 
             T2_ZPG:     begin
-                        addr = {zeropage, db};  // fetch {0,BAL}
-                        save_result = st_op;
+                        adl_src = ADDR_DB;      // fetch {0,BAL}
+                        adh_src = ADDR_Z;
+                        save = st_op;           // on store, save result
                         end
 
-            T2_ZPGXY:   addr = {radh,radl};     // hold addr, compute LL = BAL + X/Y
+            T2_ZPGXY:   begin
+                        adl_src = ADDR_HOLD;    // hold addr while we compute LL = BAL + X/Y
+                        adh_src = ADDR_HOLD;
+                        end
+
             T3_ZPGXY:   begin
-                        addr = {zeropage,res};  // fetch {0,LL}
-                        save_result = st_op;
+                        adl_src = ADDR_RES;     // fetch {0,LL}
+                        adh_src = ADDR_Z;
+                        save = st_op;           // on store, save result
                         end
 
-            T2_JMP,
+            T2_JUMP,
             T2_ABS:     begin
-                        sb_src = REG_Z;         // alu nop: hold LL in add
-                        // fetch BAH
-                        pc_inc = 1;             // next pc = pc++
+                        ctl_sb_src = REG_Z;         // alu nop: hold LL in add
+                        inc_pc = 1;             // next pc = pc++
                         end
+
             T3_ABS:     begin
-                        addr = {db,add};        // fetch {BAH,BAL}
-                        save_result = st_op;
+                        adl_src = ADDR_ADD;      // fetch {BAH,BAL}
+                        adh_src = ADDR_DB;
+                        save = st_op;           // on store, save result
                         end
 
             T2_ABSXY:   begin
                         // compute LL = BAL + X/Y
-                        //fetch BAH
-                        pc_inc = 1;                // fetch pc, pc++
+                        inc_pc = 1;                // fetch BAH, pc++
                         end                
-            T3_ABSXY:   begin
-                        addr = {db,res};        // fetch {BAH,LL}, assuming no carry
-                        if (ralu_status[0]) begin //carry
-                            sb_src = REG_Z;       // inc BAH
-                            alu_carry_in = 2'b01;
+
+            T3_ABSXY,
+            T4_INDY,
+            T5_XIND:    begin
+                        adl_src = ADDR_RES;      // fetch {BAH,LL}, assuming no carry
+                        adh_src = ADDR_DB;
+                        if (ralu_status[0]) begin
+                            // low address overflowed, need to increment ADH
+                            inc_db = 1;
                         end else begin
-                            state_skip = 1;
-                            save_result = st_op;
+                            skip = 1;
+                            save = st_op;
                         end
-                        end
-            T4_ABSXY:   begin
-                        addr = {res,radl};      // fetch {HH,LL}
-                        save_result = st_op;
                         end
 
-            T2_XIND:    addr = {zeropage, db};  // fetch {0,BAL} (discarded), compute BAL+X
+            T4_ABSXY,
+            T5_INDY:    begin
+                        adl_src = ADDR_HOLD;      // fetch {HH,LL} with incremented HH
+                        adh_src = ADDR_RES;
+                        save = st_op;
+                        end
+
+            T2_XIND:    begin
+                        adl_src = ADDR_DB;      // fetch {0,BAL}
+                        adh_src = ADDR_Z;
+                        end                
             T3_XIND:    begin
-                        addr = {zeropage, res}; // fetch LL = {0,BAL+X}
-                        db_src = DB_Z;         // compute BAL+X+1;
-                        sb_src = REG_ADD;
-                        alu_carry_in = 2'b01;
+                        adl_src = ADDR_RES;     // fetch LL = {0,BAL+X}
+                        adh_src = ADDR_Z;
+                        ctl_sb_src = REG_ADD;
+                        inc_sb = 1;             // increment result = BAL+X+1
                         end
             T4_XIND:    begin
-                        sb_src = REG_Z;         // hold LL in add
-                        addr = {zeropage, res}; // fetch {0,BAL+X+1}
+                        ctl_sb_src = REG_Z;         // hold LL in add
+                        adl_src = ADDR_RES;     // fetch {0,BAL+X+1}
+                        adh_src = ADDR_Z;
                         end
-            T5_XIND:    begin
-                        addr = {db, res};       // fetch {HH,LL}
-                        save_result = st_op;
-                        end
+
+            // T5_XIND handled with T3_ABSXY
 
             T2_INDY:    begin
-                        addr = {zeropage, db};  // fetch BAL = {00,IAL}
-                        sb_src = REG_Z;         // compute IAL + 1
-                        alu_carry_in = 2'b01;
-                        end
-            T3_INDY:    addr = {zeropage, res}; // fetch BAH = {00,IAL+1}, compute BAL + Y
-            T4_INDY:    begin
-                        addr = {db, res};       // fetch {BAH,BAL+Y}, assuming no carry
-                        if (ralu_status[0]) begin
-                            sb_src = REG_Z;         // inc BAH
-                            alu_carry_in = 2'b01;
-                        end else begin
-                            state_skip = 1;
-                            save_result = st_op;
-                        end
-                        end
-            T5_INDY:    begin
-                        addr = {res, radl};     // fetch {BAH+1,BAL+Y}
-                        save_result = st_op;
-                        end
-            T_RMW_EXEC: begin
-                        addr = {radh,radl};     // hold addr
-                        compute_result = 1;
-                        end
-            T_RMW_STORE:begin
-                        addr = {radh,radl};     // hold addr
-                        save_result = 1;
+                        adl_src = ADDR_DB;      // fetch {0,IAL}
+                        adh_src = ADDR_Z;
+                        inc_db = 1;             // compute IAL + 1
                         end
 
-            T2_BRANCH:   begin
-                        pc_inc = 1;             // next pc = pc++
-                        // pcl = offset + pcl
-                        db_src = DB_PCL;        
-                        sb_src = REG_DATA;
+            T3_INDY:    begin
+                        adl_src = ADDR_RES;     // fetch BAH = {00,IAL+1}, compute BAL + Y
+                        adh_src = ADDR_Z;
+                        end
+
+            // T4_INDY-T5_INDY handled with T3_ABSXY-T4_ABSXY
+
+            T_RMW_EXEC: begin
+                        adl_src = ADDR_HOLD;
+                        adh_src = ADDR_HOLD;
+                        exec = 1;
+                        end
+
+            T_RMW_STORE:begin
+                        adl_src = ADDR_HOLD;
+                        adh_src = ADDR_HOLD;
+                        save = 1;
+                        end
+
+            T2_BRANCH:  begin
+                        inc_pc = 1;             // next pc = pc++
+                        ctl_db_src = DB_PCL;        // calc branch offset      
+                        ctl_sb_src = REG_DATA;
                         end
 
             T3_BRANCH:  begin
-                        addr = {radh,add};     // {pch, offset + pcl}
+                        adl_src = ADDR_ADD;
+                        adh_src = ADDR_HOLD;
                         jump = 1;              // addr -> pc
                         if (ralu_status[0] && !ralu_status[7]) begin
                              // C=1, N=0: jumped to higher page, pch must be incremented
-                            db_src = DB_PCH;         // inc PCH
-                            ai_src = ADD_Z;
-                            alu_carry_in = 2'b01;
+                            ctl_db_src = DB_PCH;
+                            inc_db = 1;
                         end else if (ralu_status[6] && ralu_status[7]) begin
                              // V=1, N=1: jumped to lower page, pch must be decremented
-                            db_src = DB_PCH;         // dec PCH
-                            ai_src = ADD_N;
+                            ctl_db_src = DB_PCH;
+                            dec_db = 1;
                         end else begin
-                            // pch is valid, this will be valid T0_FETCH fetch
-                            // nextpc = pc++
-                            pc_inc = 1;         
-                            SYNC = 1;
-                            state_skip = 1;
+                            // pch is valid, this cycle is our T0_FETCH fetch
+                            inc_pc = 1;         
+                            sync = 1;
+                            skip = 1;
                         end
                         end
 
             T4_BRANCH: begin
-                        addr = {add,radl};     // {pch, offset + pcl}
+                        adl_src = ADDR_ADD;
+                        adh_src = ADDR_HOLD;
                         jump = 1;              // addr -> pc
-                        pc_inc = 1;            // nextpc = pc++
-                        SYNC = 1;
+                        inc_pc = 1;            // nextpc = pc++
+                        sync = 1;
                         end
 
-            T3_JMP:     begin
-                        addr = {db,add};        // fetch new pc
+            T3_JUMP:     begin
+                        adl_src = ADDR_ADD;     // fetch new pc
+                        adh_src = ADDR_DB;
                         jump = 1;               // update pc
-                        SYNC = !jump_ind;       //
+                        sync = !jump_ind;       //
                         end
 
-
-            // stack data movement is on db (ptr arithmetic on sb)
-            // to push:
-            // ex_db_src: what to push
-            // ex_res_src: RES_DB
-            // ex_res_dst: REG_DATA
-            // to pull:
-            // ex_db_src: DB_DATA
-            // ex_res_src: RES_DB
-            // ex_res_dst: what to pull
             T2_STACK:    begin
-                        addr = {stackpage,s};
+                        adl_src = ADDR_STACK;
+                        adh_src = ADDR_STACK;
                         if (st_op) begin
                             //push to stack
-                            db_src = ex_db_src;
-                            res_src = RES_DB;
-                            res_dst = REG_DATA;
-                            stack_dec = 1;
+                            ctl_db_src = op_db_src;
+                            ctl_res_src = RES_DB;
+                            ctl_res_dst = REG_DATA;
+                            dec_s = 1;
                         end
-                        else stack_inc = 1;
+                        else inc_s = 1;
                         end
 
             T3_STACK:   begin
                         // for push, this is T0 and we need to fetch next addr
                         if (st_op) begin
-                            pc_inc = 1;             // next pc = pc++
-                            SYNC = 1;
+                            inc_pc = 1;             // next pc = pc++
+                            sync = 1;
                         end
-                        // for pull, (s++) loaded to ex_res_dst during next T0
-                        else addr = {stackpage,s};
+                        // for pull, (s++) loaded to op_res_dst during next T0
+                        else begin
+                            adl_src = ADDR_STACK;
+                            adh_src = ADDR_STACK;
+                        end
                         end
 
 
             T2_BRK:    begin
-                        addr = {stackpage,s};
+                        adl_src = ADDR_STACK;
+                        adh_src = ADDR_STACK;
                         //push pch
-                        db_src = DB_PCH;
-                        res_src = RES_DB;
-                        res_dst = REG_DATA;
-                        stack_dec = 1;
+                        ctl_db_src = DB_PCH;
+                        ctl_res_src = RES_DB;
+                        ctl_res_dst = REG_DATA;
+                        dec_s = 1;
                         end
 
             T3_BRK:    begin
-                        addr = {stackpage,s};
+                        adl_src = ADDR_STACK;
+                        adh_src = ADDR_STACK;
                         //push pcl
-                        db_src = DB_PCL;
-                        res_src = RES_DB;
-                        res_dst = REG_DATA;
-                        stack_dec = 1;
+                        ctl_db_src = DB_PCL;
+                        ctl_res_src = RES_DB;
+                        ctl_res_dst = REG_DATA;
+                        dec_s = 1;
                         end
 
             T4_BRK:    begin
-                        addr = {stackpage,s};
+                        adl_src = ADDR_STACK;
+                        adh_src = ADDR_STACK;
                         //push p
-                        db_src = DB_P;
-                        res_src = RES_DB;
-                        res_dst = REG_DATA;
-                        stack_dec = 1;
-                        clr_int = 1;
+                        ctl_db_src = DB_P;
+                        ctl_res_src = RES_DB;
+                        ctl_res_dst = REG_DATA;
+                        dec_s = 1;
+                        cli = 1;
                         end
 
             T5_BRK:    begin
-                        addr = irq ? IRQ_VECTOR : NMI_VECTOR;
+                        adl_src = ADDR_INT;
+                        adh_src = ADDR_INT;
                         jump = 1;
-                        sb_src = REG_Z;         // alu nop: hold LL in add
-                        pc_inc = 1;             // next pc = pc++
+                        ctl_sb_src = REG_Z;         // alu nop: hold LL in add
+                        inc_pc = 1;             // next pc = pc++
                         end
 
-            T_BOOT:     pc_inc = 1; // fetch low reset addr
+            T_BOOT:     inc_pc = 1; // fetch low reset addr
 
 
-            default:    JAM = 1;
+            default:    jam = 1;
         endcase
-
-        // compute and save result
-        if (compute_result || save_result) begin
-            db_src = ex_db_src;
-            sb_src = ex_sb_src;
-        end
-        if (compute_result) begin
-            alu_OP = ex_alu_OP;
-            ai_src = ex_ai_src;
-            bi_src = ex_bi_src;
-            alu_carry_in = ex_carry_in;
-            alu_mask = ex_alu_mask;
-            set_mask = ex_set_mask;
-            clear_mask = ex_clear_mask;
-        end
-        if (save_result) begin
-            res_src = ex_res_src;
-            res_dst = ex_res_dst;
-        end
-
     end
 
 

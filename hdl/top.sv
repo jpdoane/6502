@@ -1,4 +1,3 @@
-
 module top #(
     parameter ROM_FILE="",
     parameter DUMP_WAVE_FILE="",
@@ -83,8 +82,8 @@ module top #(
         .addr  (addr  ),
         .dor  (dout  ),
         .RW    (RW    ),
-        .SYNC    (SYNC    ),
-        .JAM    (JAM    )
+        .sync    (SYNC    ),
+        .jam    (JAM    )
     );
 
     initial begin

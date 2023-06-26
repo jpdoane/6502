@@ -20,8 +20,8 @@ module decode (
 
     // alu ctl
     output logic [2:0] alu_OP,
-    output logic [1:0] ai_src,
-    output logic [1:0] bi_src,
+    output logic ai_inv,
+    output logic bi_inv,
     output logic [1:0] carry_in, // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
 
     // status ctl
@@ -29,9 +29,9 @@ module decode (
     );
 
     logic [10:0] bus_ctl;         // {db_src, sb_src, res_src, res_dst}
-    logic [15:0] alu_ctl;         // {alu_OP, ai_src, bi_src, carry_in, mask}
+    logic [13:0] alu_ctl;         // {alu_OP, ai_src, bi_src, carry_in, mask}
     assign {db_src, sb_src, res_src, res_dst} = bus_ctl;
-    assign {alu_OP, ai_src, bi_src, carry_in, alu_mask} = alu_ctl;
+    assign {alu_OP, ai_inv, bi_inv, carry_in, alu_mask} = alu_ctl;
 
     // decode initial state
     // https://www.masswerk.at/6502/6502_instruction_set.html#layout
@@ -41,7 +41,7 @@ module decode (
             // op_b == 0
             8'b000_000_00:  initial_state = T2_BRK;             // BRK
             8'b???_000_?1:  initial_state = T2_XIND;            // X,ind
-            8'b0??_000_?0:  initial_state = T2_JMP;             // JSR, RTI, RTS
+            8'b0??_000_?0:  initial_state = T2_JUMP;             // JSR, RTI, RTS
             8'b1??_000_?0:  initial_state = T0_FETCH;           // LD/CP imm
 
             // op_b == 1
@@ -52,7 +52,7 @@ module decode (
             8'b???_010_??:  initial_state = T0_FETCH;           // imm or impl
 
             // op_b == 3
-            8'b01?_011_00:  initial_state = T2_JMP;             // jmp abs, jmp ind
+            8'b01?_011_00:  initial_state = T2_JUMP;             // jmp abs, jmp ind
             8'b???_011_??:  initial_state = T2_ABS;             // abs
 
             // op_b == 4
@@ -176,40 +176,40 @@ module decode (
     // decode alu
     always @(posedge i_clk ) begin
         if(i_rst) begin
-            alu_ctl <= {ALU_ADD, ADD_BUS, ADD_BUS, CARRY_Z, 8'h0};
+            alu_ctl <= {ALU_ADD, 1'b0, 1'b0, CARRY_Z, FL_NONE};
         end else begin
             casez(opcode)
 
                 //NOP
-                8'b111_010_10:  alu_ctl <= {ALU_ADD, ADD_BUS, ADD_BUS, CARRY_Z, 8'h0};              // NOP
+                8'b111_010_10:  alu_ctl <= {ALU_ADD, 1'b0, 1'b0, CARRY_Z, FL_NONE};                   // NOP
 
                 // bit, inc, dec (reg)
-                8'b001_0?1_00:  alu_ctl <= {ALU_BIT, ADD_BUS, ADD_BUS, CARRY_Z, 8'b11000010};       // BIT
-                8'b1?0_010_00:  alu_ctl <= {ALU_ADD, ADD_BUS, ADD_INVBUS, CARRY_Z, 8'b10000010};    // DEC
-                8'b1??_010_00:  alu_ctl <= {ALU_ADD, ADD_BUS, ADD_BUS, CARRY_P, 8'b10000010};       // INY, INX
+                8'b001_0?1_00:  alu_ctl <= {ALU_BIT, 1'b0, 1'b0, CARRY_Z, FL_N & FL_V & FL_Z};        // BIT
+                8'b1?0_010_00:  alu_ctl <= {ALU_ADD, 1'b0, 1'b1, CARRY_Z, FL_N & FL_Z};               // DEC
+                8'b1??_010_00:  alu_ctl <= {ALU_ADD, 1'b0, 1'b0, CARRY_P, FL_N & FL_Z};               // INY, INX
 
                 // compare
-                8'b11?_0??_00:  alu_ctl <= {ALU_ADD, ADD_BUS, ADD_INVBUS, CARRY_P, 8'b10000011};    // CPX, CPY
-                8'b110_???_?1:  alu_ctl <= {ALU_ADD, ADD_BUS, ADD_INVBUS, CARRY_P, 8'b10000011};    // CMP
+                8'b11?_0??_00:  alu_ctl <= {ALU_ADD, 1'b0, 1'b1, CARRY_P, FL_N & FL_Z & FL_C};        // CPX, CPY
+                8'b110_???_?1:  alu_ctl <= {ALU_ADD, 1'b0, 1'b1, CARRY_P, FL_N & FL_Z & FL_C};        // CMP
 
                 // alu artihmetic
-                8'b000_???_?1:  alu_ctl <= {ALU_OR, ADD_BUS, ADD_BUS, CARRY_Z, 8'b10000010};        // ORA
-                8'b001_???_?1:  alu_ctl <= {ALU_AND, ADD_BUS, ADD_BUS, CARRY_Z, 8'b10000010};       // AND
-                8'b010_???_?1:  alu_ctl <= {ALU_XOR, ADD_BUS, ADD_BUS, CARRY_Z, 8'b10000010};       // EOR
-                8'b011_???_?1:  alu_ctl <= {ALU_ADD, ADD_BUS, ADD_BUS, CARRY_C, 8'b11000011};       // ADC
-                8'b111_???_?1:  alu_ctl <= {ALU_ADD, ADD_BUS, ADD_INVBUS, CARRY_C, 8'b11000011};    // SBC
+                8'b000_???_?1:  alu_ctl <= {ALU_OR, 1'b0, 1'b0, CARRY_Z, FL_N & FL_Z};                // ORA
+                8'b001_???_?1:  alu_ctl <= {ALU_AND, 1'b0, 1'b0, CARRY_Z, FL_N & FL_Z};               // AND
+                8'b010_???_?1:  alu_ctl <= {ALU_XOR, 1'b0, 1'b0, CARRY_Z, FL_N & FL_Z};               // EOR
+                8'b011_???_?1:  alu_ctl <= {ALU_ADD, 1'b0, 1'b0, CARRY_C, FL_N & FL_V & FL_Z & FL_C}; // ADC
+                8'b111_???_?1:  alu_ctl <= {ALU_ADD, 1'b0, 1'b1, CARRY_C, FL_N & FL_V & FL_Z & FL_C}; // SBC
 
                 //shift/rot
-                8'b000_???_10:  alu_ctl <= {ALU_SL, ADD_BUS, ADD_BUS, CARRY_Z, 8'b10000011};        // ASL
-                8'b001_???_10:  alu_ctl <= {ALU_SL, ADD_BUS, ADD_BUS, CARRY_C, 8'b10000011};        // ROL
-                8'b010_???_10:  alu_ctl <= {ALU_SR, ADD_BUS, ADD_BUS, CARRY_Z, 8'b10000011};        // LSR
-                8'b110_???_10:  alu_ctl <= {ALU_SR, ADD_BUS, ADD_BUS, CARRY_C, 8'b10000011};        // ROR
+                8'b000_???_10:  alu_ctl <= {ALU_SL, 1'b0, 1'b0, CARRY_Z, FL_N & FL_Z & FL_C };        // ASL
+                8'b001_???_10:  alu_ctl <= {ALU_SL, 1'b0, 1'b0, CARRY_C, FL_N & FL_Z & FL_C };        // ROL
+                8'b010_???_10:  alu_ctl <= {ALU_SR, 1'b0, 1'b0, CARRY_Z, FL_N & FL_Z & FL_C };        // LSR
+                8'b110_???_10:  alu_ctl <= {ALU_SR, 1'b0, 1'b0, CARRY_C, FL_N & FL_Z & FL_C };        // ROR
 
                 // inc,dec (data)
-                8'b110_???_10:  alu_ctl <= {ALU_ADD, ADD_INVBUS, ADD_BUS, CARRY_Z, 8'b10000010};    // DEC
-                8'b111_???_10:  alu_ctl <= {ALU_ADD, ADD_BUS, ADD_BUS, CARRY_Z, 8'b10000010};       // INC
+                8'b110_???_10:  alu_ctl <= {ALU_ADD, 1'b1, 1'b0, CARRY_Z, FL_N & FL_Z};               // DEC
+                8'b111_???_10:  alu_ctl <= {ALU_ADD, 1'b0, 1'b0, CARRY_Z, FL_N & FL_Z};               // INC
 
-                default:        alu_ctl <= {ALU_ADD, ADD_BUS, ADD_BUS, CARRY_Z, 8'h0};
+                default:        alu_ctl <= {ALU_ADD, 1'b0, 1'b0, CARRY_Z, FL_NONE};
             endcase
         end
     end
