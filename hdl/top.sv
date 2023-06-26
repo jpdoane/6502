@@ -2,7 +2,8 @@ module top #(
     parameter ROM_FILE="",
     parameter DUMP_WAVE_FILE="",
     parameter RAM_DEPTH=65536,
-    parameter BOOT_ADDR=16'h00a0)
+    parameter BOOT_ADDR=16'h00a0
+    )
     ( input  logic i_clk, i_rst,
       output logic JAM
     );
@@ -85,10 +86,5 @@ module top #(
         .sync    (SYNC    ),
         .jam    (JAM    )
     );
-
-    initial begin
-        $dumpfile(`DUMP_WAVE_FILE);
-        $dumpvars(0, top);
-    end    
 
 endmodule

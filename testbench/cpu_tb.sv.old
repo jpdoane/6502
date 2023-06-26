@@ -1,0 +1,51 @@
+`timescale 1us/1ns
+
+module cpu_tb();
+
+    logic clk, rst, JAM;
+
+    top #(`ROM_FILE, `DUMP_WAVE_FILE) //, `DUMP_ROM_FILE)
+        u_top(
+    	.i_clk (clk),
+        .i_rst (rst),
+        .JAM (JAM)
+    );
+
+    initial begin
+        $display("\nRunning tests...");
+        clk = 0;
+        rst = 1;
+        #4
+        rst = 0; 
+    end
+
+    always #1 clk = ~clk;
+
+    // stop sim on JAM state
+    integer total_tests, passed_tests;
+    initial begin
+        #10
+        wait(JAM)
+        #10
+        total_tests = u_top.BRAM[0];
+        passed_tests = u_top.BRAM[1];
+        if (total_tests==passed_tests) $display("All %0d tests pass!", passed_tests);
+        else begin
+            $display("Test %0d failed!", passed_tests+1);
+            $display("A: 0x%02h", u_top.u_core.a);
+            $display("X: 0x%02h", u_top.u_core.x);
+            $display("Y: 0x%02h", u_top.u_core.y);
+            $display("S: 0x%02h", u_top.u_core.s);
+            $display("P: b%08b", u_top.u_core.p);
+            $display("PC: 0x%02h", u_top.u_core.pc);
+        end
+        $finish;
+    end
+
+    // limit max sim duration
+    initial begin
+        #5000
+        $finish;
+    end
+
+endmodule

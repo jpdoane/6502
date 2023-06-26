@@ -10,6 +10,9 @@ V=%01000000
 N=%10000000
 
 *=data
+total: .byt $05
+passed: .byt $00
+
 d1: .byt $aa
 
 .dsb text - *   ; zero pad until text
@@ -17,45 +20,46 @@ d1: .byt $aa
 ldx #$ff        ; initialize stack
 txs    
 cli             ; clear int flag
-ldy #0          ; use y as test counter
 
+; test 1
 ; A=0+1 == 1
-iny             ; Test 1
 lda #0          ; A=0
 adc #1          ; A+=1
 cmp #1          ; A==1
 bne exit
+inc passed      ; test passed
 
+; test 2
 ; A=1-1 == 0
-iny             ; Test 2
 sec
 sbc #1          ; A-=1
 cmp #0          ; A==0
 bne exit
+inc passed      ; test passed
 
+; test 3
 ; A=0-1 == -1
-iny             ; Test 3
 sec
 sbc #1          ; A-=1
 cmp #$ff        ; A==-1
 bne exit
+inc passed      ; test passed
 
+; test 4
 ; A = -1+1 = 0+C
-iny             ; Test 4
 clc             
 adc #1          ; A+=1
 cmp #$00        ; A==0
 bne exit
-iny             ; Test 5
+inc passed      ; test passed
+
+
+; Test 5
 php
 pla
 cmp #C 
 bne exit
-
-; All tests pass!
-tya             ; store number of tests in X
-tax
-ldy #0          ; clear Y to indicate success
+inc passed      ; test passed
 
 exit:
 .byt jam

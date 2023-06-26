@@ -12,6 +12,7 @@ WAVEEXT=vcd
 ROMEXT=o
 
 HDLSOURCES = $(wildcard $(HDLDIR)/*.$(HDLEXT)) $(wildcard $(HDLDIR)/*.$(HDLINCEXT))
+# HDLTESTBENCH=$(TBDIR)/cpu_tb.sv
 HDLTESTBENCH=$(TBDIR)/cpu_tb.sv
 
 ASMSOURCE =  $(wildcard $(ASMDIR)/*.$(ASMEXT))
@@ -19,11 +20,14 @@ ASMOBJ = $(patsubst $(ASMDIR)%,$(BUILDDIR)%,$(ASMSOURCE:.$(ASMEXT)=.$(ROMEXT)))
 WAVEOBJ = $(patsubst %.$(ROMEXT),%.$(WAVEEXT),$(ASMOBJ))
 WAVESAVEFILE=$(SIMDIR)/test.sav
 
+VIEWSIM = $(ASMDIR)/test6502.s
+VIEWTARGET = $(patsubst $(ASMDIR)%,$(BUILDDIR)%,$(VIEWSIM:.$(ASMEXT)=.$(WAVEEXT)))
+
 .PHONY: all
 all: $(WAVEOBJ)
 
 .PHONY: view
-view: $(WAVETARGET)
+view: $(VIEWTARGET)
 	gtkwave $^ -a $(WAVESAVEFILE) &
 
 # compute 6502 obj from asm
@@ -45,3 +49,6 @@ $(BUILDDIR)/%.$(WAVEEXT): $(BUILDDIR)/%.$(SIMEXT)
 .PHONY: clean
 clean:
 	rm -rf $(BUILDDIR)
+
+# keep intermediate files
+.SECONDARY:

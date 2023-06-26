@@ -26,7 +26,7 @@ module core #(
     // registers
     logic [15:0] pc, pcsel, nextpc;
     logic [7:0] a, s, x, y, p;
-    logic [7:0] radl, radh;
+    logic [7:0] pcl, pch;
     logic [7:0] ir;
     logic [7:0] add;
 
@@ -38,12 +38,12 @@ module core #(
     logic dec_db;
     logic inc_sb;
     logic dec_sb;
-    logic inc_s;
-    logic dec_s;
+    logic push, pop, rpop;
     logic skip;
     logic exec;
     logic save;
     logic jump;
+    logic holdalu;
 
     // pc logic
     assign pcsel = jump ? addr : pc;
@@ -56,42 +56,42 @@ module core #(
             nmi <= 0;
             irq <= 0;
         end else begin
-            nmi <= NMI ? 1 : brk || (nmi & ~cli);
+            nmi <= NMI ? 1 : nmi & ~cli;
             irq <= IRQ ? 1 : irq & ~cli;
         end
     end
 
-    logic [7:0] stack_op;
-    assign stack_op = dec_s ? 8'hff : inc_s ? 8'h1 : 8'h0;
-
     logic [7:0] adl,adh;
     always @(*) begin
-        case(adl_src)
-            ADDR_PC: adl = pc[7:0];
-            ADDR_DB: adl = db;
-            ADDR_RES: adl = res;
-            ADDR_ADD: adl = add;
-            ADDR_Z: adl = 8'b0;
-            ADDR_STACK: adl = s; 
-            ADDR_INT: adl = irq ? IRQ_VECTOR[7:0]: NMI_VECTOR[7:0];
-            default: adl = radl; //ADDR_HOLD
-        endcase
-        case(adh_src)
-            ADDR_PC: adh = pc[15:8];
-            ADDR_DB: adh = db;
-            ADDR_RES: adh = res;
-            ADDR_ADD: adh = add;
-            ADDR_Z: adh = 8'b0;
-            ADDR_STACK: adh = STACKPAGE; 
-            ADDR_INT: adh = irq ? IRQ_VECTOR[15:8]: NMI_VECTOR[15:8];
-            default: adh = radh; //ADDR_HOLD
-        endcase
+        if (push || rpop) begin
+            adl = s;
+            adh = STACKPAGE;
+        end else begin
+            case(adl_src)
+                ADDR_PC: adl = pc[7:0];
+                ADDR_DB: adl = db;
+                ADDR_RES: adl = res;
+                ADDR_ADD: adl = add;
+                ADDR_Z: adl = 8'b0;
+                ADDR_INT: adl = irq ? IRQ_VECTOR[7:0]: NMI_VECTOR[7:0];
+                default: adl = pcl; //ADDR_HOLD
+            endcase
+            case(adh_src)
+                ADDR_PC: adh = pc[15:8];
+                ADDR_DB: adh = db;
+                ADDR_RES: adh = res;
+                ADDR_ADD: adh = add;
+                ADDR_Z: adh = 8'b0;
+                ADDR_INT: adh = irq ? IRQ_VECTOR[15:8]: NMI_VECTOR[15:8];
+                default: adh = pch; //ADDR_HOLD
+            endcase
+        end
     end
     assign addr = {adh, adl};
 
 
     logic [2:0] res_dst, op_res_dst, ctl_res_dst;
-    assign res_dst = save ? op_res_dst : ctl_res_dst;
+    assign res_dst = push ? REG_DATA : save ? op_res_dst : ctl_res_dst;
     always @(posedge i_clk ) begin
         
         if (i_rst) begin
@@ -99,18 +99,22 @@ module core #(
             x <= 0;
             y <= 0;
             s <= 0;
-            radh <= 0;
-            radl <= 0;
+            p <= FL_I;              //disable IRQ on reset
+            pch <= 0;
+            pcl <= 0;
             pc <= RST_VECTOR;
-            //p updated elsewhere...
+            rpop <= 0;
+
         end else begin
             a <= a;
             x <= x;
             y <= y;
-            s <= s+stack_op;
+            s <= push ? s-1 : pop ? s+1 : s;
+            p <= ~clear_mask & (set_mask | (alu_mask & alu_status) | (~alu_mask & p));
+            rpop <= pop;
 
-            radl <= adl;
-            radh <= adh;
+            pcl <= adl;
+            pch <= adh;
             pc <= nextpc;
 
             case(res_dst)
@@ -118,7 +122,7 @@ module core #(
                 REG_X: x <= res;
                 REG_Y: y <= res;
                 REG_S: s <= res;
-                REG_P: p <= res & 8'hef; // clear break flag on p read
+                REG_P: p <= res & ~FL_BU; //ignore break flags
                 default: begin end
             endcase
         end
@@ -131,16 +135,17 @@ module core #(
     logic [2:0] db_src, ctl_db_src, op_db_src;
     logic [2:0] sb_src, ctl_sb_src, op_sb_src;
     logic [1:0] res_src, ctl_res_src, op_res_src;
+
     always @(*) begin
         db_src = (exec || save) ? op_db_src : (inc_sb || dec_sb) ? DB_Z : ctl_db_src;
         sb_src = (exec || save) ? op_sb_src : (inc_db || dec_db) ? REG_Z : ctl_sb_src;
-        res_src = (save) ? op_res_src : ctl_res_src;
+        res_src = save ? op_res_src : ctl_res_src;
         case(db_src)
             DB_DATA:    db = i_data;
             DB_PCL:     db = pc[7:0];
             DB_PCH:     db = pc[15:8];
             DB_S:       db = s;
-            DB_P:       db = p & 8'hef; // ignore break flag on p read
+            DB_P:       db = p | (!irq && FL_BU); // set break flags unless irq 
             DB_A:       db = a;
             default:    db = 8'h0;
         endcase
@@ -149,7 +154,6 @@ module core #(
             REG_X: sb = x;
             REG_Y: sb = y;
             REG_S: sb = s;
-            REG_P: sb = p | 8'h10; // set break flag on p write
             REG_ADD: sb = add;
             REG_DATA: sb = i_data;
             default: sb = 8'h0;
@@ -205,19 +209,20 @@ module core #(
         .C   (aluC)
     );
 
-    // register alu and p
+    // register alu
     logic [7:0] alu_status, ralu_status, alu_mask;
     logic[7:0] set_mask, clear_mask;
     assign alu_status = {aluN, aluV, 4'b0, aluZ, aluC};
     always @(posedge i_clk ) begin
         if (i_rst) begin
             add <= 8'b0;
-            p <= 8'h4;              //set IRQ disable on reset
             ralu_status <= 8'h0;
+        end else if(holdalu) begin
+            add <= add;
+            ralu_status <= ralu_status;
         end else begin
             add <= alu_out;
             ralu_status <= alu_status;
-            p <= ~clear_mask & (set_mask | (alu_mask & alu_status) | (~alu_mask & p));
         end
     end
 
@@ -234,9 +239,8 @@ module core #(
     end
     assign opcode = (state==T1_DECODE) ? i_data : ir;
 
-    logic op_SB;
+    logic single_byte;
     logic idx_XY;           // select index X(1) or Y(0) for abs,X/Y and zpg,X/Y ops
-    logic brk;
     logic rd_op, ld_op, st_op, rmw_op;
 
     logic [2:0] op_alu_OP;
@@ -251,9 +255,8 @@ module core #(
         .opcode        (opcode        ),
         .pstatus       (p             ),
         .initial_state (initial_state ),
-        .single_byte   (op_SB   ),
+        .single_byte   (single_byte   ),
         .idx_XY        (idx_XY   ),
-        .brk           (brk          ),
         .read          (rd_op          ),
         .load          (ld_op          ),
         .store         (st_op         ),
@@ -317,16 +320,33 @@ module core #(
             T3_BRANCH:   state <= skip ? T1_DECODE : T4_BRANCH;
             T4_BRANCH:   state <= T1_DECODE;
 
-            T2_STACK:    state <= T3_STACK;
-            T3_STACK:    state <= st_op ? T1_DECODE : T0_FETCH;
+            T2_PUSH:     state <= T0_FETCH;
+            T2_POP:      state <= T3_POP;
+            T3_POP:      state <= T0_FETCH;
             
             T2_BRK:      state <= T3_BRK;
             T3_BRK:      state <= T4_BRK;
             T4_BRK:      state <= T5_BRK;
             T5_BRK:      state <= T2_JUMP;
 
+            T2_RTI:      state <= T3_RTI;
+            T3_RTI:      state <= T4_RTI;
+            T4_RTI:      state <= T5_RTI;
+            T5_RTI:      state <= T3_JUMP;
+
+            T2_RTS:      state <= T3_RTS;
+            T3_RTS:      state <= T4_RTS;
+            T4_RTS:      state <= T5_RTS;
+            T5_RTS:      state <= T0_FETCH;
+
+            T2_JSR:      state <= T3_JSR;
+            T3_JSR:      state <= T4_JSR;
+            T4_JSR:      state <= T5_JSR;
+            T5_JSR:      state <= T3_JUMP;
+
             T_BOOT:   state <= T2_JUMP;
             default:  state <= T_JAM;
+
         endcase
     end
 
@@ -335,16 +355,17 @@ module core #(
         adl_src     = ADDR_PC;
         adh_src     = ADDR_PC;
         inc_pc      = 0;
-        ctl_db_src      = DB_DATA;
-        ctl_sb_src      = idx_XY ? REG_X : REG_Y;
-        ctl_res_src     = RES_ADD;
-        ctl_res_dst     = REG_Z;
+        ctl_db_src  = DB_DATA;
+        ctl_sb_src  = idx_XY ? REG_X : REG_Y;
+        ctl_res_src = RES_ADD;
+        ctl_res_dst = REG_Z;
         inc_db      = 0;
         dec_db      = 0;
         inc_sb      = 0;
         dec_sb      = 0;
-        inc_s       = 0;
-        dec_s       = 0;
+        holdalu     = 0;
+        push        = 0;
+        pop         = 0;
         skip        = 0;
         exec        = 0;
         save        = 0;
@@ -362,7 +383,7 @@ module core #(
                         end
 
             T1_DECODE:  begin
-                        inc_pc = !op_SB;        // increment pc unless this is single byte opcode
+                        inc_pc = !single_byte;        // increment pc unless this is single byte opcode
                         save = rd_op;           // on read, save result
                         end
 
@@ -401,8 +422,7 @@ module core #(
                         end                
 
             T3_ABSXY,
-            T4_INDY,
-            T5_XIND:    begin
+            T4_INDY:    begin
                         adl_src = ADDR_RES;      // fetch {BAH,LL}, assuming no carry
                         adh_src = ADDR_DB;
                         if (ralu_status[0]) begin
@@ -436,8 +456,11 @@ module core #(
                         adl_src = ADDR_RES;     // fetch {0,BAL+X+1}
                         adh_src = ADDR_Z;
                         end
-
-            // T5_XIND handled with T3_ABSXY
+            T5_XIND:    begin
+                        adl_src = ADDR_RES;      // fetch {BAH,LL}, assuming no carry
+                        adh_src = ADDR_DB;
+                        save = st_op;
+                        end
 
             T2_INDY:    begin
                         adl_src = ADDR_DB;      // fetch {0,IAL}
@@ -498,6 +521,7 @@ module core #(
                         sync = 1;
                         end
 
+            T5_RTS,
             T3_JUMP:     begin
                         adl_src = ADDR_ADD;     // fetch new pc
                         adh_src = ADDR_DB;
@@ -505,61 +529,38 @@ module core #(
                         sync = !jump_ind;       //
                         end
 
-            T2_STACK:    begin
-                        adl_src = ADDR_STACK;
-                        adh_src = ADDR_STACK;
-                        if (st_op) begin
-                            //push to stack
+            T2_PUSH:   begin
                             ctl_db_src = op_db_src;
                             ctl_res_src = RES_DB;
                             ctl_res_dst = REG_DATA;
-                            dec_s = 1;
-                        end
-                        else inc_s = 1;
+                            push = 1;
                         end
 
-            T3_STACK:   begin
-                        // for push, this is T0 and we need to fetch next addr
-                        if (st_op) begin
-                            inc_pc = 1;             // next pc = pc++
-                            sync = 1;
-                        end
-                        // for pull, (s++) loaded to op_res_dst during next T0
-                        else begin
-                            adl_src = ADDR_STACK;
-                            adh_src = ADDR_STACK;
-                        end
-                        end
+            T2_POP:     pop = 1;
+            T3_POP:     begin end //data is fetched...
 
-
-            T2_BRK:    begin
-                        adl_src = ADDR_STACK;
-                        adh_src = ADDR_STACK;
+            T2_BRK:     begin
                         //push pch
                         ctl_db_src = DB_PCH;
                         ctl_res_src = RES_DB;
                         ctl_res_dst = REG_DATA;
-                        dec_s = 1;
+                        push = 1;
                         end
 
             T3_BRK:    begin
-                        adl_src = ADDR_STACK;
-                        adh_src = ADDR_STACK;
                         //push pcl
                         ctl_db_src = DB_PCL;
                         ctl_res_src = RES_DB;
                         ctl_res_dst = REG_DATA;
-                        dec_s = 1;
+                        push = 1;
                         end
 
             T4_BRK:    begin
-                        adl_src = ADDR_STACK;
-                        adh_src = ADDR_STACK;
                         //push p
                         ctl_db_src = DB_P;
                         ctl_res_src = RES_DB;
                         ctl_res_dst = REG_DATA;
-                        dec_s = 1;
+                        push = 1;
                         cli = 1;
                         end
 
@@ -567,8 +568,46 @@ module core #(
                         adl_src = ADDR_INT;
                         adh_src = ADDR_INT;
                         jump = 1;
-                        ctl_sb_src = REG_Z;         // alu nop: hold LL in add
-                        inc_pc = 1;             // next pc = pc++
+                        inc_pc = 1;
+                        end
+
+
+            T2_RTS,T3_RTS,          //RTS: T2: pop pcl, T3: fetch pcl, pop pch
+            T2_RTI,                 //RTI: T2 pop p
+            T3_RTI:     pop = 1;    //fetch p, pop pcl
+
+            T4_RTI:     begin       //store p, fetch pcl, pop pch
+                            ctl_db_src = DB_DATA;
+                            ctl_res_src = RES_DB;
+                            ctl_res_dst = REG_P;
+                            pop = 1;
+                        end
+            T4_RTS,
+            T5_RTI:     ctl_sb_src = REG_Z; // store pcl in alu, fetch pch
+
+
+
+            T2_JSR:     ctl_sb_src = REG_Z;      // alu nop: hold ADL in alu
+            T3_JSR:     begin
+                        holdalu = 1; // continue to hold ADL in alu
+                        //push pch
+                        ctl_db_src = DB_PCH;
+                        ctl_res_src = RES_DB;
+                        ctl_res_dst = REG_DATA;
+                        push = 1;
+                        end
+
+            T4_JSR:    begin
+                        holdalu = 1; // continue to hold ADL in alu
+                        //push pcl
+                        ctl_db_src = DB_PCL;
+                        ctl_res_src = RES_DB;
+                        ctl_res_dst = REG_DATA;
+                        push = 1;
+                        end
+            T5_JSR:    begin
+                        holdalu = 1; // continue to hold ADL in alu
+                        // load ADH
                         end
 
             T_BOOT:     inc_pc = 1; // fetch low reset addr
@@ -577,6 +616,5 @@ module core #(
             default:    jam = 1;
         endcase
     end
-
 
 endmodule

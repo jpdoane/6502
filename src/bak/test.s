@@ -3,6 +3,9 @@ text=$00a0
 
 jam=$02
 *=data
+total: .byt $00
+passed: .byt $00
+
 d1: .byt $aa
 d2: .byt $01
 d3: .byt d4
