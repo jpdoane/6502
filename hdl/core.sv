@@ -67,26 +67,27 @@ module core #(
     logic [7:0] adl,adh;
     always @(*) begin
         case(adl_src)
-            ADDR_PC: adl = pc[15:8];
+            ADDR_PC: adl = pc[7:0];
             ADDR_DB: adl = db;
             ADDR_RES: adl = res;
             ADDR_ADD: adl = add;
             ADDR_Z: adl = 8'b0;
             ADDR_STACK: adl = s; 
-            ADDR_INT: adl = irq ? IRQ_VECTOR[15:8]: NMI_VECTOR[15:8];
+            ADDR_INT: adl = irq ? IRQ_VECTOR[7:0]: NMI_VECTOR[7:0];
             default: adl = radl; //ADDR_HOLD
         endcase
         case(adh_src)
-            ADDR_PC: adh = pc[7:0];
+            ADDR_PC: adh = pc[15:8];
             ADDR_DB: adh = db;
             ADDR_RES: adh = res;
             ADDR_ADD: adh = add;
             ADDR_Z: adh = 8'b0;
             ADDR_STACK: adh = STACKPAGE; 
-            ADDR_INT: adh = irq ? IRQ_VECTOR[7:0]: NMI_VECTOR[7:0];
+            ADDR_INT: adh = irq ? IRQ_VECTOR[15:8]: NMI_VECTOR[15:8];
             default: adh = radh; //ADDR_HOLD
         endcase
     end
+    assign addr = {adh, adl};
 
 
     logic [2:0] res_dst, op_res_dst, ctl_res_dst;
