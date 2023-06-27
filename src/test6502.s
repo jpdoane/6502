@@ -31,7 +31,7 @@ text = $1000
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
 	jsr		putmsg
-	.asc "Testing Branching... ", 0
+	.asc "Testing Branching... ", 10, 0
 
 
 	sei
@@ -88,16 +88,12 @@ bvsok:
 	
 bvcok:
 
-	jsr		putmsg
-	.asc "Pass!", 10, 0
-
-
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ; Compare Instructions
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
 	jsr		putmsg
-	.asc "Testing Compares... ", 0
+	.asc "Testing Compares... ", 10, 0
 
 
 	lda		#27			; bit 7 = 0
@@ -178,6 +174,9 @@ cpyok:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ; Load
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+	jsr		putmsg
+	.asc "Testing Loads... ", 10, 0
 
 ; lda
 
@@ -324,6 +323,8 @@ ldyok:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ; Test register transfers
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+	jsr		putmsg
+	.asc "Testing Transfers... ", 10, 0
 
 ; tax
 
@@ -430,6 +431,8 @@ tyaok:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ; Increment / Decrement
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+	jsr		putmsg
+	.asc "Testing Inc/Dec... ", 10, 0
 
 	ldx		#$FE
 	clc
@@ -524,10 +527,6 @@ dexerr:
 	
 	
 dexok:
-
-	jsr		putmsg
-	.asc "DEX", 10, 0
-	
 
 
 ; iny
@@ -631,6 +630,8 @@ deyok:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ; Stores
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+	jsr		putmsg
+	.asc "Testing Stores... ", 10, 0
 
 ; sta
 
@@ -717,6 +718,9 @@ styok:
 ; if a mode works with one instruction, it should work properly
 ; with all instructions that use that mode.
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+	jsr		putmsg
+	.asc "Testing Addr modes... ", 10, 0
 
 	lda		#$AA
 	eor		#$55
@@ -844,6 +848,8 @@ dex_ok:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ; Shift ops
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+	jsr		putmsg
+	.asc "Testing Shifts... ", 10, 0
 
 ; asl a
 
@@ -972,6 +978,10 @@ roraok:
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
+	jsr		putmsg
+	.asc "Testing Stack... ", 10, 0
+
+
 ; pha / pla
 	lda		#$ee
 	pha
@@ -1004,6 +1014,12 @@ putmsg:
 	sta		data_ptr	; to use as a pointer to the data
 	pla
 	sta		data_ptr+1
+
+    ; inc data pointer to first character
+	inc		data_ptr
+	bne		pm2
+	inc		data_ptr+1
+
 pm2:
 	ldy		#$01
 	lda		(data_ptr),y
@@ -1015,10 +1031,12 @@ pm3:
 	beq		pm1
 	jsr		putSer
 	jmp		pm2
-pm1						; must update the return address !
-	inc		data_ptr
-	bne		pm4
-	inc		data_ptr+1
+
+pm1:						; must update the return address !
+	; inc		data_ptr
+	; bne		pm4
+	; inc		data_ptr+1
+
 pm4:
 	jmp		(data_ptr)
 

@@ -399,7 +399,7 @@ module core #(
                         end
 
             T3_ZPGXY:   begin
-                        adl_src = ADDR_RES;     // fetch {0,LL}
+                        adl_src = ADDR_ADD;     // fetch {0,LL}
                         adh_src = ADDR_Z;
                         save = st_op;           // on store, save result
                         end
@@ -423,7 +423,7 @@ module core #(
 
             T3_ABSXY,
             T4_INDY:    begin
-                        adl_src = ADDR_RES;      // fetch {BAH,LL}, assuming no carry
+                        adl_src = ADDR_ADD;      // fetch {BAH,LL}, assuming no carry
                         adh_src = ADDR_DB;
                         if (ralu_status[0]) begin
                             // low address overflowed, need to increment ADH
@@ -437,7 +437,7 @@ module core #(
             T4_ABSXY,
             T5_INDY:    begin
                         adl_src = ADDR_HOLD;      // fetch {HH,LL} with incremented HH
-                        adh_src = ADDR_RES;
+                        adh_src = ADDR_ADD;
                         save = st_op;
                         end
 
@@ -446,18 +446,18 @@ module core #(
                         adh_src = ADDR_Z;
                         end                
             T3_XIND:    begin
-                        adl_src = ADDR_RES;     // fetch LL = {0,BAL+X}
+                        adl_src = ADDR_ADD;     // fetch LL = {0,BAL+X}
                         adh_src = ADDR_Z;
                         ctl_sb_src = REG_ADD;
                         inc_sb = 1;             // increment result = BAL+X+1
                         end
             T4_XIND:    begin
                         ctl_sb_src = REG_Z;         // hold LL in add
-                        adl_src = ADDR_RES;     // fetch {0,BAL+X+1}
+                        adl_src = ADDR_ADD;     // fetch {0,BAL+X+1}
                         adh_src = ADDR_Z;
                         end
             T5_XIND:    begin
-                        adl_src = ADDR_RES;      // fetch {BAH,LL}, assuming no carry
+                        adl_src = ADDR_ADD;      // fetch {BAH,LL}, assuming no carry
                         adh_src = ADDR_DB;
                         save = st_op;
                         end
@@ -469,7 +469,7 @@ module core #(
                         end
 
             T3_INDY:    begin
-                        adl_src = ADDR_RES;     // fetch BAH = {00,IAL+1}, compute BAL + Y
+                        adl_src = ADDR_ADD;     // fetch BAH = {00,IAL+1}, compute BAL + Y
                         adh_src = ADDR_Z;
                         end
 
@@ -514,8 +514,8 @@ module core #(
                         end
 
             T4_BRANCH: begin
-                        adl_src = ADDR_ADD;
-                        adh_src = ADDR_HOLD;
+                        adl_src = ADDR_HOLD;
+                        adh_src = ADDR_ADD;
                         jump = 1;              // addr -> pc
                         inc_pc = 1;            // nextpc = pc++
                         sync = 1;
