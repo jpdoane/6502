@@ -18,7 +18,7 @@ module core #(
     );
 
 
-    `include "debug/debug.svi"
+    `include "debug/debug.sv"
 
     // busses
     // db: data bus: typically memory read, but can be addr_lo or zero
@@ -401,7 +401,8 @@ module core #(
 
             T3_ABSXY,
             T4_INDY:    begin
-                        adl_src = ADDR_ADD;      // fetch {BAH,LL}, assuming no carry
+                        // fetch {BAH,LL}, assuming no carry
+                        adl_src = ADDR_ADD;
                         adh_src = ADDR_DATA;
                         if (ipage_up) begin
                             // low address overflowed, need to increment ADH
@@ -444,16 +445,19 @@ module core #(
                         end
 
             T2_INDY:    begin
-                        adl_src = ADDR_DATA;      // fetch {0,IAL}
+                        // fetch low base addr  in zero page
+                        adl_src = ADDR_DATA;
                         adh_src = ADDR_Z;
-                        // increment IAL (on db)
+                        // increment ZPG pointer to fetch high base addr next cycle 
                         sb_src = REG_Z;
                         ci = 1;
                         end
 
             T3_INDY:    begin
-                        adl_src = ADDR_ADD;     // fetch BAH = {00,IAL+1}, compute BAL + Y
+                        // fetch high base addr in zero page
+                        adl_src = ADDR_ADD;
                         adh_src = ADDR_Z;
+                        // meanwhile, we have loaded BAL and are computing BAL+Y...
                         end
 
             // T4_INDY-T5_INDY handled with T3_ABSXY-T4_ABSXY

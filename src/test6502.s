@@ -1007,37 +1007,60 @@ plaok:
 ; put message to screen
 ; tests pla,sta,ldy,inc,bne,ora,jmp,jmp(abs)
 
-putmsg:
+; putmsg:
+; 	pla					; pop the return address off the stack
+; 	sta		data_ptr	; to use as a pointer to the data
+; 	pla
+; 	sta		data_ptr+1
+
+;     ; inc data pointer to first character
+; 	inc		data_ptr
+; 	bne		pm2
+; 	inc		data_ptr+1
+
+; pm2:
+; 	ldy		#$01
+; 	lda		(data_ptr),y
+; 	inc		data_ptr
+; 	bne		pm3
+; 	inc		data_ptr+1
+; pm3:
+; 	ora		#0			; end of string ?
+; 	beq		pm1
+; 	jsr		putSer
+; 	jmp		pm2
+
+; pm1:						; must update the return address !
+; 	; inc		data_ptr
+; 	; bne		pm4
+; 	; inc		data_ptr+1
+
+; pm4:
+; 	jmp		(data_ptr)
+
+
+putmsg
 	pla					; pop the return address off the stack
 	sta		data_ptr	; to use as a pointer to the data
 	pla
 	sta		data_ptr+1
-
-    ; inc data pointer to first character
-	inc		data_ptr
-	bne		pm2
-	inc		data_ptr+1
-
-pm2:
+pm2
 	ldy		#$01
 	lda		(data_ptr),y
 	inc		data_ptr
 	bne		pm3
 	inc		data_ptr+1
-pm3:
+pm3
 	ora		#0			; end of string ?
 	beq		pm1
 	jsr		putSer
 	jmp		pm2
-
-pm1:						; must update the return address !
-	; inc		data_ptr
-	; bne		pm4
-	; inc		data_ptr+1
-
-pm4:
+pm1						; must update the return address !
+	inc		data_ptr
+	bne		pm4
+	inc		data_ptr+1
+pm4
 	jmp		(data_ptr)
-
 
 
 ; put character to serial port

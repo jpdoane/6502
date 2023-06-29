@@ -93,7 +93,7 @@ module decode (
     assign single_byte = opcode ==? 8'b???_?10_?0;
 
     // X vs Y indexing
-    assign idx_XY = (opcode ==? 8'b???_1?0_?? || opcode ==? 8'b???_1?1_10) ? IDX_X : IDX_Y;
+    assign idx_XY = (opcode ==? 8'b???_1?0_?1 || opcode ==? 8'b10?_1?1_1?) ? IDX_Y : IDX_X;
 
     // set and clear masks
     always @(posedge i_clk ) begin

@@ -1,21 +1,27 @@
 parameter LOG_FILE = "debug.log";
 
 int log_fd;
-int inst_cnt;
+int inst_cnt, cyc_cnt;
 initial begin
     log_fd = $fopen(LOG_FILE, "w");
+    cyc_cnt = 0;
     inst_cnt = 0;
 end
 
+
 always @(negedge i_clk ) begin
+
+    if (i_rst) cyc_cnt = 0;
+    else cyc_cnt = cyc_cnt+1;
+
     if (state==T1_DECODE) begin
         inst_cnt = inst_cnt+1;
-        $fwrite( log_fd, "%s %h PC:0x%h (count: %0d)\n", op_name(opcode), opcode, pc, inst_cnt);
+        $fwrite( log_fd, "%s %h PC:0x%h (inst:%0d cyc:%0d)\n", op_name(opcode), opcode, pc, inst_cnt, cyc_cnt);
     end
     $fwrite( log_fd, "\t%s:\taddr:%s,%s=%h db:%h(%s) sb:%h(%s) a=%h x=%h y=%h s=%h p=%h\n" , state_name(state), addr_name(adl_src), addr_name(adh_src), addr, db,db_name(db_src), sb,reg_name(sb_src),  a, x, y, s, p);
     if (db_write) begin
         if (addr==16'h0F00)
-            $fwrite( log_fd, "\tUART WRITE: '%c'\n", dor, addr);
+            $fwrite( log_fd, "\tUART WRITE: '%c'\n", dor);
         else
             $fwrite( log_fd, "\tWRITE: 0x%h to 0x%h\n", dor, addr);
     end
