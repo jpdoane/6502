@@ -66,27 +66,25 @@ parameter DB_PCH     =3'h3;
 parameter DB_S       =3'h4;
 parameter DB_P       =3'h5;
 parameter DB_A       =3'h6;
-
-parameter RES_DB    =2'h0;  // loads
-parameter RES_SB    =2'h1;  // transfers/stores
-parameter RES_ADD   =2'h2;  // alu
-
+parameter DB_SB      =3'h7;
     
 parameter ADDR_PC   = 3'h0;
-parameter ADDR_DB   = 3'h1;
+parameter ADDR_DATA   = 3'h1;
 parameter ADDR_RES  = 3'h2;
 parameter ADDR_ADD  = 3'h3;
 parameter ADDR_Z    = 3'h4;
 parameter ADDR_HOLD = 3'h5; 
-parameter ADDR_INT = 3'h6; 
+parameter ADDR_INT = 3'h6;
+parameter ADDR_STACK = 3'h7;
 
-parameter ALU_ADD   =3'h0;
-parameter ALU_AND   =3'h1;
-parameter ALU_OR    =3'h2;
-parameter ALU_XOR   =3'h3;
-parameter ALU_SR    =3'h4;
-parameter ALU_SL    =3'h5;
-parameter ALU_BIT   =3'h6;
+parameter ALU_NOP   =3'h0;
+parameter ALU_ADD   =3'h1;
+parameter ALU_AND   =3'h2;
+parameter ALU_OR    =3'h3;
+parameter ALU_XOR   =3'h4;
+parameter ALU_SR    =3'h5;
+parameter ALU_SL    =3'h6;
+parameter ALU_BIT   =3'h7;
 
 
 parameter IDX_X     =1'b1;

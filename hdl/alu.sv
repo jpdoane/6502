@@ -23,8 +23,9 @@ module alu (
             ALU_SR:     {out, C} = {ci, aorb};
             ALU_SL:     {C, out} = {aorb, ci};
             // verilator lint_off WIDTH
-            default:    {C, out} = ai + bi + ci; // default add
+            ALU_ADD:    {C, out} = ai + bi + ci;
             // verilator lint_on WIDTH
+            default:    out = '0;
         endcase
 
         Z = ~|out;
@@ -34,7 +35,8 @@ module alu (
             V = bi[6];
         end else begin
             N = out[7];
-            V = ai[7] ^ bi[7] ^ C ^ N;
+            //https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+            V = (ai[7] ^ out[7]) && (bi[7] ^ out[7]);
         end   
     end
 

@@ -224,9 +224,7 @@ ldaerr:
 	jsr		putmsg
 	.asc "LDA:F", 10, 0
 	
-
 ldaok:
-
 
 ; ldx
 
@@ -272,10 +270,10 @@ ldxerr:
 	.asc "LDX:F", 10, 0
 	
 
+ldxok:
 
 ; ldy
 
-ldxok:
 	clc
 	lda		#$80		; z = 0, n = 1
 	ldy		#0

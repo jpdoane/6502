@@ -17,11 +17,13 @@ module core #(
     output logic jam
     );
 
+
+    `include "debug/debug.svi"
+
     // busses
     // db: data bus: typically memory read, but can be addr_lo or zero
     // sb: secondry bus: read from registers (a,x,y,s, zero)
-    // res: result bus: update register (a,x,y,s,d [mem write], z[disabled])
-    logic [7:0] db, sb, res;
+    logic [7:0] db, sb;
 
     // registers
     logic [15:0] pc, pcsel, nextpc;
@@ -34,64 +36,60 @@ module core #(
     logic [2:0] adl_src,adh_src;
     logic ipc;
     logic inc_pc;
-    logic inc_db;
-    logic dec_db;
-    logic inc_sb;
-    logic dec_sb;
     logic push, pop, rpop;
     logic skip;
     logic exec;
     logic save;
     logic jump;
     logic holdalu;
-
-    // pc logic
-    assign pcsel = jump ? addr : pc;
-    assign nextpc = (inc_pc || jump) ? pcsel + 1 : pcsel;
+    logic db_write;
+    logic sb_a;
+    logic sb_x;
+    logic sb_y;
+    logic db_p;
 
     // interrupt
     logic nmi, irq, cli;
+    assign cli=0;
     always @(posedge i_clk ) begin
         if (i_rst) begin
             nmi <= 0;
             irq <= 0;
         end else begin
-            nmi <= NMI ? 1 : nmi & ~cli;
-            irq <= IRQ ? 1 : irq & ~cli;
+            nmi <= NMI ? 1 : cli ? 0 : nmi;
+            irq <= IRQ ? !p[2] : cli ? 0 : irq;
         end
     end
 
+    // pc logic
+    assign pcsel = jump ? addr : pc;
+    assign nextpc = (inc_pc || jump) ? pcsel + 1 : pcsel;
+
+
     logic [7:0] adl,adh;
     always @(*) begin
-        if (push || rpop) begin
-            adl = s;
-            adh = STACKPAGE;
-        end else begin
-            case(adl_src)
-                ADDR_PC: adl = pc[7:0];
-                ADDR_DB: adl = db;
-                ADDR_RES: adl = res;
-                ADDR_ADD: adl = add;
-                ADDR_Z: adl = 8'b0;
-                ADDR_INT: adl = irq ? IRQ_VECTOR[7:0]: NMI_VECTOR[7:0];
-                default: adl = pcl; //ADDR_HOLD
-            endcase
-            case(adh_src)
-                ADDR_PC: adh = pc[15:8];
-                ADDR_DB: adh = db;
-                ADDR_RES: adh = res;
-                ADDR_ADD: adh = add;
-                ADDR_Z: adh = 8'b0;
-                ADDR_INT: adh = irq ? IRQ_VECTOR[15:8]: NMI_VECTOR[15:8];
-                default: adh = pch; //ADDR_HOLD
-            endcase
-        end
+        case(adl_src)
+            ADDR_PC: adl = pc[7:0];
+            ADDR_DATA: adl = i_data;
+            ADDR_ADD: adl = add;
+            ADDR_Z: adl = 8'b0;
+            ADDR_INT: adl = irq ? IRQ_VECTOR[7:0]: NMI_VECTOR[7:0];
+            ADDR_STACK: adl = s;
+            default: adl = pcl; //ADDR_HOLD
+        endcase
+        case(adh_src)
+            ADDR_PC: adh = pc[15:8];
+            ADDR_DATA: adh = i_data;
+            ADDR_ADD: adh = add;
+            ADDR_Z: adh = 8'b0;
+            ADDR_INT: adh = irq ? IRQ_VECTOR[15:8]: NMI_VECTOR[15:8];
+            ADDR_STACK: adh = STACKPAGE;
+            default: adh = pch; //ADDR_HOLD
+        endcase
     end
     assign addr = {adh, adl};
 
 
-    logic [2:0] res_dst, op_res_dst, ctl_res_dst;
-    assign res_dst = push ? REG_DATA : save ? op_res_dst : ctl_res_dst;
     always @(posedge i_clk ) begin
         
         if (i_rst) begin
@@ -106,49 +104,26 @@ module core #(
             rpop <= 0;
 
         end else begin
-            a <= a;
-            x <= x;
-            y <= y;
             s <= push ? s-1 : pop ? s+1 : s;
-            p <= ~clear_mask & (set_mask | (alu_mask & alu_status) | (~alu_mask & p));
             rpop <= pop;
 
             pcl <= adl;
             pch <= adh;
             pc <= nextpc;
 
-            case(res_dst)
-                REG_A: a <= res;
-                REG_X: x <= res;
-                REG_Y: y <= res;
-                REG_S: s <= res;
-                REG_P: p <= res & ~FL_BU; //ignore break flags
-                default: begin end
-            endcase
+            a <= sb_a ? sb : a;
+            x <= sb_x ? sb : x;
+            y <= sb_y ? sb : y;
+            p <= db_p ? (db & ~FL_BU) : ~clear_mask & (set_mask | (alu_mask & alu_status) | (~alu_mask & p));            
         end
     end
 
-    assign RW = !(res_dst == REG_DATA);
-    assign dor = RW ? 0 : res;
+    assign RW = !db_write;
+    assign dor = db;
 
     // bus source select
-    logic [2:0] db_src, ctl_db_src, op_db_src;
-    logic [2:0] sb_src, ctl_sb_src, op_sb_src;
-    logic [1:0] res_src, ctl_res_src, op_res_src;
-
+    logic [2:0] db_src,sb_src,dst;
     always @(*) begin
-        db_src = (exec || save) ? op_db_src : (inc_sb || dec_sb) ? DB_Z : ctl_db_src;
-        sb_src = (exec || save) ? op_sb_src : (inc_db || dec_db) ? REG_Z : ctl_sb_src;
-        res_src = save ? op_res_src : ctl_res_src;
-        case(db_src)
-            DB_DATA:    db = i_data;
-            DB_PCL:     db = pc[7:0];
-            DB_PCH:     db = pc[15:8];
-            DB_S:       db = s;
-            DB_P:       db = p | (!irq && FL_BU); // set break flags unless irq 
-            DB_A:       db = a;
-            default:    db = 8'h0;
-        endcase
         case(sb_src)
             REG_A: sb = a;
             REG_X: sb = x;
@@ -158,44 +133,27 @@ module core #(
             REG_DATA: sb = i_data;
             default: sb = 8'h0;
         endcase
-        case(res_src)
-            RES_DB: res = db;
-            RES_SB: res = sb;
-            RES_ADD: res = add;
-            default: res = 8'h0;
+        case(db_src)
+            DB_DATA:    db = i_data;
+            DB_PCL:     db = pc[7:0];
+            DB_PCH:     db = pc[15:8];
+            DB_S:       db = s;
+            DB_P:       db = p | (!irq && FL_BU); // set break flags unless irq 
+            DB_A:       db = a;
+            DB_SB:      db = sb;
+            default:    db = 8'h0;
         endcase
     end
 
     //alu
     logic [2:0] alu_OP;
     logic [7:0] alu_out;
-    logic [1:0] alu_carry_in;
     logic ci, aluN, aluZ, aluC, aluV;
+    logic adl_bi;
     logic ai_inv, bi_inv;
     logic [7:0] ai, bi;
     assign ai = ai_inv ? ~sb : sb;
-    assign bi = bi_inv ? ~db : db;
-    assign ci = alu_carry_in==CARRY_C ? p[0] : alu_carry_in==CARRY_P ? 1 : 0;
-
-    always @(*) begin
-        if (exec) begin
-            alu_OP = op_alu_OP;
-            ai_inv = op_ai_inv;
-            bi_inv = op_bi_inv;
-            alu_carry_in = op_carry_in;
-            alu_mask = op_alu_mask;
-            set_mask = op_set_mask;
-            clear_mask = op_clear_mask;
-        end else begin
-            alu_OP = ALU_ADD;
-            ai_inv = dec_db;
-            bi_inv = dec_sb;
-            alu_carry_in = (inc_db || inc_sb) ? CARRY_P : CARRY_Z;
-            alu_mask = '0;
-            set_mask = '0;
-            clear_mask = '0;
-        end
-    end
+    assign bi = bi_inv ? ~db : adl_bi ? adl : db;
 
     alu u_alu(
         .ai  (ai  ),
@@ -209,21 +167,28 @@ module core #(
         .C   (aluC)
     );
 
-    // register alu
-    logic [7:0] alu_status, ralu_status, alu_mask;
+    // register alu and branch page flags
+    logic [7:0] alu_status, alu_mask;
     logic[7:0] set_mask, clear_mask;
     assign alu_status = {aluN, aluV, 4'b0, aluZ, aluC};
+    logic ipage_up, bpage_up, bpage_down;
     always @(posedge i_clk ) begin
         if (i_rst) begin
             add <= 8'b0;
-            ralu_status <= 8'h0;
-        end else if(holdalu) begin
-            add <= add;
-            ralu_status <= ralu_status;
-        end else begin
-            add <= alu_out;
-            ralu_status <= alu_status;
+            ipage_up <= 0;
+            bpage_up <= 0;
+            bpage_down <= 0;
+        end else begin 
+            add <= holdalu ? add : alu_out;
+
+            // index math is unsigned, so we cross a page boundary if carry bit is set
+            ipage_up <= aluC;
+
+            // branch math: ai is the  signed offset, bi is the unsigned base addr
+            bpage_up <= bi[7] & !ai[7] & !alu_out[7]; // crossed to next page if addr>127, offset>0, and result <= 127
+            bpage_down <= !bi[7] & ai[7] & alu_out[7]; // crossed to prev page if addr<=127, offset<0, and result > 127
         end
+
     end
 
 
@@ -241,7 +206,7 @@ module core #(
 
     logic single_byte;
     logic idx_XY;           // select index X(1) or Y(0) for abs,X/Y and zpg,X/Y ops
-    logic rd_op, ld_op, st_op, rmw_op;
+    logic rd, st, rd_op, st_op, rmw_op;
 
     logic [2:0] op_alu_OP;
     logic op_ai_inv;   // alu ai src
@@ -257,14 +222,11 @@ module core #(
         .initial_state (initial_state ),
         .single_byte   (single_byte   ),
         .idx_XY        (idx_XY   ),
-        .read          (rd_op          ),
-        .load          (ld_op          ),
-        .store         (st_op         ),
-        .rmw           (rmw_op           ),
+        .read          (rd          ),
+        .store         (st         ),
         .sb_src        (op_sb_src        ),
         .db_src        (op_db_src        ),
-        .res_src       (op_res_src       ),
-        .res_dst       (op_res_dst       ),
+        .dst       (op_dst       ),
         .alu_OP        (op_alu_OP        ),
         .ai_inv        (op_ai_inv        ),
         .bi_inv        (op_bi_inv        ),
@@ -273,6 +235,10 @@ module core #(
         .set_mask      (op_set_mask      ),
         .clear_mask    (op_clear_mask    )
     );
+
+    assign rd_op = rd & !st;
+    assign st_op = !rd & st;
+    assign rmw_op = rd & st;
 
     //state machine
     logic jump_ind;
@@ -351,18 +317,11 @@ module core #(
     end
 
     // control
+    logic [2:0] op_db_src,op_sb_src,op_dst;
     always @(*) begin
         adl_src     = ADDR_PC;
         adh_src     = ADDR_PC;
         inc_pc      = 0;
-        ctl_db_src  = DB_DATA;
-        ctl_sb_src  = idx_XY ? REG_X : REG_Y;
-        ctl_res_src = RES_ADD;
-        ctl_res_dst = REG_Z;
-        inc_db      = 0;
-        dec_db      = 0;
-        inc_sb      = 0;
-        dec_sb      = 0;
         holdalu     = 0;
         push        = 0;
         pop         = 0;
@@ -371,15 +330,34 @@ module core #(
         save        = 0;
         jump        = 0;
         jam         = 0;
-        cli         = 0;
         sync        = 0;
+
+        //default bus config
+        db_src  = DB_DATA;
+        sb_src  = idx_XY ? REG_X : REG_Y;
+
+        //register write control 
+        db_write=0;      // write db to memory
+        sb_a=0;         // save sb -> reg A
+        sb_x=0;         // save sb -> reg X
+        sb_y=0;         // save sb -> reg Y
+        db_p=0;         // save db -> p
+        adl_bi=0;
+
+        // default ALU config
+        alu_OP = ALU_ADD;
+        ai_inv = 0;
+        bi_inv = 0;
+        ci = 0;
+        alu_mask = '0;
+        set_mask = '0;
+        clear_mask = '0;
 
         case(state)
             T0_FETCH:   begin
                         sync = 1;               // signal new instruction
                         inc_pc = 1;             // increment pc
                         exec = rd_op;           // on read, execute instruction
-                        save = ld_op;           // on load, save result
                         end
 
             T1_DECODE:  begin
@@ -388,7 +366,7 @@ module core #(
                         end
 
             T2_ZPG:     begin
-                        adl_src = ADDR_DB;      // fetch {0,BAL}
+                        adl_src = ADDR_DATA;      // fetch {0,BAL}
                         adh_src = ADDR_Z;
                         save = st_op;           // on store, save result
                         end
@@ -406,13 +384,13 @@ module core #(
 
             T2_JUMP,
             T2_ABS:     begin
-                        ctl_sb_src = REG_Z;         // alu nop: hold LL in add
+                        sb_src = REG_Z;         // alu nop: hold LL in add
                         inc_pc = 1;             // next pc = pc++
                         end
 
             T3_ABS:     begin
                         adl_src = ADDR_ADD;      // fetch {BAH,BAL}
-                        adh_src = ADDR_DB;
+                        adh_src = ADDR_DATA;
                         save = st_op;           // on store, save result
                         end
 
@@ -424,10 +402,11 @@ module core #(
             T3_ABSXY,
             T4_INDY:    begin
                         adl_src = ADDR_ADD;      // fetch {BAH,LL}, assuming no carry
-                        adh_src = ADDR_DB;
-                        if (ralu_status[0]) begin
+                        adh_src = ADDR_DATA;
+                        if (ipage_up) begin
                             // low address overflowed, need to increment ADH
-                            inc_db = 1;
+                            sb_src = REG_Z;
+                            ci = 1;
                         end else begin
                             skip = 1;
                             save = st_op;
@@ -442,30 +421,34 @@ module core #(
                         end
 
             T2_XIND:    begin
-                        adl_src = ADDR_DB;      // fetch {0,BAL}
+                        adl_src = ADDR_DATA;      // fetch {0,BAL}
                         adh_src = ADDR_Z;
                         end                
             T3_XIND:    begin
                         adl_src = ADDR_ADD;     // fetch LL = {0,BAL+X}
                         adh_src = ADDR_Z;
-                        ctl_sb_src = REG_ADD;
-                        inc_sb = 1;             // increment result = BAL+X+1
+
+                        // LL+1
+                        sb_src = REG_ADD;
+                        ci = 1;
                         end
             T4_XIND:    begin
-                        ctl_sb_src = REG_Z;         // hold LL in add
-                        adl_src = ADDR_ADD;     // fetch {0,BAL+X+1}
+                        holdalu = 1;    // hold LL in add
+                        adl_src = ADDR_ADD;     // fetch {0,LL}
                         adh_src = ADDR_Z;
                         end
             T5_XIND:    begin
-                        adl_src = ADDR_ADD;      // fetch {BAH,LL}, assuming no carry
-                        adh_src = ADDR_DB;
+                        adl_src = ADDR_ADD;      // fetch {BAH,LL}, a carry will wrap LL without incrementing HH
+                        adh_src = ADDR_DATA;
                         save = st_op;
                         end
 
             T2_INDY:    begin
-                        adl_src = ADDR_DB;      // fetch {0,IAL}
+                        adl_src = ADDR_DATA;      // fetch {0,IAL}
                         adh_src = ADDR_Z;
-                        inc_db = 1;             // compute IAL + 1
+                        // increment IAL (on db)
+                        sb_src = REG_Z;
+                        ci = 1;
                         end
 
             T3_INDY:    begin
@@ -488,23 +471,26 @@ module core #(
                         end
 
             T2_BRANCH:  begin
-                        inc_pc = 1;             // next pc = pc++
-                        ctl_db_src = DB_PCL;        // calc branch offset      
-                        ctl_sb_src = REG_DATA;
+                        inc_pc = 1;
+                        // add pcl + offset
+                        adl_bi = 1;
+                        sb_src = REG_DATA;
                         end
 
             T3_BRANCH:  begin
                         adl_src = ADDR_ADD;
                         adh_src = ADDR_HOLD;
                         jump = 1;              // addr -> pc
-                        if (ralu_status[0] && !ralu_status[7]) begin
-                             // C=1, N=0: jumped to higher page, pch must be incremented
-                            ctl_db_src = DB_PCH;
-                            inc_db = 1;
-                        end else if (ralu_status[6] && ralu_status[7]) begin
-                             // V=1, N=1: jumped to lower page, pch must be decremented
-                            ctl_db_src = DB_PCH;
-                            dec_db = 1;
+                        if (bpage_up) begin
+                            // increment PCH
+                            db_src = DB_PCH;
+                            sb_src = REG_Z;
+                            ci = 1;
+                        end else if (bpage_down) begin
+                            // decrement PCH
+                            db_src = DB_PCH;
+                            sb_src = REG_Z;
+                            ai_inv = 1;
                         end else begin
                             // pch is valid, this cycle is our T0_FETCH fetch
                             inc_pc = 1;         
@@ -524,15 +510,13 @@ module core #(
             T5_RTS,
             T3_JUMP:     begin
                         adl_src = ADDR_ADD;     // fetch new pc
-                        adh_src = ADDR_DB;
+                        adh_src = ADDR_DATA;
                         jump = 1;               // update pc
                         sync = !jump_ind;       //
                         end
 
             T2_PUSH:   begin
-                            ctl_db_src = op_db_src;
-                            ctl_res_src = RES_DB;
-                            ctl_res_dst = REG_DATA;
+                            save = 1;
                             push = 1;
                         end
 
@@ -541,27 +525,23 @@ module core #(
 
             T2_BRK:     begin
                         //push pch
-                        ctl_db_src = DB_PCH;
-                        ctl_res_src = RES_DB;
-                        ctl_res_dst = REG_DATA;
+                        db_src = DB_PCH;
+                        db_write = 1;
                         push = 1;
                         end
 
             T3_BRK:    begin
                         //push pcl
-                        ctl_db_src = DB_PCL;
-                        ctl_res_src = RES_DB;
-                        ctl_res_dst = REG_DATA;
+                        db_src = DB_PCL;
+                        db_write = 1;
                         push = 1;
                         end
 
             T4_BRK:    begin
                         //push p
-                        ctl_db_src = DB_P;
-                        ctl_res_src = RES_DB;
-                        ctl_res_dst = REG_DATA;
+                        db_src = DB_P;
+                        db_write = 1;
                         push = 1;
-                        cli = 1;
                         end
 
             T5_BRK:    begin
@@ -577,32 +557,28 @@ module core #(
             T3_RTI:     pop = 1;    //fetch p, pop pcl
 
             T4_RTI:     begin       //store p, fetch pcl, pop pch
-                            ctl_db_src = DB_DATA;
-                            ctl_res_src = RES_DB;
-                            ctl_res_dst = REG_P;
+                            db_p = 1;
                             pop = 1;
                         end
             T4_RTS,
-            T5_RTI:     ctl_sb_src = REG_Z; // store pcl in alu, fetch pch
+            T5_RTI:     sb_src = REG_Z; // store pcl in alu, fetch pch
 
 
 
-            T2_JSR:     ctl_sb_src = REG_Z;      // alu nop: hold ADL in alu
+            T2_JSR:     sb_src = REG_Z;      // alu nop: hold ADL in alu
             T3_JSR:     begin
                         holdalu = 1; // continue to hold ADL in alu
                         //push pch
-                        ctl_db_src = DB_PCH;
-                        ctl_res_src = RES_DB;
-                        ctl_res_dst = REG_DATA;
+                        db_src = DB_PCH;
+                        db_write=1;                        
                         push = 1;
                         end
 
             T4_JSR:    begin
                         holdalu = 1; // continue to hold ADL in alu
                         //push pcl
-                        ctl_db_src = DB_PCL;
-                        ctl_res_src = RES_DB;
-                        ctl_res_dst = REG_DATA;
+                        db_src = DB_PCL;
+                        db_write=1;                        
                         push = 1;
                         end
             T5_JSR:    begin
@@ -615,6 +591,40 @@ module core #(
 
             default:    jam = 1;
         endcase
+
+
+        if (push || rpop) begin
+            adl_src = ADDR_STACK;
+            adh_src = ADDR_STACK;
+        end
+
+        if (exec) begin
+            //configure the alu and bus for this instruction
+            alu_OP = op_alu_OP;
+            ai_inv = op_ai_inv;
+            bi_inv = op_bi_inv;
+            ci = op_carry_in == CARRY_C ? p[0] : op_carry_in[0];
+            alu_mask = op_alu_mask;
+            set_mask = op_set_mask;
+            clear_mask = op_clear_mask;
+
+            sb_src = op_sb_src;
+            db_src = op_db_src;
+
+        end
+
+        if (save) begin
+            sb_src = op_alu_OP == ALU_NOP ? op_sb_src : REG_ADD;
+            db_src = db_src == DB_P ? DB_P : DB_SB;
+            case (op_dst)
+                REG_DATA:   db_write = 1;
+                REG_A:      sb_a=1;
+                REG_X:      sb_x=1;
+                REG_Y:      sb_y=1;
+                REG_P:      db_p=1;
+            endcase
+        end
+
     end
 
 endmodule
