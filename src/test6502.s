@@ -11,6 +11,8 @@
 
 UART=$0f00
 XMIT_FUL=$08		; the transmit buffer is full
+
+fail_count=$06
 data_ptr=$08
 
 text = $1000
@@ -38,18 +40,21 @@ text = $1000
 
 	sec
 	bcs		bcsok
+    inc fail_count
 	jsr		putmsg
 	.asc "BCS:F", 10, 0
 	
 bcsok:
 	clc
 	bcc		bccok
+    inc fail_count
 	jsr		putmsg
 	.asc "BCC:F", 10, 0
 	
 bccok:
 	lda		#$00
 	beq		beqok
+    inc fail_count
 	jsr		putmsg
 	.asc "BEQ:F", 10, 0
 	
@@ -57,18 +62,21 @@ bccok:
 beqok:
 	lda		#$80
 	bne		bneok
+    inc fail_count
 	jsr		putmsg
 	.asc "BNE:F", 10, 0
 	
 bneok:
 	ora		#$00
 	bmi		bmiok
+    inc fail_count
 	jsr		putmsg
 	.asc "BMI:F", 10, 0
 	
 bmiok:
 	eor		#$80
 	bpl		bplok
+    inc fail_count
 	jsr		putmsg
 	.asc "BPL:F", 10, 0
 	
@@ -77,12 +85,14 @@ bplok:
 	clc
 	adc		#$10		; should give signed overflow
 	bvs		bvsok
+    inc fail_count
 	jsr		putmsg
 	.asc "BVS:F", 10, 0
 	
 bvsok:
 	clv
 	bvc		bvcok
+    inc fail_count
 	jsr		putmsg
 	.asc "BVC:F", 10, 0
 	
@@ -116,6 +126,7 @@ bvcok:
 	bvc		cmpok
 
 cmperr:
+    inc fail_count
 	jsr		putmsg
 	.asc "CMP:F", 10, 0
 	
@@ -140,6 +151,7 @@ cmpok:
 	bvc		cpxok
 
 cpxerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "CPX:F", 10, 0
 	
@@ -164,6 +176,7 @@ cpxok:
 	bvc		cpyok
 
 cpyerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "CPY:F", 10, 0
 	
@@ -221,6 +234,7 @@ cpyok:
 	beq		ldaok
 
 ldaerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "LDA:F", 10, 0
 	
@@ -266,6 +280,7 @@ ldaok:
 	beq		ldxok
 
 ldxerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "LDX:F", 10, 0
 	
@@ -312,6 +327,7 @@ ldxok:
 	beq		ldyok
 
 ldyerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "LDY:F", 10, 0
 	
@@ -350,6 +366,7 @@ ldyok:
 	beq		taxok
 
 taxerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "TAX:F", 10, 0
 	
@@ -381,6 +398,7 @@ taxok:
 	beq		tayok
 
 tayerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "TAY:F", 10, 0
 	
@@ -395,6 +413,7 @@ tayok:
 	tsx
 	cpx		#15
 	beq		txsok
+    inc fail_count
 	jsr		putmsg
 	.asc "TSX:F", 10, 0
 	
@@ -410,6 +429,7 @@ txaok:
 	tay
 	cpy		#87
 	beq		tayok1
+    inc fail_count
 	jsr		putmsg
 	.asc "TAY:F", 10, 0
 	
@@ -420,6 +440,7 @@ tayok1:
 	cmp		#87
 	beq		tyaok
 tyaerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "TYA:F", 10, 0
 	
@@ -468,6 +489,7 @@ inxl2:
 	beq		inxok
 	
 inxerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "INX:F", 10, 0
 	
@@ -520,6 +542,7 @@ dexl2:
 	beq		dexok
 	
 dexerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "DEX:F", 10, 0
 	
@@ -565,6 +588,7 @@ inyl2:
 	beq		inyok
 	
 inyerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "INY:F", 10, 0
 	
@@ -618,6 +642,7 @@ deyl2:
 	beq		deyok
 	
 deyerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "DEY:F", 10, 0
 	
@@ -652,6 +677,7 @@ deyok:
 	bcs		staok
 
 staerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "STA:F", 10, 0
 	
@@ -678,6 +704,7 @@ staok:
 	bcs		stxok
 
 stxerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "STX:F", 10, 0
 	
@@ -704,6 +731,7 @@ stxok:
 	bcs		styok
 
 styerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "STY:F", 10, 0
 	
@@ -724,6 +752,7 @@ styok:
 	eor		#$55
 	cmp		#$ff
 	beq		imm_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "IMM:F", 10, 0
 	
@@ -733,6 +762,7 @@ imm_ok:
 	clc
 	adc		#1
 	beq		abs_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "ABS:F", 10, 0
 	
@@ -741,6 +771,7 @@ abs_ok:
 	lda		n55,x
 	cmp		#12
 	beq		absx_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "ABS,X:F", 10, 0
 	
@@ -749,6 +780,7 @@ absx_ok:
 	lda		n55,y
 	cmp		#34
 	beq		absy_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "ABS,Y:F", 10, 0
 	
@@ -759,6 +791,7 @@ absy_ok:
 	ldx		data_ptr
 	cpx		#33
 	beq		zp_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "ZP:F", 10, 0
 	
@@ -768,6 +801,7 @@ zp_ok:
 	lda		data_ptr,x
 	cmp		#44
 	beq		zpx_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "ZP,X:F", 10, 0
 	
@@ -782,6 +816,7 @@ zpx_ok:
 	lda		(data_ptr-5,x)
 	cmp		#$12
 	beq		zpix_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "(ZP,X):F", 10, 0
 	
@@ -794,6 +829,7 @@ zpix_ok:
 	lda		(data_ptr),y
 	cmp		#$12
 	beq		zpiy_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "(ZP),y:F", 10, 0
 	
@@ -802,6 +838,7 @@ zpiy_ok:
 	ldx		data_ptr-15,y
 	cpx		#$fe
 	beq		zpy_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "ZP,Y:F", 10, 0
 	
@@ -813,6 +850,7 @@ zpy_ok:
 	iny
 	cpy		#0	
 	beq		iny_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "INY:F", 10, 0
 	
@@ -821,6 +859,7 @@ iny_ok:
 	dey
 	cpy		#9
 	beq		dey_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "DEY:F", 10, 0
 	
@@ -829,6 +868,7 @@ dey_ok:
 	inx
 	cpx		#$81
 	beq		inx_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "INX:F", 10, 0
 	
@@ -837,6 +877,7 @@ inx_ok:
 	dex
 	cpx		#$ff
 	beq		dex_ok
+    inc fail_count
 	jsr		putmsg
 	.asc "DEX:F", 10, 0
 	
@@ -866,6 +907,7 @@ dex_ok:
 	beq		aslaok
 
 aslaerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "ASLA:F", 10, 0
 	
@@ -887,6 +929,7 @@ aslaok:
 	bcc		lsraok
 
 lsraerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "LSRA:F", 10, 0
 	
@@ -923,6 +966,7 @@ lsraok:
 	beq		rolaok
 
 rolaerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "ROLA:F", 10, 0
 	
@@ -961,6 +1005,7 @@ rolaok:
 	bne		roraerr
 
 roraerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "RORA:F", 10, 0
 	
@@ -989,13 +1034,21 @@ roraok:
 	bcc		plaok
 
 plaerr:
+    inc fail_count
 	jsr		putmsg
 	.asc "PLA:F", 10, 0
 	
 
 plaok:
+    lda fail_count
+    beq all_pass
 	jsr		putmsg
-	.asc "Done!", 10, 0
+	.asc "Some tests failed :(", 10, 0
+    brk;
+
+all_pass:
+	jsr		putmsg
+	.asc "All Tests Pass!", 10, 0
     brk;
 	; jmp		($FFFC)		; go back to reset
 
