@@ -1,13 +1,36 @@
-parameter LOG_FILE = "debug.log";
+parameter LOG_FILE = "build/debug.log";
+parameter LABEL_FILE = "build/labels.txt";
 
-int log_fd;
+int log_fd, label_fd, Nlabels, i;
 int inst_cnt, cyc_cnt;
+string labels[], _lbl, rline;
+int label_addrs[], _lbl_addr;
+int scanRet;
+int j1,j2;
 initial begin
     log_fd = $fopen(LOG_FILE, "w");
     cyc_cnt = 0;
     inst_cnt = 0;
+    
+    label_fd = $fopen(LABEL_FILE,"r");
+    Nlabels=0;
+    scanRet=1;
+    while (!$feof(label_fd)) begin
+        scanRet = $fscanf(label_fd, "%s %h, %d, %h", _lbl, _lbl_addr,j1,j2);
+        Nlabels++;
+    end
+    $fclose(label_fd);
+    label_fd = $fopen(LABEL_FILE,"r");
+    label_addrs = new[Nlabels];
+    labels = new[Nlabels];
+    scanRet = 0;
+    for (i=0; i<Nlabels; i++) begin
+        scanRet = $fscanf(label_fd, "%s %h, %d, %h", _lbl, _lbl_addr,j1,j2);
+        labels[i] = _lbl.substr(0,_lbl.len()-2); //trim comma
+        label_addrs[i] = _lbl_addr;
+    end
+    $fclose(label_fd);
 end
-
 
 always @(negedge i_clk ) begin
 
@@ -16,7 +39,7 @@ always @(negedge i_clk ) begin
 
     if (state==T1_DECODE) begin
         inst_cnt = inst_cnt+1;
-        $fwrite( log_fd, "%s %h PC:0x%h (inst:%0d cyc:%0d)\n", op_name(opcode), opcode, pc, inst_cnt, cyc_cnt);
+        $fwrite( log_fd, "%s %h PC:0x%h = %s (inst:%0d cyc:%0d)\n", op_name(opcode), opcode, pc, format_addr(pc), inst_cnt, cyc_cnt);
     end
     $fwrite( log_fd, "\t%s:\taddr:%s,%s=%h db:%h(%s) sb:%h(%s) a=%h x=%h y=%h s=%h p=%h\n" , state_name(state), addr_name(adl_src), addr_name(adh_src), addr, db,db_name(db_src), sb,reg_name(sb_src),  a, x, y, s, p);
     if (db_write) begin
@@ -26,30 +49,50 @@ always @(negedge i_clk ) begin
             $fwrite( log_fd, "\tWRITE: 0x%h to 0x%h\n", dor, addr);
     end
     if (exec) begin
-
             alu_OP = op_alu_OP;
             ai_inv = op_ai_inv;
             bi_inv = op_bi_inv;
             ci = op_carry_in == CARRY_C ? p[0] : op_carry_in[0];
             alu_mask = op_alu_mask;
-            set_mask = op_set_mask;
-            clear_mask = op_clear_mask;
-
             sb_src = op_sb_src;
             db_src = op_db_src;
 
         $fwrite( log_fd, "\tEXEC: %s\tai:%h bi:%h ci:%h out:%h flags:%8b\n", alu_name(alu_OP), ai, bi, ci, alu_out, alu_status);
     end
     if (jump) begin
-        $fwrite( log_fd, "\tJUMPING to 0x%h\n", addr);
+        _lbl = "nolabel";
+        for (i=0; i<Nlabels; i++) begin
+            if (label_addrs[i]==addr) begin
+                _lbl = labels[i];
+            end
+        end        
+        $fwrite( log_fd, "\tJUMPING to %s\n", format_addr(addr));
     end
-
 end    
 
 final begin
     $fclose(log_fd);
 end
 
+function string format_addr(input int addr);
+    int base;
+    string base_name;
+    string name;
+    base = 0;
+    base_name = "0x0000";
+    for (i=0; i<Nlabels; i++) begin
+        if (addr >= label_addrs[i] && label_addrs[i]>base) begin
+            base = label_addrs[i];
+            base_name = labels[i];
+        end
+    end
+    // if (addr==base)
+    //     $sformat(name, "%s", base_name);
+    // else
+        $sformat(name, "%s+0x%0h", base_name, addr-base);
+
+    format_addr = name;
+endfunction
 
 function string state_name(input int x);
     case(x)

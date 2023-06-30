@@ -9,7 +9,7 @@ module decode (
                     idx_XY, // index on X vs Y
 
     // memory access pattern
-    output logic read, store,
+    output logic mem_read, mem_write, reg_write,
 
     // bus ctl
     output logic [2:0] sb_src,   // sb bus source (registers)
@@ -17,6 +17,7 @@ module decode (
     output logic [2:0] dst,  // location to store result
 
     // alu ctl
+    output logic alu_en,
     output logic [2:0] alu_OP,
     output logic ai_inv,
     output logic bi_inv,
@@ -29,7 +30,7 @@ module decode (
     logic [10:0] bus_ctl;         // {db_src, sb_src, res_src, res_dst}
     logic [13:0] alu_ctl;         // {alu_OP, ai_src, bi_src, carry_in, mask}
     assign {db_src, sb_src, dst} = bus_ctl;
-    assign {alu_OP, ai_inv, bi_inv, carry_in, alu_mask} = alu_ctl;
+    assign {alu_en, alu_OP, ai_inv, bi_inv, carry_in, alu_mask} = alu_ctl;
 
     // decode initial state
     // https://www.masswerk.at/6502/6502_instruction_set.html#layout
@@ -115,19 +116,18 @@ module decode (
         end
     end
 
-    // decode bus routing
+    // decode opcode
     // https://www.masswerk.at/6502/6502_instruction_set.html#layout
-
-
     always @(posedge i_clk ) begin
         if(i_rst) begin
             bus_ctl <= {DB_Z, REG_Z, REG_Z};
+            alu_ctl <= {ALU_ADD, 2'b00, CARRY_Z, FL_NONE};
         end else begin
-            casez(opcode)
 
+            // decode bus routing
+            casez(opcode)
                 //op_c==0
                 8'b0??_000_00:  bus_ctl <= {DB_Z, REG_Z, REG_Z};       // control flow and special ops
-
                 8'b000_010_00:  bus_ctl <= {DB_P, REG_Z, REG_DATA};     // PHP 
                 8'b010_010_00:  bus_ctl <= {DB_Z, REG_A, REG_DATA};     // PHA
                 8'b001_010_00:  bus_ctl <= {DB_DATA, REG_Z, REG_P};     // PLP
@@ -135,12 +135,9 @@ module decode (
                 8'b101_010_00:  bus_ctl <= {DB_Z, REG_A, REG_Y};        // TAY
                 8'b111_010_00:  bus_ctl <= {DB_Z, REG_X, REG_X};       // INX
                 8'b1?0_010_00:  bus_ctl <= {DB_Z, REG_Y, REG_Y};       // DEY, INY
-
                 8'b001_0?1_00:  bus_ctl <= {DB_DATA, REG_A, REG_Z};    // BIT
-
                 8'b100_110_00:  bus_ctl <= {DB_Z, REG_Y, REG_A};        // TYA
-                8'b???_1?0_00:  bus_ctl <= {DB_DATA, REG_Z, REG_Z};    // branch & mask ops (no bus)
-
+                8'b???_1?0_00:  bus_ctl <= {DB_Z, REG_Z, REG_Z};    // branch & mask ops (no bus)
                 8'b100_??1_00:  bus_ctl <= {DB_Z, REG_Y, REG_DATA};  // STY
                 8'b101_???_00:  bus_ctl <= {DB_DATA, REG_Z, REG_Y};     // LDY
                 8'b110_0??_00:  bus_ctl <= {DB_DATA, REG_Y, REG_Z};       // CPY
@@ -167,60 +164,46 @@ module decode (
 
                 default:        bus_ctl <= {DB_Z, REG_Z, REG_Z};
             endcase
-        end
-    end
 
-    // decode alu
-    always @(posedge i_clk ) begin
-        if(i_rst) begin
-            alu_ctl <= {ALU_ADD, 2'b00, CARRY_Z, FL_NONE};
-        end else begin
+            // decode alu
             casez(opcode)
 
-                //NOP
-                8'b111_010_10:  alu_ctl <= {ALU_NOP, 2'b00, CARRY_Z, FL_NONE};                   // NOP
+                // explicit NOP
+                8'b111_010_10:  alu_ctl <= {1'b0, ALU_NOP, 2'b00, CARRY_Z, FL_NONE};                   // NOP
 
                 // bit, inc, dec
-                8'b001_0?1_00:  alu_ctl <= {ALU_BIT, 2'b00, CARRY_Z, FL_N | FL_V | FL_Z};        // BIT
-                8'b100_010_00:  alu_ctl <= {ALU_ADD, 2'b01, CARRY_Z, FL_N | FL_Z};               // DEY
-                8'b11?_010_00:  alu_ctl <= {ALU_ADD, 2'b00, CARRY_P, FL_N | FL_Z};               // INY, INX
-                8'b110_???_10:  alu_ctl <= {ALU_ADD, 2'b10, CARRY_Z, FL_N | FL_Z};               // DEC
-                8'b111_???_10:  alu_ctl <= {ALU_ADD, 2'b00, CARRY_P, FL_N | FL_Z};               // INC
+                8'b001_0?1_00:  alu_ctl <= {1'b1, ALU_BIT, 2'b00, CARRY_Z, FL_N | FL_V | FL_Z};        // BIT
+                8'b100_010_00:  alu_ctl <= {1'b1, ALU_ADD, 2'b01, CARRY_Z, FL_N | FL_Z};               // DEY
+                8'b11?_010_00:  alu_ctl <= {1'b1, ALU_ADD, 2'b00, CARRY_P, FL_N | FL_Z};               // INY, INX
+                8'b110_???_10:  alu_ctl <= {1'b1, ALU_ADD, 2'b10, CARRY_Z, FL_N | FL_Z};               // DEC
+                8'b111_???_10:  alu_ctl <= {1'b1, ALU_ADD, 2'b00, CARRY_P, FL_N | FL_Z};               // INC
 
                 // compare
                 8'b11?_0??_00,
-                8'b110_???_?1:  alu_ctl <= {ALU_ADD, 2'b01, CARRY_P, FL_N | FL_Z | FL_C};        // CMP, CPX, CPY
+                8'b110_???_?1:  alu_ctl <= {1'b1, ALU_ADD, 2'b01, CARRY_P, FL_N | FL_Z | FL_C};        // CMP, CPX, CPY
 
                 // alu artihmetic
-                8'b000_???_?1:  alu_ctl <= {ALU_OR, 2'b00, CARRY_Z, FL_N | FL_Z};                // ORA
-                8'b001_???_?1:  alu_ctl <= {ALU_AND, 2'b00, CARRY_Z, FL_N | FL_Z};               // AND
-                8'b010_???_?1:  alu_ctl <= {ALU_XOR, 2'b00, CARRY_Z, FL_N | FL_Z};               // EOR
-                8'b011_???_?1:  alu_ctl <= {ALU_ADD, 2'b00, CARRY_C, FL_N | FL_V | FL_Z | FL_C}; // ADC
-                8'b111_???_?1:  alu_ctl <= {ALU_ADD, 2'b01, CARRY_C, FL_N | FL_V | FL_Z | FL_C}; // SBC
+                8'b000_???_?1:  alu_ctl <= {1'b1, ALU_OR, 2'b00, CARRY_Z, FL_N | FL_Z};                // ORA
+                8'b001_???_?1:  alu_ctl <= {1'b1, ALU_AND, 2'b00, CARRY_Z, FL_N | FL_Z};               // AND
+                8'b010_???_?1:  alu_ctl <= {1'b1, ALU_XOR, 2'b00, CARRY_Z, FL_N | FL_Z};               // EOR
+                8'b011_???_?1:  alu_ctl <= {1'b1, ALU_ADD, 2'b00, CARRY_C, FL_N | FL_V | FL_Z | FL_C}; // ADC
+                8'b111_???_?1:  alu_ctl <= {1'b1, ALU_ADD, 2'b01, CARRY_C, FL_N | FL_V | FL_Z | FL_C}; // SBC
 
                 //shift/rot
-                8'b000_???_10:  alu_ctl <= {ALU_SL, 2'b00, CARRY_Z, FL_N | FL_Z | FL_C };        // ASL
-                8'b001_???_10:  alu_ctl <= {ALU_SL, 2'b00, CARRY_C, FL_N | FL_Z | FL_C };        // ROL
-                8'b010_???_10:  alu_ctl <= {ALU_SR, 2'b00, CARRY_Z, FL_N | FL_Z | FL_C };        // LSR
-                8'b110_???_10:  alu_ctl <= {ALU_SR, 2'b00, CARRY_C, FL_N | FL_Z | FL_C };        // ROR
+                8'b000_???_10:  alu_ctl <= {1'b1, ALU_SL, 2'b00, CARRY_Z, FL_N | FL_Z | FL_C };        // ASL
+                8'b001_???_10:  alu_ctl <= {1'b1, ALU_SL, 2'b00, CARRY_C, FL_N | FL_Z | FL_C };        // ROL
+                8'b010_???_10:  alu_ctl <= {1'b1, ALU_SR, 2'b00, CARRY_Z, FL_N | FL_Z | FL_C };        // LSR
+                8'b110_???_10:  alu_ctl <= {1'b1, ALU_SR, 2'b00, CARRY_C, FL_N | FL_Z | FL_C };        // ROR
 
-
-                // transfers, loads, pulls (pass through ALU to set the status flags)
-                8'b100_110_00,  //TAY
-                8'b101_010_00,  //TAY
-                8'b10?_?10_10,  //TAX,TXA,TXS,TSX
-                8'b101_000_?0,  //LD
-                8'b101_??1_?0,  //LD
-                8'b101_???_01,  //LD
-                8'b0?1_010_00:  alu_ctl <= {ALU_OR, 2'b00, CARRY_Z, FL_N | FL_Z}; //PLP, PLA
-
-                default:        alu_ctl <= {ALU_NOP, 2'b00, CARRY_Z, FL_NONE};
+                // other alu nops (push/pull/load/store/control flow/etc)
+                default:        alu_ctl <= {1'b0, ALU_NOP, 2'b00, CARRY_Z, FL_NONE};
             endcase
         end
     end
 
-    assign read = db_src == DB_DATA;
-    assign store = dst == REG_DATA;
+    assign mem_read = db_src == DB_DATA;
+    assign mem_write = dst == REG_DATA;
+    assign reg_write = !mem_write && (dst != REG_Z);
 
 
 endmodule

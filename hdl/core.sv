@@ -89,9 +89,7 @@ module core #(
     end
     assign addr = {adh, adl};
 
-
     always @(posedge i_clk ) begin
-        
         if (i_rst) begin
             a <= 0;
             x <= 0;
@@ -114,7 +112,13 @@ module core #(
             a <= sb_a ? sb : a;
             x <= sb_x ? sb : x;
             y <= sb_y ? sb : y;
-            p <= db_p ? (db & ~FL_BU) : ~clear_mask & (set_mask | (alu_mask & alu_status) | (~alu_mask & p));            
+            p <= db_p ? (db & ~FL_BU) : ~clear_mask & (set_mask | (alu_mask & alu_status) | (~alu_mask & p));
+
+            if (sb_a || sb_x || sb_y || exec ) begin
+                p[1] <= ~|sb;   //set Z flag
+                p[7] <= sb[7];  //set N flag
+            end
+
         end
     end
 
@@ -206,13 +210,13 @@ module core #(
 
     logic single_byte;
     logic idx_XY;           // select index X(1) or Y(0) for abs,X/Y and zpg,X/Y ops
-    logic rd, st, rd_op, st_op, rmw_op;
-
+    logic mem_read, mem_write, reg_write;
+    logic alu_en;
     logic [2:0] op_alu_OP;
     logic op_ai_inv;   // alu ai src
     logic op_bi_inv;   // alu bi src
     logic [1:0] op_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
-    logic [7:0] op_alu_mask, op_set_mask, op_clear_mask;  // masks to update status
+    logic [7:0] op_alu_mask;  // masks to update status
 
     decode u_decode(
         .i_clk         (i_clk         ),
@@ -222,23 +226,25 @@ module core #(
         .initial_state (initial_state ),
         .single_byte   (single_byte   ),
         .idx_XY        (idx_XY   ),
-        .read          (rd          ),
-        .store         (st         ),
+        .mem_read       (mem_read),
+        .mem_write      (mem_write),
+        .reg_write      (reg_write),
         .sb_src        (op_sb_src        ),
         .db_src        (op_db_src        ),
         .dst       (op_dst       ),
+        .alu_en        (alu_en        ),
         .alu_OP        (op_alu_OP        ),
         .ai_inv        (op_ai_inv        ),
         .bi_inv        (op_bi_inv        ),
         .carry_in      (op_carry_in      ),
         .alu_mask      (op_alu_mask      ),
-        .set_mask      (op_set_mask      ),
-        .clear_mask    (op_clear_mask    )
+        .set_mask      (set_mask      ),
+        .clear_mask    (clear_mask    )
     );
-
-    assign rd_op = rd & !st;
-    assign st_op = !rd & st;
-    assign rmw_op = rd & st;
+    logic store, load, rmw;
+    assign store = !alu_en && mem_write;       //ALU NOP, save to mem (includes push)
+    assign load = !alu_en && reg_write;        //ALU NOP, save to reg (includes pull, transfer)
+    assign rmw = mem_read && mem_write;        //ALU OP, read/save to/from mem
 
     //state machine
     logic jump_ind;
@@ -250,22 +256,22 @@ module core #(
         else case(state)
             T0_FETCH:       state <= T1_DECODE;
             T1_DECODE:       state <= initial_state;
-            T2_ZPG:   state <= rmw_op ? T_RMW_EXEC : T0_FETCH;
+            T2_ZPG:   state <= rmw ? T_RMW_EXEC : T0_FETCH;
             T2_ZPGXY: state <= T3_ZPGXY;
-            T3_ZPGXY: state <= rmw_op ? T_RMW_EXEC : T0_FETCH;
+            T3_ZPGXY: state <= rmw ? T_RMW_EXEC : T0_FETCH;
             T2_ABS:   state <= T3_ABS;
-            T3_ABS:   state <= rmw_op ? T_RMW_EXEC : T0_FETCH;
+            T3_ABS:   state <= rmw ? T_RMW_EXEC : T0_FETCH;
             T2_ABSXY: state <= T3_ABSXY;
-            T3_ABSXY: state <= !skip ? T4_ABSXY : rmw_op ? T_RMW_EXEC : T0_FETCH;
-            T4_ABSXY: state <= rmw_op ? T_RMW_EXEC : T0_FETCH;
+            T3_ABSXY: state <= !skip ? T4_ABSXY : rmw ? T_RMW_EXEC : T0_FETCH;
+            T4_ABSXY: state <= rmw ? T_RMW_EXEC : T0_FETCH;
             T2_XIND:  state <= T3_XIND;
             T3_XIND:  state <= T4_XIND;
             T4_XIND:  state <= T5_XIND;
-            T5_XIND:  state <= rmw_op ? T_RMW_EXEC : T0_FETCH;
+            T5_XIND:  state <= rmw ? T_RMW_EXEC : T0_FETCH;
             T2_INDY:  state <= T3_INDY;
             T3_INDY:  state <= T4_INDY;
-            T4_INDY:  state <= !skip ? T5_INDY : rmw_op ? T_RMW_EXEC : T0_FETCH;
-            T5_INDY:  state <= rmw_op ? T_RMW_EXEC : T0_FETCH;
+            T4_INDY:  state <= !skip ? T5_INDY : rmw ? T_RMW_EXEC : T0_FETCH;
+            T5_INDY:  state <= rmw ? T_RMW_EXEC : T0_FETCH;
             T_RMW_EXEC:  state <= T_RMW_STORE;
             T_RMW_STORE: state <= T0_FETCH;
 
@@ -350,25 +356,24 @@ module core #(
         bi_inv = 0;
         ci = 0;
         alu_mask = '0;
-        set_mask = '0;
-        clear_mask = '0;
 
         case(state)
             T0_FETCH:   begin
                         sync = 1;               // signal new instruction
                         inc_pc = 1;             // increment pc
-                        exec = rd_op;           // on read, execute instruction
+                        exec = alu_en && !rmw;  // execute alu ops (except rmw)
+                        save = load;            // save non-alu data to reg (includes loads, transfers, pulls) 
                         end
 
             T1_DECODE:  begin
-                        inc_pc = !single_byte;        // increment pc unless this is single byte opcode
-                        save = rd_op;           // on read, save result
+                        inc_pc = !single_byte;  // increment pc unless this is single byte opcode
+                        save = alu_en && !rmw;  // save alu result
                         end
 
             T2_ZPG:     begin
                         adl_src = ADDR_DATA;      // fetch {0,BAL}
                         adh_src = ADDR_Z;
-                        save = st_op;           // on store, save result
+                        save = store;           // on store, save result
                         end
 
             T2_ZPGXY:   begin
@@ -379,7 +384,7 @@ module core #(
             T3_ZPGXY:   begin
                         adl_src = ADDR_ADD;     // fetch {0,LL}
                         adh_src = ADDR_Z;
-                        save = st_op;           // on store, save result
+                        save = store;           // on store, save result
                         end
 
             T2_JUMP,
@@ -391,7 +396,7 @@ module core #(
             T3_ABS:     begin
                         adl_src = ADDR_ADD;      // fetch {BAH,BAL}
                         adh_src = ADDR_DATA;
-                        save = st_op;           // on store, save result
+                        save = store;           // on store, save result
                         end
 
             T2_ABSXY:   begin
@@ -410,7 +415,7 @@ module core #(
                             ci = 1;
                         end else begin
                             skip = 1;
-                            save = st_op;
+                            save = store;
                         end
                         end
 
@@ -418,7 +423,7 @@ module core #(
             T5_INDY:    begin
                         adl_src = ADDR_HOLD;      // fetch {HH,LL} with incremented HH
                         adh_src = ADDR_ADD;
-                        save = st_op;
+                        save = store;
                         end
 
             T2_XIND:    begin
@@ -441,7 +446,7 @@ module core #(
             T5_XIND:    begin
                         adl_src = ADDR_ADD;      // fetch {BAH,LL}, a carry will wrap LL without incrementing HH
                         adh_src = ADDR_DATA;
-                        save = st_op;
+                        save = store;
                         end
 
             T2_INDY:    begin
@@ -525,7 +530,7 @@ module core #(
                         end
 
             T2_POP:     pop = 1;
-            T3_POP:     begin end //data is fetched...
+            T3_POP:     begin end //fetch data...
 
             T2_BRK:     begin
                         //push pch
@@ -596,7 +601,6 @@ module core #(
             default:    jam = 1;
         endcase
 
-
         if (push || rpop) begin
             adl_src = ADDR_STACK;
             adh_src = ADDR_STACK;
@@ -609,16 +613,13 @@ module core #(
             bi_inv = op_bi_inv;
             ci = op_carry_in == CARRY_C ? p[0] : op_carry_in[0];
             alu_mask = op_alu_mask;
-            set_mask = op_set_mask;
-            clear_mask = op_clear_mask;
-
             sb_src = op_sb_src;
             db_src = op_db_src;
-
         end
 
+        //save result to register or memory
         if (save) begin
-            sb_src = op_alu_OP == ALU_NOP ? op_sb_src : REG_ADD;
+            sb_src = alu_en ? REG_ADD : op_sb_src;
             db_src = db_src == DB_P ? DB_P : DB_SB;
             case (op_dst)
                 REG_DATA:   db_write = 1;

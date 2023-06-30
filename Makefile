@@ -33,7 +33,7 @@ view: $(VIEWTARGET)
 # compute 6502 obj from asm
 $(BUILDDIR)/%.$(ROMEXT): $(ASMDIR)/%.$(ASMEXT)
 	@mkdir -p $(@D)
-	xa -o $@ $^ 
+	xa -o $@ $^ -l $(BUILDDIR)/labels.txt
 
 # compute verilog sim
 $(BUILDDIR)/%.$(SIMEXT): $(BUILDDIR)/%.$(ROMEXT) $(HDLTESTBENCH) $(HDLSOURCES)
