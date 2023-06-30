@@ -32,6 +32,14 @@ initial begin
     $fclose(label_fd);
 end
 
+logic upa,upx,upy,ups;
+always @(posedge i_clk ) begin
+    upa <= sb_a;
+    upx <= sb_x;
+    upy <= sb_y;
+    ups <= push||pop;
+end
+
 always @(negedge i_clk ) begin
 
     if (i_rst) cyc_cnt = 0;
@@ -41,10 +49,21 @@ always @(negedge i_clk ) begin
         inst_cnt = inst_cnt+1;
         $fwrite( log_fd, "%s %h PC:0x%h = %s (inst:%0d cyc:%0d)\n", op_name(opcode), opcode, pc, format_addr(pc), inst_cnt, cyc_cnt);
     end
-    $fwrite( log_fd, "\t%s:\taddr:%s,%s=%h db:%h(%s) sb:%h(%s) a=%h x=%h y=%h s=%h p=%h\n" , state_name(state), addr_name(adl_src), addr_name(adh_src), addr, db,db_name(db_src), sb,reg_name(sb_src),  a, x, y, s, p);
+
+    $fwrite( log_fd, "\t%s:\taddr:%s,%s=%h db:%h(%s) sb:%h(%s) %sa=%h %sx=%h %sy=%h %ss=%h p=%h\n" ,
+                                    state_name(state),
+                                    addr_name(adh_src), addr_name(adl_src), addr,
+                                    db,db_name(db_src), sb,reg_name(sb_src), 
+                                    upa?"*":"",a,
+                                    upx?"*":"",x,
+                                    upy?"*":"",y,
+                                    ups?"*":"",s,
+                                    p);
     if (db_write) begin
         if (addr==16'h0F00)
             $fwrite( log_fd, "\tUART WRITE: '%c'\n", dor);
+        else if (push)
+            $fwrite( log_fd, "\tPUSH: 0x%h to 0x%h\n", dor, addr);
         else
             $fwrite( log_fd, "\tWRITE: 0x%h to 0x%h\n", dor, addr);
     end

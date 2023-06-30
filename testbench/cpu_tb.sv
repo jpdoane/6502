@@ -52,7 +52,7 @@ module cpu_tb();
 
     // limit max sim duration
     initial begin
-        #50000
+        #100000
         $display( "Taking too long - I give up...");
         $finish;
     end

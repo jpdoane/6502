@@ -967,12 +967,6 @@ roraerr:
 	
 roraok:
 
-	jsr		putmsg
-	.asc "SH", 10, 0
-	
-
-
-
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 ;- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
@@ -986,8 +980,11 @@ roraok:
 	lda		#00
 	clc
 	pla					; doesn't affect flags
-	bmi		plaerr
-	bne		plaerr
+;	bmi		plaerr      ; JPD this is wrong, pla should set NZ flags
+;	bne		plaerr
+	bpl		plaerr      ; 
+	beq		plaerr      ; 
+
 	bcs		plaerr
 	bcc		plaok
 
@@ -997,7 +994,10 @@ plaerr:
 	
 
 plaok:
-	jmp		($FFFC)		; go back to reset
+	jsr		putmsg
+	.asc "Done!", 10, 0
+    brk;
+	; jmp		($FFFC)		; go back to reset
 
 ;------------------------------------------------------------------
 ; Kind of a chicken and egg problem here. If there is something

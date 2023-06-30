@@ -46,6 +46,7 @@ module core #(
     logic sb_a;
     logic sb_x;
     logic sb_y;
+    logic sb_s;
     logic db_p;
 
     // interrupt
@@ -89,6 +90,7 @@ module core #(
     end
     assign addr = {adh, adl};
 
+    logic rexec;
     always @(posedge i_clk ) begin
         if (i_rst) begin
             a <= 0;
@@ -100,10 +102,11 @@ module core #(
             pcl <= 0;
             pc <= RST_VECTOR;
             rpop <= 0;
+            rexec <= 0;
 
         end else begin
-            s <= push ? s-1 : pop ? s+1 : s;
             rpop <= pop;
+            rexec <= exec;
 
             pcl <= adl;
             pch <= adh;
@@ -112,11 +115,17 @@ module core #(
             a <= sb_a ? sb : a;
             x <= sb_x ? sb : x;
             y <= sb_y ? sb : y;
+            s <= sb_s ? sb : push ? s-1 : pop ? s+1 : s;
             p <= db_p ? (db & ~FL_BU) : ~clear_mask & (set_mask | (alu_mask & alu_status) | (~alu_mask & p));
 
-            if (sb_a || sb_x || sb_y || exec ) begin
+            if (sb_a || sb_x || sb_y || rexec) begin
                 p[1] <= ~|sb;   //set Z flag
                 p[7] <= sb[7];  //set N flag
+            end
+
+            if (exec) begin
+                p[6] <= alu_mask[6] ? aluV : p[6];
+                p[0] <= alu_mask[0] ? aluC : p[0];
             end
 
         end
@@ -242,9 +251,9 @@ module core #(
         .clear_mask    (clear_mask    )
     );
     logic store, load, rmw;
+    assign rmw = mem_read && mem_write;        //ALU OP, read/save to/from mem
     assign store = !alu_en && mem_write;       //ALU NOP, save to mem (includes push)
     assign load = !alu_en && reg_write;        //ALU NOP, save to reg (includes pull, transfer)
-    assign rmw = mem_read && mem_write;        //ALU OP, read/save to/from mem
 
     //state machine
     logic jump_ind;
@@ -347,6 +356,7 @@ module core #(
         sb_a=0;         // save sb -> reg A
         sb_x=0;         // save sb -> reg X
         sb_y=0;         // save sb -> reg Y
+        sb_s=0;         // save sb -> reg s
         db_p=0;         // save db -> p
         adl_bi=0;
 
@@ -427,24 +437,29 @@ module core #(
                         end
 
             T2_XIND:    begin
-                        adl_src = ADDR_DATA;      // fetch {0,BAL}
+                        // base address (this data is discarded)
+                        adl_src = ADDR_DATA;
                         adh_src = ADDR_Z;
                         end                
             T3_XIND:    begin
-                        adl_src = ADDR_ADD;     // fetch LL = {0,BAL+X}
+                        // fetch low address from (base address + index)
+                        adl_src = ADDR_ADD;
                         adh_src = ADDR_Z;
 
-                        // LL+1
+                        // increment address
                         sb_src = REG_ADD;
                         ci = 1;
                         end
             T4_XIND:    begin
-                        holdalu = 1;    // hold LL in add
-                        adl_src = ADDR_ADD;     // fetch {0,LL}
+                        // fetch high address from (base address + index + 1)
+                        adl_src = ADDR_ADD;
                         adh_src = ADDR_Z;
+                        // hold low address in add
+                        sb_src = REG_Z;
                         end
             T5_XIND:    begin
-                        adl_src = ADDR_ADD;      // fetch {BAH,LL}, a carry will wrap LL without incrementing HH
+                        // fetch data from {low,high}
+                        adl_src = ADDR_ADD;
                         adh_src = ADDR_DATA;
                         save = store;
                         end
@@ -619,15 +634,16 @@ module core #(
 
         //save result to register or memory
         if (save) begin
-            sb_src = alu_en ? REG_ADD : op_sb_src;
-            db_src = db_src == DB_P ? DB_P : DB_SB;
             case (op_dst)
                 REG_DATA:   db_write = 1;
                 REG_A:      sb_a=1;
                 REG_X:      sb_x=1;
                 REG_Y:      sb_y=1;
+                REG_S:      sb_s=1;
                 REG_P:      db_p=1;
             endcase
+            sb_src = alu_en ? REG_ADD : op_sb_src;
+            db_src = (db_write && (op_db_src != DB_P)) ? DB_SB : op_db_src;
         end
 
     end
