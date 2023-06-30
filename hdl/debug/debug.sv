@@ -71,12 +71,11 @@ always @(negedge i_clk ) begin
             alu_OP = op_alu_OP;
             ai_inv = op_ai_inv;
             bi_inv = op_bi_inv;
-            ci = op_carry_in == CARRY_C ? p[0] : op_carry_in[0];
-            alu_mask = op_alu_mask;
+            ci = (op_Pci && p[0]) || op_ci;
             sb_src = op_sb_src;
             db_src = op_db_src;
 
-        $fwrite( log_fd, "\tEXEC: %s\tai:%h bi:%h ci:%h out:%h flags:%8b\n", alu_name(alu_OP), ai, bi, ci, alu_out, alu_status);
+        $fwrite( log_fd, "\tEXEC: %s\tai:%h bi:%h ci:%h out:%h\n", alu_name(alu_OP), ai, bi, ci, alu_out);
     end
     if (jump) begin
         _lbl = "nolabel";

@@ -12,25 +12,30 @@ module decode (
     output logic mem_read, mem_write, reg_write,
 
     // bus ctl
-    output logic [2:0] sb_src,   // sb bus source (registers)
-    output logic [2:0] db_src,   // db bus source (data/addr)
-    output logic [2:0] dst,  // location to store result
+    output logic [2:0] sb_src,  // sb bus source (registers)
+    output logic [2:0] db_src,  // db bus source (data/addr)
+    output logic [2:0] dst,     // location to store result
 
     // alu ctl
-    output logic alu_en,
-    output logic [2:0] alu_OP,
-    output logic ai_inv,
-    output logic bi_inv,
-    output logic [1:0] carry_in, // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
+    output logic alu_en,        // enable alu for this opcode
+    output logic [2:0] alu_OP,  // alu operation
+    output logic ai_inv, bi_inv,// invert ai or bi inputs
+    output logic Pci, ci,       // carry in = ci || (Pci & p[0])
+    output logic setV, setC,    // update p C or V bits with alu result
 
-    // status ctl
-    output logic [7:0] alu_mask, set_mask, clear_mask
+    output logic [7:0] set_mask, clear_mask // set or clear flags
     );
 
-    logic [10:0] bus_ctl;         // {db_src, sb_src, res_src, res_dst}
-    logic [15:0] alu_ctl;         // {alu_OP, ai_src, bi_src, carry_in, mask}
+    logic [10:0] bus_ctl;
     assign {db_src, sb_src, dst} = bus_ctl;
-    assign {alu_en, alu_OP, ai_inv, bi_inv, carry_in, alu_mask} = alu_ctl;
+    assign mem_read = db_src == DB_DATA;
+    assign mem_write = dst == REG_DATA;
+    assign reg_write = !mem_write && (dst != REG_Z);
+
+    logic [8:0] alu_ctl;
+    assign {alu_OP, Pci, ci, ai_inv, bi_inv, setV, setC} = alu_ctl;
+    assign alu_en = alu_OP != ALU_NOP;
+
 
     // decode initial state
     // https://www.masswerk.at/6502/6502_instruction_set.html#layout
@@ -127,40 +132,35 @@ module decode (
             // decode bus routing
             casez(opcode)
                 //op_c==0
-                8'b0??_000_00:  bus_ctl <= {DB_Z, REG_Z, REG_Z};       // control flow and special ops
+                8'b0??_000_00:  bus_ctl <= {DB_Z, REG_Z, REG_Z};        // control flow and special ops
                 8'b000_010_00:  bus_ctl <= {DB_P, REG_Z, REG_DATA};     // PHP 
                 8'b010_010_00:  bus_ctl <= {DB_Z, REG_A, REG_DATA};     // PHA
                 8'b001_010_00:  bus_ctl <= {DB_DATA, REG_Z, REG_P};     // PLP
-                8'b011_010_00:  bus_ctl <= {DB_DATA, REG_DATA, REG_A};     // PLA
+                8'b011_010_00:  bus_ctl <= {DB_DATA, REG_DATA, REG_A};  // PLA
                 8'b101_010_00:  bus_ctl <= {DB_Z, REG_A, REG_Y};        // TAY
-                8'b111_010_00:  bus_ctl <= {DB_Z, REG_X, REG_X};       // INX
-                8'b1?0_010_00:  bus_ctl <= {DB_Z, REG_Y, REG_Y};       // DEY, INY
-                8'b001_0?1_00:  bus_ctl <= {DB_DATA, REG_A, REG_Z};    // BIT
+                8'b111_010_00:  bus_ctl <= {DB_Z, REG_X, REG_X};        // INX
+                8'b1?0_010_00:  bus_ctl <= {DB_Z, REG_Y, REG_Y};        // DEY, INY
+                8'b001_0?1_00:  bus_ctl <= {DB_DATA, REG_A, REG_Z};     // BIT
                 8'b100_110_00:  bus_ctl <= {DB_Z, REG_Y, REG_A};        // TYA
-                8'b???_1?0_00:  bus_ctl <= {DB_Z, REG_Z, REG_Z};    // branch & mask ops (no bus)
-                8'b100_??1_00:  bus_ctl <= {DB_Z, REG_Y, REG_DATA};  // STY
-                8'b101_???_00:  bus_ctl <= {DB_DATA, REG_DATA, REG_Y};     // LDY
-                8'b110_0??_00:  bus_ctl <= {DB_DATA, REG_Y, REG_Z};       // CPY
-                8'b111_0??_00:  bus_ctl <= {DB_DATA, REG_X, REG_Z};       // CPX
-
-                //op_c==1, accumulator ops
-                8'b100_???_?1:  bus_ctl <= {DB_Z, REG_A, REG_DATA};  // STA
-                8'b101_???_?1:  bus_ctl <= {DB_DATA, REG_DATA, REG_A};     // LDA
-                8'b110_???_?1:  bus_ctl <= {DB_DATA, REG_A, REG_Z};    // CMP
-                8'b???_???_?1:  bus_ctl <= {DB_DATA, REG_A, REG_A};    // other ALU
-
-                //op_c==2, mostly unary ops and LD/ST
+                8'b???_1?0_00:  bus_ctl <= {DB_Z, REG_Z, REG_Z};        // branch & mask ops (no bus)
+                8'b100_??1_00:  bus_ctl <= {DB_Z, REG_Y, REG_DATA};     // STY
+                8'b101_???_00:  bus_ctl <= {DB_DATA, REG_DATA, REG_Y};  // LDY
+                8'b110_0??_00:  bus_ctl <= {DB_DATA, REG_Y, REG_Z};     // CPY
+                8'b111_0??_00:  bus_ctl <= {DB_DATA, REG_X, REG_Z};     // CPX
+                8'b100_???_?1:  bus_ctl <= {DB_Z, REG_A, REG_DATA};     // STA
+                8'b101_???_?1:  bus_ctl <= {DB_DATA, REG_DATA, REG_A};  // LDA
+                8'b110_???_?1:  bus_ctl <= {DB_DATA, REG_A, REG_Z};     // CMP
+                8'b???_???_?1:  bus_ctl <= {DB_DATA, REG_A, REG_A};     // other ALU
                 8'b100_??1_10:  bus_ctl <= {DB_Z, REG_X, REG_DATA};     // STX
                 8'b100_010_10:  bus_ctl <= {DB_Z, REG_X, REG_A};        // TXA
                 8'b100_110_10:  bus_ctl <= {DB_Z, REG_X, REG_S};        // TXS
                 8'b101_010_10:  bus_ctl <= {DB_Z, REG_A, REG_X};        // TAX
                 8'b101_110_10:  bus_ctl <= {DB_Z, REG_S, REG_X};        // TSX
-                8'b101_???_10:  bus_ctl <= {DB_DATA, REG_DATA, REG_X};     // LDX
-                8'b110_010_10:  bus_ctl <= {DB_Z, REG_X, REG_X};       // DEX
-                8'b111_010_10:  bus_ctl <= {DB_Z, REG_Z, REG_Z};       // NOP
-
-                8'b???_010_10:  bus_ctl <= {DB_Z, REG_A, REG_A};       // accumulator op
-                8'b???_???_10:  bus_ctl <= {DB_DATA, REG_Z, REG_DATA}; // rmw
+                8'b101_???_10:  bus_ctl <= {DB_DATA, REG_DATA, REG_X};  // LDX
+                8'b110_010_10:  bus_ctl <= {DB_Z, REG_X, REG_X};        // DEX
+                8'b111_010_10:  bus_ctl <= {DB_Z, REG_Z, REG_Z};        // NOP
+                8'b???_010_10:  bus_ctl <= {DB_Z, REG_A, REG_A};        // accumulator op
+                8'b???_???_10:  bus_ctl <= {DB_DATA, REG_Z, REG_DATA};  // rmw
 
                 default:        bus_ctl <= {DB_Z, REG_Z, REG_Z};
             endcase
@@ -168,43 +168,34 @@ module decode (
             // decode alu
             casez(opcode)
 
+                // ALU control: { alu_op[2:0], P_carry_in, carry_in, ai_inv, bi_inv, set_V, set_C }
+
                 // explicit NOP
-                8'b111_010_10:  alu_ctl <= {1'b0, ALU_NOP, 2'b00, CARRY_Z, FL_NONE};                   // NOP
-
-                // bit, inc, dec
-                8'b001_0?1_00:  alu_ctl <= {1'b1, ALU_BIT, 2'b00, CARRY_Z, FL_N | FL_V | FL_Z};        // BIT
-                8'b100_010_00:  alu_ctl <= {1'b1, ALU_ADD, 2'b01, CARRY_Z, FL_N | FL_Z};               // DEY
-                8'b110_010_10:  alu_ctl <= {1'b1, ALU_ADD, 2'b01, CARRY_Z, FL_N | FL_Z};               // DEX
-                8'b11?_010_00:  alu_ctl <= {1'b1, ALU_ADD, 2'b00, CARRY_P, FL_N | FL_Z};               // INY, INX
-                8'b110_???_10:  alu_ctl <= {1'b1, ALU_ADD, 2'b10, CARRY_Z, FL_N | FL_Z};               // DEC
-                8'b111_???_10:  alu_ctl <= {1'b1, ALU_ADD, 2'b00, CARRY_P, FL_N | FL_Z};               // INC
-
-                // compare
+                8'b111_010_10:  alu_ctl <= {ALU_NOP, 6'b000000};   // NOP
+                8'b001_0?1_00:  alu_ctl <= {ALU_BIT, 6'b000010};   // BIT
+                8'b100_010_00:  alu_ctl <= {ALU_ADD, 6'b000100};   // DEY
+                8'b110_010_10:  alu_ctl <= {ALU_ADD, 6'b000100};   // DEX
+                8'b11?_010_00:  alu_ctl <= {ALU_ADD, 6'b010000};   // INY, INX
+                8'b110_???_10:  alu_ctl <= {ALU_ADD, 6'b001000};   // DEC
+                8'b111_???_10:  alu_ctl <= {ALU_ADD, 6'b010000};   // INC
                 8'b11?_0??_00,
-                8'b110_???_?1:  alu_ctl <= {1'b1, ALU_ADD, 2'b01, CARRY_P, FL_N | FL_Z | FL_C};        // CMP, CPX, CPY
+                8'b110_???_?1:  alu_ctl <= {ALU_ADD, 6'b010101};   // CMP, CPX, CPY
+                8'b000_???_?1:  alu_ctl <= {ALU_OR,  6'b000000};   // ORA
+                8'b001_???_?1:  alu_ctl <= {ALU_AND, 6'b000000};   // AND
+                8'b010_???_?1:  alu_ctl <= {ALU_XOR, 6'b000000};   // EOR
+                8'b011_???_?1:  alu_ctl <= {ALU_ADD, 6'b100011};   // ADC
+                8'b111_???_?1:  alu_ctl <= {ALU_ADD, 6'b100111};   // SBC
+                8'b000_???_10:  alu_ctl <= {ALU_SL,  6'b000001};   // ASL
+                8'b001_???_10:  alu_ctl <= {ALU_SL,  6'b100001};   // ROL
+                8'b010_???_10:  alu_ctl <= {ALU_SR,  6'b000001};   // LSR
+                8'b011_???_10:  alu_ctl <= {ALU_SR,  6'b100001};   // ROR
+                
+                // other alu nops: push/pull/load/store/control flow/etc
+                default:        alu_ctl <= {ALU_NOP, 6'b000000};   
 
-                // alu artihmetic
-                8'b000_???_?1:  alu_ctl <= {1'b1, ALU_OR, 2'b00, CARRY_Z, FL_N | FL_Z};                // ORA
-                8'b001_???_?1:  alu_ctl <= {1'b1, ALU_AND, 2'b00, CARRY_Z, FL_N | FL_Z};               // AND
-                8'b010_???_?1:  alu_ctl <= {1'b1, ALU_XOR, 2'b00, CARRY_Z, FL_N | FL_Z};               // EOR
-                8'b011_???_?1:  alu_ctl <= {1'b1, ALU_ADD, 2'b00, CARRY_C, FL_N | FL_V | FL_Z | FL_C}; // ADC
-                8'b111_???_?1:  alu_ctl <= {1'b1, ALU_ADD, 2'b01, CARRY_C, FL_N | FL_V | FL_Z | FL_C}; // SBC
-
-                //shift/rot
-                8'b000_???_10:  alu_ctl <= {1'b1, ALU_SL, 2'b00, CARRY_Z, FL_N | FL_Z | FL_C };        // ASL
-                8'b001_???_10:  alu_ctl <= {1'b1, ALU_SL, 2'b00, CARRY_C, FL_N | FL_Z | FL_C };        // ROL
-                8'b010_???_10:  alu_ctl <= {1'b1, ALU_SR, 2'b00, CARRY_Z, FL_N | FL_Z | FL_C };        // LSR
-                8'b011_???_10:  alu_ctl <= {1'b1, ALU_SR, 2'b00, CARRY_C, FL_N | FL_Z | FL_C };        // ROR
-
-                // other alu nops (push/pull/load/store/control flow/etc)
-                default:        alu_ctl <= {1'b0, ALU_NOP, 2'b00, CARRY_Z, FL_NONE};
             endcase
         end
     end
-
-    assign mem_read = db_src == DB_DATA;
-    assign mem_write = dst == REG_DATA;
-    assign reg_write = !mem_write && (dst != REG_Z);
 
 
 endmodule

@@ -17,7 +17,6 @@ module core #(
     output logic jam
     );
 
-
     `include "debug/debug.sv"
 
     // busses
@@ -25,20 +24,50 @@ module core #(
     // sb: secondry bus: read from registers (a,x,y,s, zero)
     logic [7:0] db, sb;
 
-    // registers
-    logic [15:0] pc, pcsel, nextpc;
-    logic [7:0] a, s, x, y, p;
-    logic [7:0] pcl, pch;
-    logic [7:0] ir;
-    logic [7:0] add;
+    // interrupts
+    logic nmi, irq, cli;
 
-    // control signals
+    // address registers
+    logic [7:0] adl,adh;
+    logic [7:0] pcl, pch;
+    logic [15:0] pc, pcsel, nextpc;
+
+    // registers
+    logic [7:0] ir, add;
+    logic [7:0] a, s, x, y, p;
+
+      // state
+    logic [5:0] state, initial_state;
+
+    //alu
+    logic [2:0] alu_OP;
+    logic [7:0] ai, bi;
+    logic [7:0] alu_out;
+    logic ci, aluN, aluV, aluZ, aluC;
+    logic ai_inv, bi_inv, adl_bi;
+
+    // decode 
+    logic [7:0] opcode;
+    logic single_byte;
+    logic idx_XY;           // select index X(1) or Y(0) for abs,X/Y and zpg,X/Y ops
+    logic mem_read, mem_write, reg_write;
+    logic alu_en;
+    logic [2:0] op_alu_OP;
+    logic op_ai_inv;   // alu ai src
+    logic op_bi_inv;   // alu bi src
+    logic op_Pci, op_ci;       // carry in = ci || (Pci & p[0])
+    logic [2:0] op_db_src,op_sb_src,op_dst;
+    logic setV, setC;    // update p C or V bits with alu result
+
+   // control signals
+    logic [2:0] db_src,sb_src,dst;
     logic [2:0] adl_src,adh_src;
+    logic store, load, rmw;
     logic ipc;
     logic inc_pc;
     logic push, pop, rpop;
     logic skip;
-    logic exec;
+    logic exec, rexec;
     logic save;
     logic jump;
     logic holdalu;
@@ -48,26 +77,12 @@ module core #(
     logic sb_y;
     logic sb_s;
     logic db_p;
-
-    // interrupt
-    logic nmi, irq, cli;
-    assign cli=0;
-    always @(posedge i_clk ) begin
-        if (i_rst) begin
-            nmi <= 0;
-            irq <= 0;
-        end else begin
-            nmi <= NMI ? 1 : cli ? 0 : nmi;
-            irq <= IRQ ? !p[2] : cli ? 0 : irq;
-        end
-    end
-
-    // pc logic
-    assign pcsel = jump ? addr : pc;
-    assign nextpc = (inc_pc || jump) ? pcsel + 1 : pcsel;
+    logic[7:0] set_mask, clear_mask;
+    logic ipage_up, bpage_up, bpage_down;
+    logic jump_ind;
 
 
-    logic [7:0] adl,adh;
+    //address and pc logic
     always @(*) begin
         case(adl_src)
             ADDR_PC: adl = pc[7:0];
@@ -88,54 +103,61 @@ module core #(
             default: adh = pch; //ADDR_HOLD
         endcase
     end
-    assign addr = {adh, adl};
-
-    logic rexec;
     always @(posedge i_clk ) begin
         if (i_rst) begin
-            a <= 0;
-            x <= 0;
-            y <= 0;
-            s <= 0;
-            p <= FL_I;              //disable IRQ on reset
-            pch <= 0;
-            pcl <= 0;
-            pc <= RST_VECTOR;
-            rpop <= 0;
-            rexec <= 0;
-
+            nmi <= 0;
+            irq <= 0;
         end else begin
-            rpop <= pop;
-            rexec <= exec;
-
-            pcl <= adl;
-            pch <= adh;
-            pc <= nextpc;
-
-            a <= sb_a ? sb : a;
-            x <= sb_x ? sb : x;
-            y <= sb_y ? sb : y;
-            s <= sb_s ? sb : push ? s-1 : pop ? s+1 : s;
-            p <= db_p ? (db & ~FL_BU) : ~clear_mask & (set_mask | (alu_mask & alu_status) | (~alu_mask & p));
-
-            if (sb_a || sb_x || sb_y || rexec) begin
-                p[1] <= ~|sb;   //set Z flag
-                p[7] <= sb[7];  //set N flag
-            end
-
-            if (exec) begin
-                p[6] <= alu_mask[6] ? aluV : p[6];
-                p[0] <= alu_mask[0] ? aluC : p[0];
-            end
-
+            nmi <= NMI ? 1 : cli ? 0 : nmi;
+            irq <= IRQ ? !p[2] : cli ? 0 : irq;
         end
     end
+    assign cli=0;
+    assign addr = {adh, adl};
+    assign pcsel = jump ? addr : pc;
+    assign nextpc = (inc_pc || jump) ? pcsel + 1 : pcsel;
 
-    assign RW = !db_write;
-    assign dor = db;
+
+    // ir fetch
+    // assign sync = state == T0_FETCH;
+    always @(posedge i_clk ) begin
+        if (i_rst)          ir <= 8'h4c; //jmp (from RESET_VECTOR)
+        else if (state==T1_DECODE) ir <= i_data;
+    end
+    assign opcode = (state==T1_DECODE) ? i_data : ir;
+
+    // decode instruction
+    decode u_decode(
+        .i_clk         (i_clk         ),
+        .i_rst         (i_rst         ),
+        .opcode        (opcode        ),
+        .pstatus       (p             ),
+        .initial_state (initial_state ),
+        .single_byte   (single_byte   ),
+        .idx_XY        (idx_XY   ),
+        .mem_read       (mem_read),
+        .mem_write      (mem_write),
+        .reg_write      (reg_write),
+        .sb_src        (op_sb_src        ),
+        .db_src        (op_db_src        ),
+        .dst       (op_dst       ),
+        .alu_en        (alu_en        ),
+        .alu_OP        (op_alu_OP        ),
+        .ai_inv        (op_ai_inv        ),
+        .bi_inv        (op_bi_inv        ),
+        .Pci            (op_Pci      ),
+        .ci             (op_ci      ),
+        .setV             (setV      ),
+        .setC             (setC      ),
+        .set_mask      (set_mask      ),
+        .clear_mask    (clear_mask    )
+    );
+    assign rmw = mem_read && mem_write;        //ALU OP, read/save to/from mem
+    assign store = !alu_en && mem_write;       //ALU NOP, save to mem (includes push)
+    assign load = !alu_en && reg_write;        //ALU NOP, save to reg (includes pull, transfer)
+
 
     // bus source select
-    logic [2:0] db_src,sb_src,dst;
     always @(*) begin
         case(sb_src)
             REG_A: sb = a;
@@ -156,18 +178,14 @@ module core #(
             DB_SB:      db = sb;
             default:    db = 8'h0;
         endcase
+
+        RW = !db_write;
+        dor = db;
     end
 
     //alu
-    logic [2:0] alu_OP;
-    logic [7:0] alu_out;
-    logic ci, aluN, aluZ, aluC, aluV;
-    logic adl_bi;
-    logic ai_inv, bi_inv;
-    logic [7:0] ai, bi;
     assign ai = ai_inv ? ~sb : sb;
     assign bi = bi_inv ? ~db : adl_bi ? adl : db;
-
     alu u_alu(
         .ai  (ai  ),
         .bi  (bi  ),
@@ -180,83 +198,64 @@ module core #(
         .C   (aluC)
     );
 
-    // register alu and branch page flags
-    logic [7:0] alu_status, alu_mask;
-    logic[7:0] set_mask, clear_mask;
-    assign alu_status = {aluN, aluV, 4'b0, aluZ, aluC};
-    logic ipage_up, bpage_up, bpage_down;
+
+    //registers
     always @(posedge i_clk ) begin
         if (i_rst) begin
+            a <= 0;
+            x <= 0;
+            y <= 0;
+            s <= 0;
+            p <= FL_I;              //disable IRQ on reset
+            pch <= 0;
+            pcl <= 0;
+            pc <= RST_VECTOR;
+            rpop <= 0;
+            rexec <= 0;
             add <= 8'b0;
             ipage_up <= 0;
             bpage_up <= 0;
             bpage_down <= 0;
-        end else begin 
+            
+        end else begin
+            rpop <= pop;
+            rexec <= exec;
+
+            pcl <= adl;
+            pch <= adh;
+            pc <= nextpc;
+
             add <= holdalu ? add : alu_out;
+            a <= sb_a ? sb : a;
+            x <= sb_x ? sb : x;
+            y <= sb_y ? sb : y;
+            s <= sb_s ? sb : push ? s-1 : pop ? s+1 : s;
+            p <= db_p ? (db & ~FL_BU) : ~clear_mask & (set_mask  | p);
+
+            //update status flags for non-ALU register load/transfers
+            if (load && (sb_a || sb_x || sb_y)) begin
+                p[1] <= ~|sb;
+                p[7] <= sb[7];
+            end
+
+            //update status flags for ALU ops
+            if (exec) begin
+                p[1] <= aluZ;               //set Z flag
+                p[7] <= aluN;               //set N flag
+                p[6] <= setV ? aluV : p[6]; //set V flag
+                p[0] <= setC ? aluC : p[0]; //set C flag
+            end
 
             // index math is unsigned, so we cross a page boundary if carry bit is set
             ipage_up <= aluC;
 
-            // branch math: ai is the  signed offset, bi is the unsigned base addr
-            bpage_up <= bi[7] & !ai[7] & !alu_out[7]; // crossed to next page if addr>127, offset>0, and result <= 127
-            bpage_down <= !bi[7] & ai[7] & alu_out[7]; // crossed to prev page if addr<=127, offset<0, and result > 127
+            // branch math: bi [unsigned base addr]  +  ai [signed offset], 
+            bpage_up <= bi[7] & !ai[7] & !aluN; // crossed to next page if base>127, offset>0, and result <= 127
+            bpage_down <= !bi[7] & ai[7] & aluN; // crossed to prev page if base<=127, offset<0, and result > 127
         end
-
     end
-
-
-    // state
-    logic [5:0] state, initial_state;
-
-    // ir fetch
-    // assign sync = state == T0_FETCH;
-    logic [7:0] opcode;
-    always @(posedge i_clk ) begin
-        if (i_rst)          ir <= 8'h4c; //jmp (from RESET_VECTOR)
-        else if (state==T1_DECODE) ir <= i_data;
-    end
-    assign opcode = (state==T1_DECODE) ? i_data : ir;
-
-    logic single_byte;
-    logic idx_XY;           // select index X(1) or Y(0) for abs,X/Y and zpg,X/Y ops
-    logic mem_read, mem_write, reg_write;
-    logic alu_en;
-    logic [2:0] op_alu_OP;
-    logic op_ai_inv;   // alu ai src
-    logic op_bi_inv;   // alu bi src
-    logic [1:0] op_carry_in; // 00: Cin=0, 01: Cin=1, 10: Cin=P[C]
-    logic [7:0] op_alu_mask;  // masks to update status
-
-    decode u_decode(
-        .i_clk         (i_clk         ),
-        .i_rst         (i_rst         ),
-        .opcode        (opcode        ),
-        .pstatus       (p             ),
-        .initial_state (initial_state ),
-        .single_byte   (single_byte   ),
-        .idx_XY        (idx_XY   ),
-        .mem_read       (mem_read),
-        .mem_write      (mem_write),
-        .reg_write      (reg_write),
-        .sb_src        (op_sb_src        ),
-        .db_src        (op_db_src        ),
-        .dst       (op_dst       ),
-        .alu_en        (alu_en        ),
-        .alu_OP        (op_alu_OP        ),
-        .ai_inv        (op_ai_inv        ),
-        .bi_inv        (op_bi_inv        ),
-        .carry_in      (op_carry_in      ),
-        .alu_mask      (op_alu_mask      ),
-        .set_mask      (set_mask      ),
-        .clear_mask    (clear_mask    )
-    );
-    logic store, load, rmw;
-    assign rmw = mem_read && mem_write;        //ALU OP, read/save to/from mem
-    assign store = !alu_en && mem_write;       //ALU NOP, save to mem (includes push)
-    assign load = !alu_en && reg_write;        //ALU NOP, save to reg (includes pull, transfer)
 
     //state machine
-    logic jump_ind;
     always @(posedge i_clk ) begin
         jump_ind <= 0;
         if (i_rst) begin
@@ -264,75 +263,61 @@ module core #(
         end
         else case(state)
             T0_FETCH:       state <= T1_DECODE;
-            T1_DECODE:       state <= initial_state;
-            T2_ZPG:   state <= rmw ? T_RMW_EXEC : T0_FETCH;
-            T2_ZPGXY: state <= T3_ZPGXY;
-            T3_ZPGXY: state <= rmw ? T_RMW_EXEC : T0_FETCH;
-            T2_ABS:   state <= T3_ABS;
-            T3_ABS:   state <= rmw ? T_RMW_EXEC : T0_FETCH;
-            T2_ABSXY: state <= T3_ABSXY;
-            T3_ABSXY: state <= !skip ? T4_ABSXY : rmw ? T_RMW_EXEC : T0_FETCH;
-            T4_ABSXY: state <= rmw ? T_RMW_EXEC : T0_FETCH;
-            T2_XIND:  state <= T3_XIND;
-            T3_XIND:  state <= T4_XIND;
-            T4_XIND:  state <= T5_XIND;
-            T5_XIND:  state <= rmw ? T_RMW_EXEC : T0_FETCH;
-            T2_INDY:  state <= T3_INDY;
-            T3_INDY:  state <= T4_INDY;
-            T4_INDY:  state <= !skip ? T5_INDY : rmw ? T_RMW_EXEC : T0_FETCH;
-            T5_INDY:  state <= rmw ? T_RMW_EXEC : T0_FETCH;
-            T_RMW_EXEC:  state <= T_RMW_STORE;
-            T_RMW_STORE: state <= T0_FETCH;
-
-            T2_JUMP:   begin
-                        // register whether we are on 1st step of indirect jump
-                        jump_ind <= (ir[2] & ir[5]) & !jump_ind;
-                        state <= T3_JUMP;
-                      end 
-            // fetching new address
-            // if abs jump, this is new opcode, go to decode
-            // if ind jump, this is new pc, redo jump
-            T3_JUMP:   begin
-                        state <= jump_ind ? T2_JUMP : T1_DECODE;
-                        jump_ind <= jump_ind;
-                      end
-
-            T2_BRANCH:   state <= T3_BRANCH;
-            T3_BRANCH:   state <= skip ? T1_DECODE : T4_BRANCH;
-            T4_BRANCH:   state <= T1_DECODE;
-
-            T2_PUSH:     state <= T0_FETCH;
-            T2_POP:      state <= T3_POP;
-            T3_POP:      state <= T0_FETCH;
-            
-            T2_BRK:      state <= T3_BRK;
-            T3_BRK:      state <= T4_BRK;
-            T4_BRK:      state <= T5_BRK;
-            T5_BRK:      state <= T2_JUMP;
-
-            T2_RTI:      state <= T3_RTI;
-            T3_RTI:      state <= T4_RTI;
-            T4_RTI:      state <= T5_RTI;
-            T5_RTI:      state <= T3_JUMP;
-
-            T2_RTS:      state <= T3_RTS;
-            T3_RTS:      state <= T4_RTS;
-            T4_RTS:      state <= T5_RTS;
-            T5_RTS:      state <= T0_FETCH;
-
-            T2_JSR:      state <= T3_JSR;
-            T3_JSR:      state <= T4_JSR;
-            T4_JSR:      state <= T5_JSR;
-            T5_JSR:      state <= T3_JUMP;
-
-            T_BOOT:   state <= T2_JUMP;
-            default:  state <= T_JAM;
-
+            T1_DECODE:      state <= initial_state;
+            T2_ZPG:         state <= rmw ? T_RMW_EXEC : T0_FETCH;
+            T2_ZPGXY:       state <= T3_ZPGXY;
+            T3_ZPGXY:       state <= rmw ? T_RMW_EXEC : T0_FETCH;
+            T2_ABS:         state <= T3_ABS;
+            T3_ABS:         state <= rmw ? T_RMW_EXEC : T0_FETCH;
+            T2_ABSXY:       state <= T3_ABSXY;
+            T3_ABSXY:       state <= !skip ? T4_ABSXY : rmw ? T_RMW_EXEC : T0_FETCH;
+            T4_ABSXY:       state <= rmw ? T_RMW_EXEC : T0_FETCH;
+            T2_XIND:        state <= T3_XIND;
+            T3_XIND:        state <= T4_XIND;
+            T4_XIND:        state <= T5_XIND;
+            T5_XIND:        state <= rmw ? T_RMW_EXEC : T0_FETCH;
+            T2_INDY:        state <= T3_INDY;
+            T3_INDY:        state <= T4_INDY;
+            T4_INDY:        state <= !skip ? T5_INDY : rmw ? T_RMW_EXEC : T0_FETCH;
+            T5_INDY:        state <= rmw ? T_RMW_EXEC : T0_FETCH;
+            T_RMW_EXEC:     state <= T_RMW_STORE;
+            T_RMW_STORE:    state <= T0_FETCH;
+            T2_JUMP:        begin
+                                state <= T3_JUMP;
+                                jump_ind <= (ir[2] & ir[5]) & !jump_ind; //are we on indirect jump?
+                            end 
+            T3_JUMP:        begin
+                                state <= jump_ind ? T2_JUMP : T1_DECODE;
+                                jump_ind <= jump_ind;
+                            end
+            T2_BRANCH:      state <= T3_BRANCH;
+            T3_BRANCH:      state <= skip ? T1_DECODE : T4_BRANCH;
+            T4_BRANCH:      state <= T1_DECODE;
+            T2_PUSH:        state <= T0_FETCH;
+            T2_POP:         state <= T3_POP;
+            T3_POP:         state <= T0_FETCH;
+            T2_BRK:         state <= T3_BRK;
+            T3_BRK:         state <= T4_BRK;
+            T4_BRK:         state <= T5_BRK;
+            T5_BRK:         state <= T2_JUMP;
+            T2_RTI:         state <= T3_RTI;
+            T3_RTI:         state <= T4_RTI;
+            T4_RTI:         state <= T5_RTI;
+            T5_RTI:         state <= T3_JUMP;
+            T2_RTS:         state <= T3_RTS;
+            T3_RTS:         state <= T4_RTS;
+            T4_RTS:         state <= T5_RTS;
+            T5_RTS:         state <= T0_FETCH;
+            T2_JSR:         state <= T3_JSR;
+            T3_JSR:         state <= T4_JSR;
+            T4_JSR:         state <= T5_JSR;
+            T5_JSR:         state <= T3_JUMP;
+            T_BOOT:         state <= T2_JUMP;
+            default:        state <= T_JAM;
         endcase
     end
 
     // control
-    logic [2:0] op_db_src,op_sb_src,op_dst;
     always @(*) begin
         adl_src     = ADDR_PC;
         adh_src     = ADDR_PC;
@@ -365,7 +350,6 @@ module core #(
         ai_inv = 0;
         bi_inv = 0;
         ci = 0;
-        alu_mask = '0;
 
         case(state)
             T0_FETCH:   begin
@@ -381,237 +365,215 @@ module core #(
                         end
 
             T2_ZPG:     begin
-                        adl_src = ADDR_DATA;      // fetch {0,BAL}
+                        adl_src = ADDR_DATA;    // data address at {00, low }
                         adh_src = ADDR_Z;
-                        save = store;           // on store, save result
+                        save = store;           // write data on store ops
                         end
 
             T2_ZPGXY:   begin
-                        adl_src = ADDR_HOLD;    // hold addr while we compute LL = BAL + X/Y
+                        adl_src = ADDR_HOLD;    // hold addr while computing low addr from base + index
                         adh_src = ADDR_HOLD;
                         end
 
             T3_ZPGXY:   begin
-                        adl_src = ADDR_ADD;     // fetch {0,LL}
+                        adl_src = ADDR_ADD;     // data address at {00, base + index}
                         adh_src = ADDR_Z;
-                        save = store;           // on store, save result
+                        save = store;           // write data on store ops
                         end
 
             T2_JUMP,
             T2_ABS:     begin
-                        sb_src = REG_Z;         // alu nop: hold LL in add
-                        inc_pc = 1;             // next pc = pc++
+                        sb_src = REG_Z;         // compute (LL+0) to hold low address in alu 
+                        inc_pc = 1;             // fetch high address
                         end
 
             T3_ABS:     begin
-                        adl_src = ADDR_ADD;      // fetch {BAH,BAL}
+                        adl_src = ADDR_ADD;     // data address at {high,low}
                         adh_src = ADDR_DATA;
-                        save = store;           // on store, save result
+                        save = store;           // write data on store ops
                         end
 
+            T_BOOT,
             T2_ABSXY:   begin
-                        // compute LL = BAL + X/Y
-                        inc_pc = 1;                // fetch BAH, pc++
+                                                // compute low addr from base + index
+                        inc_pc = 1;             // fetch high addr
                         end                
 
             T3_ABSXY,
             T4_INDY:    begin
-                        // fetch {BAH,LL}, assuming no carry
-                        adl_src = ADDR_ADD;
+                        adl_src = ADDR_ADD;     // data address at {high,low} (assumes no carry)
                         adh_src = ADDR_DATA;
                         if (ipage_up) begin
-                            // low address overflowed, need to increment ADH
-                            sb_src = REG_Z;
+                            sb_src = REG_Z;     // low = base + index overflowed, need to increment page
                             ci = 1;
                         end else begin
-                            skip = 1;
-                            save = store;
+                            skip = 1;           // no carry, we can skip next state
+                            save = store;       // write data on store ops
                         end
                         end
 
             T4_ABSXY,
             T5_INDY:    begin
-                        adl_src = ADDR_HOLD;      // fetch {HH,LL} with incremented HH
+                        adl_src = ADDR_HOLD;    // data address at {high,low} (now with incremented page)
                         adh_src = ADDR_ADD;
-                        save = store;
+                        save = store;           // write data on store ops
                         end
 
             T2_XIND:    begin
-                        // base address (this data is discarded)
-                        adl_src = ADDR_DATA;
+                        adl_src = ADDR_DATA;    // fetch base address while computing base + index (data discarded) 
                         adh_src = ADDR_Z;
                         end                
             T3_XIND:    begin
-                        // fetch low address from (base address + index)
-                        adl_src = ADDR_ADD;
+                        adl_src = ADDR_ADD;     // fetch low address = base+index 
                         adh_src = ADDR_Z;
-
-                        // increment address
-                        sb_src = REG_ADD;
+                        sb_src = REG_ADD;       // increment base+index+1 for high address location
                         ci = 1;
                         end
             T4_XIND:    begin
-                        // fetch high address from (base address + index + 1)
-                        adl_src = ADDR_ADD;
+                        sb_src = REG_Z;         // read low address and hold in alu by computing (low+0)
+                        adl_src = ADDR_ADD;     // fetch high address at base+index+1
                         adh_src = ADDR_Z;
-                        // hold low address in add
-                        sb_src = REG_Z;
                         end
             T5_XIND:    begin
-                        // fetch data from {low,high}
-                        adl_src = ADDR_ADD;
+                        adl_src = ADDR_ADD;     // data address at {high,low}
                         adh_src = ADDR_DATA;
-                        save = store;
+                        save = store;           // write data on store ops
                         end
 
             T2_INDY:    begin
-                        // fetch low base addr  in zero page
-                        adl_src = ADDR_DATA;
+                        adl_src = ADDR_DATA;    // fetch low base address 
                         adh_src = ADDR_Z;
-                        // increment ZPG pointer to fetch high base addr next cycle 
-                        sb_src = REG_Z;
+                        sb_src = REG_Z;         // increment pointer to location of high base address
                         ci = 1;
                         end
 
             T3_INDY:    begin
-                        // fetch high base addr in zero page
-                        adl_src = ADDR_ADD;
+                                                // read low base address and compute low addr = base + index
+                        adl_src = ADDR_ADD;     // fetch high base address 
                         adh_src = ADDR_Z;
-                        // meanwhile, we have loaded BAL and are computing BAL+Y...
                         end
 
             // T4_INDY-T5_INDY handled with T3_ABSXY-T4_ABSXY
 
             T_RMW_EXEC: begin
-                        adl_src = ADDR_HOLD;
+                        exec = 1;               // execute rmw operation
+                        adl_src = ADDR_HOLD;    // hold onto address
                         adh_src = ADDR_HOLD;
-                        exec = 1;
                         end
 
             T_RMW_STORE:begin
-                        adl_src = ADDR_HOLD;
+                        adl_src = ADDR_HOLD;    
                         adh_src = ADDR_HOLD;
-                        save = 1;
+                        save = 1;               // store rmw result in same location
                         end
 
             T2_BRANCH:  begin
-                        inc_pc = 1;
-                        // add pcl + offset
-                        adl_bi = 1;
-                        sb_src = REG_DATA;
+                        adl_bi = 1;             // load the current low address (pc) into the alu
+                        sb_src = REG_DATA;      // compute branch location = pc+data
                         end
 
             T3_BRANCH:  begin
-                        adl_src = ADDR_ADD;
-                        adh_src = ADDR_HOLD;
-                        jump = 1;              // addr -> pc
+                        adl_src = ADDR_ADD;     // new pc assuming we haven't crossed a page
+                        adh_src = ADDR_HOLD;    
+                        jump = 1;               // load pc from address (i.e. jump)
                         if (bpage_up) begin
-                            // increment PCH
-                            db_src = DB_PCH;
+                            db_src = DB_PCH;    // we jumped to next page, increment pch
                             sb_src = REG_Z;
                             ci = 1;
                         end else if (bpage_down) begin
-                            // decrement PCH
-                            db_src = DB_PCH;
+                            db_src = DB_PCH;    // we jumped to prev page, decrement pch
                             sb_src = REG_Z;
                             ai_inv = 1;
                         end else begin
-                            // pch is valid, this cycle is our T0_FETCH fetch
-                            inc_pc = 1;         
+                            inc_pc = 1;         // still on same page, this cycle becomes T0_FETCH
                             sync = 1;
                             skip = 1;
                         end
                         end
 
-            T4_BRANCH: begin
-                        adl_src = ADDR_HOLD;
+            T4_BRANCH:  begin
+                        adl_src = ADDR_HOLD;    // now we are on the currect page, jump to new pc
                         adh_src = ADDR_ADD;
-                        jump = 1;              // addr -> pc
-                        inc_pc = 1;            // nextpc = pc++
-                        sync = 1;
+                        jump = 1;
+                        inc_pc = 1;
+                        sync = 1;               // this cycle becomes T0_FETCH
                         end
 
             T5_RTS,
-            T3_JUMP:     begin
+            T3_JUMP:    begin
                         adl_src = ADDR_ADD;     // fetch new pc
-                        adh_src = ADDR_DATA;
-                        jump = 1;               // update pc
-                        sync = !jump_ind;       //
+                        adh_src = ADDR_DATA;    
+                        jump = 1;               // update pc from address
+                        sync = !jump_ind;       // if not indirect jump this is fetch stage.  Otherwise we have another jump to do...
                         end
 
             T2_PUSH:   begin
-                            save = 1;
-                            push = 1;
+                        save = 1;               // save data to stack
+                        push = 1;               // update stack pointer
                         end
 
-            T2_POP:     pop = 1;
-            T3_POP:     begin end //fetch data...
+            T2_POP:     pop = 1;                // update stack pointer
+            T3_POP:     begin end               // load data from stack (handled automatically from pop signal)
 
             T2_BRK:     begin
-                        //push pch
-                        db_src = DB_PCH;
+                        db_src = DB_PCH;        // push pch to stack
                         db_write = 1;
                         push = 1;
                         end
-
-            T3_BRK:    begin
-                        //push pcl
-                        db_src = DB_PCL;
+            T3_BRK:     begin
+                        db_src = DB_PCL;        // push pcl to stack
                         db_write = 1;
                         push = 1;
                         end
-
-            T4_BRK:    begin
-                        //push p
-                        db_src = DB_P;
+            T4_BRK:     begin
+                        db_src = DB_P;          // push status register to stack
                         db_write = 1;
                         push = 1;
                         end
-
-            T5_BRK:    begin
-                        adl_src = ADDR_INT;
+            T5_BRK:     begin
+                        adl_src = ADDR_INT;     // jump to interrupt register
                         adh_src = ADDR_INT;
                         jump = 1;
                         inc_pc = 1;
                         end
 
 
-            T2_RTS,T3_RTS,          //RTS: T2: pop pcl, T3: fetch pcl, pop pch
-            T2_RTI,                 //RTI: T2 pop p
-            T3_RTI:     pop = 1;    //fetch p, pop pcl
+            // for rts/rti, initial states are popping things off the stack
+            // pops take 3 cycles to complete, so initial states are common...
+            T2_RTS,                             // T2_RTS: pop pcl
+            T3_RTS,                             // T3_RTS: fetch pcl, pop pch
+            T2_RTI,                             // T2_RTI: pop p
+            T3_RTI:                             // T3_RTI: fetch p, pop pcl
+                        pop = 1;
 
-            T4_RTI:     begin       //store p, fetch pcl, pop pch
-                            db_p = 1;
-                            pop = 1;
+            T4_RTI:     begin
+                        db_p = 1;               //store p, fetch pcl, pop pch
+                        pop = 1;
                         end
             T4_RTS,
-            T5_RTI:     sb_src = REG_Z; // store pcl in alu, fetch pch
+            T5_RTI:     sb_src = REG_Z;         // store pcl in alu, fetch pch
 
+            // T5_RTS is handled by T3_JUMP, where {pch, pcl} -> pc
 
-
-            T2_JSR:     sb_src = REG_Z;      // alu nop: hold ADL in alu
+            T2_JSR:     sb_src = REG_Z;         // read new pcl and store in alu (compute pcl+0)
             T3_JSR:     begin
-                        holdalu = 1; // continue to hold ADL in alu
-                        //push pch
-                        db_src = DB_PCH;
+                        holdalu = 1;            // continue to hold pcl in alu
+                        db_src = DB_PCH;        // push old pch
                         db_write=1;                        
                         push = 1;
                         end
 
             T4_JSR:    begin
-                        holdalu = 1; // continue to hold ADL in alu
-                        //push pcl
-                        db_src = DB_PCL;
+                        holdalu = 1;            // continue to hold new pcl in alu
+                        db_src = DB_PCL;        // push old pcl
                         db_write=1;                        
                         push = 1;
                         end
-            T5_JSR:    begin
-                        holdalu = 1; // continue to hold ADL in alu
-                        // load ADH
+            T5_JSR:     begin
+                                                // load new pch
+                        holdalu = 1;            // continue to hold new pcl in alu
                         end
-
-            T_BOOT:     inc_pc = 1; // fetch low reset addr
-
+            // state then transfers to T3_JUMP, where {pch, pcl} -> pc
 
             default:    jam = 1;
         endcase
@@ -626,8 +588,7 @@ module core #(
             alu_OP = op_alu_OP;
             ai_inv = op_ai_inv;
             bi_inv = op_bi_inv;
-            ci = op_carry_in == CARRY_C ? p[0] : op_carry_in[0];
-            alu_mask = op_alu_mask;
+            ci = (op_Pci && p[0]) || op_ci;
             sb_src = op_sb_src;
             db_src = op_db_src;
         end
