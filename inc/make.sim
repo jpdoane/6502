@@ -1,0 +1,52 @@
+## these need to be set before including
+
+ifndef TOP
+	$(error TOP is not set)
+endif
+ifndef HDL_SOURCE
+	$(error HDL_SOURCE is not set)
+endif
+
+SIMARGS= -g2012 -Wall -Wno-timescale
+SIM=iverilog
+
+
+SIM_PATH=$(BUILD_PATH)
+SIMFILE=$(SIM_PATH)/$(TOP).vvp
+WAVEFILE=$(SIM_PATH)/$(TOP).vcd
+BIGWAVEFILE=$(SIM_PATH)/$(TOP).fst
+WAVESAVEFILE=$(abspath .)/$(TOP).sav
+
+
+.PHONY: sim
+sim: $(WAVEFILE)
+
+
+$(SIMFILE):  $(abspath $(HDL_SOURCE)) $(SIMREQS)
+	@mkdir -p $(SIM_PATH);
+	cd $(SIM_PATH) && \
+	$(SIM) $(SIMARGS) -o $@ -s $(TOP) \
+	-D'DUMP_WAVE_FILE="$(WAVEFILE)"' \
+	-I $(HDL_INCLUDE) \
+	$(CUSTOMSIMARGS) $^ 
+
+
+.PHONY: view
+view: $(WAVEFILE)
+	cd $(SIM_PATH) && \
+	gtkwave $^ -a $(WAVESAVEFILE) &
+
+
+.PHONY: bigwave
+bigwave: $(BIGWAVEFILE)
+
+$(BIGWAVEFILE): $(WAVEFILE)
+	vcd2fst $(WAVEFILE) $(BIGWAVEFILE)
+
+.PHONY: viewbig
+viewbig: $(BIGWAVEFILE)
+	gtkwave $(FSTFILE) -a $(WAVESAVEFILE) &
+
+%.vcd: %.vvp
+	cd $(SIM_PATH) && \
+	vvp $<

@@ -1,3 +1,5 @@
+`include "defs.vh"
+
 module decode (
     input logic i_clk, i_rst,
     input  logic [7:0] opcode,
@@ -59,7 +61,8 @@ module decode (
             8'b???_010_??:  initial_state = T0_FETCH;           // imm or impl
 
             // op_b == 3
-            8'b01?_011_00:  initial_state = T2_JUMP;             // jmp abs, jmp ind
+            8'b010_011_00:  initial_state = T2_JUMP;            // jmp abs
+            8'b011_011_00:  initial_state = T2_JUMPIND;         // jmp ind
             8'b???_011_??:  initial_state = T2_ABS;             // abs
 
             // op_b == 4
@@ -96,7 +99,7 @@ module decode (
     end
 
     // single byte opcodes: b = 2 or 6 && c = 0 or 2
-    assign single_byte = opcode ==? 8'b???_?10_?0;
+    assign single_byte = (opcode == 8'h0) || (opcode ==? 8'b???_?10_?0);
 
     // X vs Y indexing
     assign idx_XY = (opcode ==? 8'b???_1?0_?1 || opcode ==? 8'b10?_1?1_1?) ? IDX_Y : IDX_X;

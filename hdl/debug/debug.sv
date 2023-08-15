@@ -1,8 +1,14 @@
-parameter LOG_FILE = "build/debug.log";
-parameter LABEL_FILE = "build/labels.txt";
+`ifndef LOG_FILE
+    parameter LOG_FILE = "debug.log";
+`endif
+
+`ifndef LABEL_FILE
+    parameter LABEL_FILE = "";
+`endif
 
 int log_fd, label_fd, Nlabels, i;
-int inst_cnt, cyc_cnt;
+int inst_cnt=0;
+int cyc_cnt=0;
 string labels[], _lbl, rline;
 int label_addrs[], _lbl_addr;
 int scanRet;
@@ -12,24 +18,26 @@ initial begin
     cyc_cnt = 0;
     inst_cnt = 0;
     
-    label_fd = $fopen(LABEL_FILE,"r");
     Nlabels=0;
-    scanRet=1;
-    while (!$feof(label_fd)) begin
-        scanRet = $fscanf(label_fd, "%s %h, %d, %h", _lbl, _lbl_addr,j1,j2);
-        Nlabels++;
+    if (LABEL_FILE != "") begin
+        label_fd = $fopen(LABEL_FILE,"r");
+        scanRet=1;
+        while (!$feof(label_fd)) begin
+            scanRet = $fscanf(label_fd, "%s %h, %d, %h", _lbl, _lbl_addr,j1,j2);
+            Nlabels++;
+        end
+        $fclose(label_fd);
+        label_fd = $fopen(LABEL_FILE,"r");
+        label_addrs = new[Nlabels];
+        labels = new[Nlabels];
+        scanRet = 0;
+        for (i=0; i<Nlabels; i++) begin
+            scanRet = $fscanf(label_fd, "%s %h, %d, %h", _lbl, _lbl_addr,j1,j2);
+            labels[i] = _lbl.substr(0,_lbl.len()-2); //trim comma
+            label_addrs[i] = _lbl_addr;
+        end
+        $fclose(label_fd);
     end
-    $fclose(label_fd);
-    label_fd = $fopen(LABEL_FILE,"r");
-    label_addrs = new[Nlabels];
-    labels = new[Nlabels];
-    scanRet = 0;
-    for (i=0; i<Nlabels; i++) begin
-        scanRet = $fscanf(label_fd, "%s %h, %d, %h", _lbl, _lbl_addr,j1,j2);
-        labels[i] = _lbl.substr(0,_lbl.len()-2); //trim comma
-        label_addrs[i] = _lbl_addr;
-    end
-    $fclose(label_fd);
 end
 
 logic upa,upx,upy,ups;
@@ -40,52 +48,72 @@ always @(posedge i_clk ) begin
     ups <= push||pop;
 end
 
+logic [15:0] pc_r;
+int arg_cnt=0;
 always @(negedge i_clk ) begin
 
     if (i_rst) cyc_cnt = 0;
     else cyc_cnt = cyc_cnt+1;
 
-    if (state==T1_DECODE) begin
+    pc_r <= pc;
+
+    if (state==T1_DECODE) $fwrite( log_fd, " %s", op_name(opcode));
+    if (inst_cnt>0 && pc != pc_r) begin
+        $fwrite( log_fd, " %2h", i_data);
+        arg_cnt = arg_cnt+1;
+    end
+
+    if (sync && inst_cnt>0) begin
+        // reduce spaces depending on argument count to align reg dataus
+        for(int p=0;p<5-arg_cnt;p=p+1) $fwrite( log_fd, "   ");
+        $fwrite( log_fd, "A:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n", a,x,y,p,s, cyc_cnt);
+    end
+
+    if (sync) begin
         inst_cnt = inst_cnt+1;
-        $fwrite( log_fd, "%s %h PC:0x%h = %s (inst:%0d cyc:%0d)\n", op_name(opcode), opcode, pc, format_addr(pc), inst_cnt, cyc_cnt);
+        $fwrite( log_fd, "%4h", addr);
+        arg_cnt = 0;
     end
 
-    $fwrite( log_fd, "\t%s:\taddr:%s,%s=%h db:%h(%s) sb:%h(%s) %sa=%h %sx=%h %sy=%h %ss=%h p=%h\n" ,
-                                    state_name(state),
-                                    addr_name(adh_src), addr_name(adl_src), addr,
-                                    db,db_name(db_src), sb,reg_name(sb_src), 
-                                    upa?"*":"",a,
-                                    upx?"*":"",x,
-                                    upy?"*":"",y,
-                                    ups?"*":"",s,
-                                    p);
-    if (db_write) begin
-        if (addr==16'h0F00)
-            $fwrite( log_fd, "\tUART WRITE: '%c'\n", dor);
-        else if (push)
-            $fwrite( log_fd, "\tPUSH: 0x%h to 0x%h\n", dor, addr);
-        else
-            $fwrite( log_fd, "\tWRITE: 0x%h to 0x%h\n", dor, addr);
-    end
-    if (exec) begin
-            alu_OP = op_alu_OP;
-            ai_inv = op_ai_inv;
-            bi_inv = op_bi_inv;
-            ci = (op_Pci && p[0]) || op_ci;
-            sb_src = op_sb_src;
-            db_src = op_db_src;
 
-        $fwrite( log_fd, "\tEXEC: %s\tai:%h bi:%h ci:%h out:%h\n", alu_name(alu_OP), ai, bi, ci, alu_out);
-    end
-    if (jump) begin
-        _lbl = "nolabel";
-        for (i=0; i<Nlabels; i++) begin
-            if (label_addrs[i]==addr) begin
-                _lbl = labels[i];
-            end
-        end        
-        $fwrite( log_fd, "\tJUMPING to %s\n", format_addr(addr));
-    end
+    // $fwrite( log_fd, "%4h\t%s\tA:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n",
+    //                                 pc,state_name(state), a,x,y,p,s, cyc_cnt);
+
+
+    // $fwrite( log_fd, "\t%s:\taddr:%s,%s=%h db:%h(%s) sb:%h(%s) %sA:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%d\n" ,
+    //                                 state_name(state),
+    //                                 addr_name(adh_src), addr_name(adl_src), addr,
+    //                                 db,db_name(db_src), sb,reg_name(sb_src), 
+    //                                 a,x,y,p,sp, inst_cnt);
+
+
+    // if (db_write) begin
+    //     if (addr==16'h0F00)
+    //         $fwrite( log_fd, "\tUART WRITE: '%c'\n", dor);
+    //     else if (push)
+    //         $fwrite( log_fd, "\tPUSH: 0x%h to 0x%h\n", dor, addr);
+    //     else
+    //         $fwrite( log_fd, "\tWRITE: 0x%h to 0x%h\n", dor, addr);
+    // end
+    // if (exec) begin
+    //         alu_OP = op_alu_OP;
+    //         ai_inv = op_ai_inv;
+    //         bi_inv = op_bi_inv;
+    //         ci = (op_Pci && p[0]) || op_ci;
+    //         sb_src = op_sb_src;
+    //         db_src = op_db_src;
+
+    //     $fwrite( log_fd, "\tEXEC: %s\tai:%h bi:%h ci:%h out:%h\n", alu_name(alu_OP), ai, bi, ci, alu_out);
+    // end
+    // if (jump) begin
+    //     _lbl = "nolabel";
+    //     for (i=0; i<Nlabels; i++) begin
+    //         if (label_addrs[i]==addr) begin
+    //             _lbl = labels[i];
+    //         end
+    //     end        
+    //     $fwrite( log_fd, "\tJUMPING to %s\n", format_addr(addr));
+    // end
 end    
 
 final begin

@@ -1,3 +1,8 @@
+`ifndef _6502_defs
+`define _6502_defs
+
+localparam ASCII_a = 8'h61;
+
 parameter STACKPAGE = 8'h01;
 
 //states
@@ -48,6 +53,10 @@ parameter T2_JSR        =6'h2b;
 parameter T3_JSR        =6'h2c;
 parameter T4_JSR        =6'h2d;
 parameter T5_JSR        =6'h2e;
+parameter T2_JUMPIND    =6'h2f;
+parameter T3_JUMPIND    =6'h30;
+parameter T4_JUMPIND    =6'h31;
+parameter T5_JUMPIND    =6'h32;
 
 
 parameter REG_Z      =3'h0;
@@ -97,10 +106,12 @@ parameter CARRY_C   =2'b10;
 parameter FL_NONE = 8'b00000000;   // No flags set
 parameter FL_N = 8'b10000000;   // Negative
 parameter FL_V = 8'b01000000;   // Overflow
-parameter FL_U = 8'b00010000;   // Unused, but set on php
+parameter FL_U = 8'b00100000;   // Unused, but set on php
 parameter FL_B = 8'b00010000;   // Break
 parameter FL_D = 8'b00001000;   // Decimal (use BCD for arithmetics)
 parameter FL_I = 8'b00000100;   // Interrupt (IRQ disable)
 parameter FL_Z = 8'b00000010;   // Zero
 parameter FL_C = 8'b00000001;   // Carry
 parameter FL_BU = FL_B | FL_U;  // mask for php, plp 
+
+`endif

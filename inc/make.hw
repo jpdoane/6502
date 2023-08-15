@@ -1,0 +1,105 @@
+## these need to be set before including
+
+ifndef TOP
+	$(error TOP is not set)
+endif
+ifndef HDL_SOURCE
+	$(error HDL_SOURCE is not set)
+endif
+ifndef DEVICE
+	$(error DEVICE is not set)
+endif
+ifndef CONSTRIANTS
+	$(error CONSTRIANTS is not set)
+endif
+
+# common tcl scripts
+SYNTH_TCL=$(SCRIPTS)/synth.tcl
+IMPL_TCL=$(SCRIPTS)/impl.tcl
+BITFILE_TCL=$(SCRIPTS)/bitfile.tcl
+PROGRAM_TCL=$(SCRIPTS)/program.tcl
+
+BUILD_ENV=$(BUILD_PATH)/.build
+XDC_FILE=$(BUILD_PATH)/constraints.tcl
+SRC_FILE=$(BUILD_PATH)/sources.tcl
+
+
+$(BUILD_ENV): $(HDL_SOURCE) $(CONSTRIANTS)
+	@mkdir -p $(BUILD_PATH);
+	@rm -f $(XDC_FILE) $(SRC_FILE);
+	@for s in $(abspath $(HDL_SOURCE)) ; do \
+		echo "$$s" >> $(SRC_FILE); \
+	done
+	@for s in $(abspath $(CONSTRIANTS)) ; do \
+		echo "$$s" >> $(XDC_FILE); \
+	done
+	@touch $(BUILD_ENV)
+
+#synthesis
+SYNTH_PATH=$(BUILD_PATH)/synth
+SYNTH_ENV=$(SYNTH_PATH)/.synth
+SYNTH=$(SYNTH_PATH)/$(TOP).dcp
+SYNTH_ARGS_TCL=synth_args.tcl
+
+synth: $(SYNTH)
+
+$(SYNTH_ARGS_TCL):
+	touch $(SYNTH_ARGS_TCL)
+
+$(SYNTH_ENV): $(BUILD_ENV) $(SYNTH_TCL) $(SYNTH_ARGS_TCL)
+	@mkdir -p $(SYNTH_PATH);
+	@cp $(SYNTH_TCL) $(SYNTH_PATH);
+	@cp $(SYNTH_ARGS_TCL) $(SYNTH_PATH);
+	@touch $(SYNTH_ENV)
+
+$(SYNTH): $(SYNTH_ENV)
+	cd $(SYNTH_PATH) && \
+	vivado -m64 -mode batch -notrace -source $(SYNTH_TCL) -tclargs $(TOP) $(DEVICE) $(BUILD_PATH) \
+	|| $(call FAIL, SYNTHESIS, true)
+	$(call SUCCEED, SYNTHESIS, false)
+
+#place & route
+IMPL_PATH=$(BUILD_PATH)/impl
+IMPL_ENV=$(IMPL_PATH)/.impl
+IMPL=$(IMPL_PATH)/$(TOP)_routed.dcp
+IMPL_ARGS_TCL=impl_args.tcl
+
+$(IMPL_ARGS_TCL):
+	touch $(IMPL_ARGS_TCL)
+
+impl: $(IMPL)
+
+$(IMPL_ENV): $(BUILD_ENV) $(IMPL_TCL) $(BITFILE_TCL) $(PROGRAM_TCL) $(IMPL_ARGS_TCL)
+	@mkdir -p $(IMPL_PATH);
+	@cp $(IMPL_TCL) $(IMPL_PATH);
+	@cp $(BITFILE_TCL) $(IMPL_PATH);
+	@cp $(PROGRAM_TCL) $(IMPL_PATH);
+	@cp $(IMPL_ARGS_TCL) $(IMPL_PATH);
+	@touch $(IMPL_ENV)
+
+$(IMPL): $(IMPL_ENV) $(SYNTH)
+	cd $(IMPL_PATH) && \
+	vivado -m64 -mode batch -notrace -source $(IMPL_TCL) -tclargs $(TOP) $(DEVICE) $(SYNTH) $(BUILD_PATH) \
+	|| $(call FAIL, IMPLEMENTATION, true)
+	$(call SUCCEED, IMPLEMENTATION, true)
+
+# bitfile
+BITFILE=$(IMPL_PATH)/$(TOP).bit
+bitfile: $(BITFILE)
+
+$(BITFILE):	$(IMPL) 
+	cd $(IMPL_PATH) && \
+	vivado -m64 -mode batch -notrace -log bitfile.log -source $(BITFILE_TCL) -tclargs $(TOP)
+
+.PHONY: program
+program: $(BITFILE)
+	cd $(IMPL_PATH) && \
+	vivado -m64 -mode batch -notrace -log program.log -source $(PROGRAM_TCL) -tclargs $(BITFILE) $(DEVICE_SHORT)
+
+
+.PHONY: clean
+clean:
+	rm -rf $(BUILD_PATH)
+
+# keep intermediate files
+.SECONDARY:

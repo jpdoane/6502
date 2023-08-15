@@ -1,7 +1,12 @@
-module core #(
+`include "defs.vh"
+
+module core_6502 #(
     parameter NMI_VECTOR=16'hfffa,
     parameter RST_VECTOR=16'hfffc,
-    parameter IRQ_VECTOR=16'hfffe)
+    parameter IRQ_VECTOR=16'hfffe,
+    parameter INITIAL_STATUS=FL_I | FL_U,
+    parameter INITIAL_STACK=8'hfd
+    )
     (
     input  logic i_clk, i_rst,
     input  logic [7:0] i_data,
@@ -17,15 +22,16 @@ module core #(
     output logic jam
     );
 
+`ifdef DEBUG_CPU
     `include "debug/debug.sv"
+`endif 
 
     // busses
     // db: data bus: typically memory read, but can be addr_lo or zero
     // sb: secondry bus: read from registers (a,x,y,s, zero)
     logic [7:0] db, sb;
 
-    // interrupts
-    logic nmi, irq, cli;
+    wire rdy = READY | ~RW; //ignore not ready when writing
 
     // address registers
     logic [7:0] adl,adh;
@@ -79,8 +85,6 @@ module core #(
     logic db_p;
     logic[7:0] set_mask, clear_mask;
     logic ipage_up, bpage_up, bpage_down;
-    logic jump_ind;
-
 
     //address and pc logic
     always @(*) begin
@@ -89,7 +93,7 @@ module core #(
             ADDR_DATA: adl = i_data;
             ADDR_ADD: adl = add;
             ADDR_Z: adl = 8'b0;
-            ADDR_INT: adl = irq ? IRQ_VECTOR[7:0]: NMI_VECTOR[7:0];
+            ADDR_INT: adl = nmi_inst ? NMI_VECTOR[7:0] : IRQ_VECTOR[7:0];
             ADDR_STACK: adl = s;
             default: adl = pcl; //ADDR_HOLD
         endcase
@@ -98,33 +102,54 @@ module core #(
             ADDR_DATA: adh = i_data;
             ADDR_ADD: adh = add;
             ADDR_Z: adh = 8'b0;
-            ADDR_INT: adh = irq ? IRQ_VECTOR[15:8]: NMI_VECTOR[15:8];
+            ADDR_INT: adh = nmi_inst ? NMI_VECTOR[15:8] : IRQ_VECTOR[15:8];
             ADDR_STACK: adh = STACKPAGE;
             default: adh = pch; //ADDR_HOLD
         endcase
     end
+
+    // interrupt handling 
+    wire nmi_sync = sync & NMI & !nmi_r;    // edge detection on sync
+    wire irq_masked = IRQ & !p[2];          // level detection
+    logic nmi_r, nmi_inst, irq_inst;
+    wire intr_sync = nmi_sync | irq_masked;
+    wire intr_inst = nmi_inst | irq_inst;
     always @(posedge i_clk ) begin
         if (i_rst) begin
-            nmi <= 0;
-            irq <= 0;
+            nmi_r <= 0;
+            nmi_inst <= 0;
+            irq_inst <= 0;
         end else begin
-            nmi <= NMI ? 1 : cli ? 0 : nmi;
-            irq <= IRQ ? !p[2] : cli ? 0 : irq;
+            nmi_r <= nmi_r;
+            nmi_inst <= nmi_inst;
+            irq_inst <= irq_inst;
+            if (sync) begin
+                nmi_r <= NMI;
+                nmi_inst <= nmi_sync;
+                irq_inst <= irq_masked;
+            end
         end
     end
-    assign cli=0;
+
+    // opcode fetch
+    wire [7:0]  op_fetch = intr_inst ? 0 : i_data;
+    assign opcode = (state==T1_DECODE) ? op_fetch : ir;
+    always @(posedge i_clk ) begin
+        if (i_rst) ir = 8'h4c;  //jmp from RESET_VECTOR
+        else ir <= opcode;
+    end
+
+    //instruction pointer: pc of current opcode
+    //unused by core, but really helpful for sim/debug
+`ifndef SYNTHESIS
+    logic [15:0] ip;
+    always @(posedge i_clk ) ip <= sync ? addr : ip;
+`endif 
+
     assign addr = {adh, adl};
     assign pcsel = jump ? addr : pc;
-    assign nextpc = (inc_pc || jump) ? pcsel + 1 : pcsel;
+    assign nextpc = (sync | inc_pc | jump) & !intr_sync ? pcsel + 1 : pcsel;
 
-
-    // ir fetch
-    // assign sync = state == T0_FETCH;
-    always @(posedge i_clk ) begin
-        if (i_rst)          ir <= 8'h4c; //jmp (from RESET_VECTOR)
-        else if (state==T1_DECODE) ir <= i_data;
-    end
-    assign opcode = (state==T1_DECODE) ? i_data : ir;
 
     // decode instruction
     decode u_decode(
@@ -173,7 +198,7 @@ module core #(
             DB_PCL:     db = pc[7:0];
             DB_PCH:     db = pc[15:8];
             DB_S:       db = s;
-            DB_P:       db = p | (!irq && FL_BU); // set break flags unless irq 
+            DB_P:       db = irq_inst ? p : p | FL_BU; // set break flags unless irq 
             DB_A:       db = a;
             DB_SB:      db = sb;
             default:    db = 8'h0;
@@ -205,8 +230,8 @@ module core #(
             a <= 0;
             x <= 0;
             y <= 0;
-            s <= 0;
-            p <= FL_I;              //disable IRQ on reset
+            s <= INITIAL_STACK;
+            p <= INITIAL_STATUS;              //disable IRQ on reset
             pch <= 0;
             pcl <= 0;
             pc <= RST_VECTOR;
@@ -223,7 +248,7 @@ module core #(
 
             pcl <= adl;
             pch <= adh;
-            pc <= nextpc;
+            pc <= rdy ? nextpc : pc;
 
             add <= holdalu ? add : alu_out;
             a <= sb_a ? sb : a;
@@ -252,12 +277,14 @@ module core #(
             // branch math: bi [unsigned base addr]  +  ai [signed offset], 
             bpage_up <= bi[7] & !ai[7] & !aluN; // crossed to next page if base>127, offset>0, and result <= 127
             bpage_down <= !bi[7] & ai[7] & aluN; // crossed to prev page if base<=127, offset<0, and result > 127
+
+            p[2] <= p[2] | irq_inst | nmi_inst; // set interrupt bit
+            p[5] <= p[5];                       //never change bit 5
         end
     end
 
     //state machine
     always @(posedge i_clk ) begin
-        jump_ind <= 0;
         if (i_rst) begin
             state <= T_BOOT;
         end
@@ -282,14 +309,12 @@ module core #(
             T5_INDY:        state <= rmw ? T_RMW_EXEC : T0_FETCH;
             T_RMW_EXEC:     state <= T_RMW_STORE;
             T_RMW_STORE:    state <= T0_FETCH;
-            T2_JUMP:        begin
-                                state <= T3_JUMP;
-                                jump_ind <= (ir[2] & ir[5]) & !jump_ind; //are we on indirect jump?
-                            end 
-            T3_JUMP:        begin
-                                state <= jump_ind ? T2_JUMP : T1_DECODE;
-                                jump_ind <= jump_ind;
-                            end
+            T2_JUMP:        state <= T3_JUMP;
+            T3_JUMP:        state <= T1_DECODE;
+            T2_JUMPIND:     state <= T3_JUMPIND;
+            T3_JUMPIND:     state <= T4_JUMPIND;
+            T4_JUMPIND:     state <= T5_JUMPIND;
+            T5_JUMPIND:     state <= T1_DECODE;
             T2_BRANCH:      state <= T3_BRANCH;
             T3_BRANCH:      state <= skip ? T1_DECODE : T4_BRANCH;
             T4_BRANCH:      state <= T1_DECODE;
@@ -315,6 +340,8 @@ module core #(
             T_BOOT:         state <= T2_JUMP;
             default:        state <= T_JAM;
         endcase
+
+        if (~rdy) state <= state;
     end
 
     // control
@@ -353,8 +380,7 @@ module core #(
 
         case(state)
             T0_FETCH:   begin
-                        sync = 1;               // signal new instruction
-                        inc_pc = 1;             // increment pc
+                        sync = 1;               // signal new instruction (also increments pc)
                         exec = alu_en && !rmw;  // execute alu ops (except rmw)
                         save = load;            // save non-alu data to reg (includes loads, transfers, pulls) 
                         end
@@ -382,10 +408,11 @@ module core #(
                         end
 
             T2_JUMP,
+            T2_JUMPIND,
             T2_ABS:     begin
                         sb_src = REG_Z;         // compute (LL+0) to hold low address in alu 
                         inc_pc = 1;             // fetch high address
-                        end
+                        end+
 
             T3_ABS:     begin
                         adl_src = ADDR_ADD;     // data address at {high,low}
@@ -495,19 +522,36 @@ module core #(
                         adl_src = ADDR_HOLD;    // now we are on the currect page, jump to new pc
                         adh_src = ADDR_ADD;
                         jump = 1;
-                        inc_pc = 1;
                         sync = 1;               // this cycle becomes T0_FETCH
                         end
 
-            T5_RTS,
             T3_JUMP:    begin
-                        adl_src = ADDR_ADD;     // fetch new pc
+                        adl_src = ADDR_ADD;     // load new pc
                         adh_src = ADDR_DATA;    
                         jump = 1;               // update pc from address
-                        sync = !jump_ind;       // if not indirect jump this is fetch stage.  Otherwise we have another jump to do...
+                        sync = 1;               // this is fetch stage.
                         end
 
-            T2_PUSH:   begin
+            T3_JUMPIND: begin
+                        adl_src = ADDR_ADD;     // fetch low pc
+                        adh_src = ADDR_DATA;
+                        adl_bi = 1;             // load the current low address into the alu
+                        sb_src = REG_Z;         // 
+                        ci = 1;
+                        end
+            T4_JUMPIND: begin
+                        adl_src = ADDR_ADD;     // fetch high pc
+                        adh_src = ADDR_HOLD;    
+                        sb_src = REG_Z;         // compute (LL+0) to hold low pc in alu 
+                        end
+            T5_JUMPIND: begin
+                        adl_src = ADDR_ADD;     // jump to new pc
+                        adh_src = ADDR_DATA;    
+                        jump = 1;               // update pc from address
+                        sync = 1;               // this is fetch stage.
+                        end
+
+            T2_PUSH:    begin
                         save = 1;               // save data to stack
                         push = 1;               // update stack pointer
                         end
@@ -534,7 +578,6 @@ module core #(
                         adl_src = ADDR_INT;     // jump to interrupt register
                         adh_src = ADDR_INT;
                         jump = 1;
-                        inc_pc = 1;
                         end
 
 
@@ -553,7 +596,11 @@ module core #(
             T4_RTS,
             T5_RTI:     sb_src = REG_Z;         // store pcl in alu, fetch pch
 
-            // T5_RTS is handled by T3_JUMP, where {pch, pcl} -> pc
+            T5_RTS:    begin
+                        adl_src = ADDR_ADD;     // fetch new pc
+                        adh_src = ADDR_DATA;    
+                        jump = 1;               // update pc from address
+                        end
 
             T2_JSR:     sb_src = REG_Z;         // read new pcl and store in alu (compute pcl+0)
             T3_JSR:     begin

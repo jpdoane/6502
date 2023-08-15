@@ -1,3 +1,5 @@
+`include "defs.vh"
+
 module alu (
     input  logic [7:0] ai, bi,
     input  logic ci,
