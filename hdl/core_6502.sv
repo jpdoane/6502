@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 `include "defs.vh"
 
 module core_6502 #(
@@ -135,7 +136,7 @@ module core_6502 #(
     wire [7:0]  op_fetch = intr_inst ? 0 : i_data;
     assign opcode = (state==T1_DECODE) ? op_fetch : ir;
     always @(posedge i_clk ) begin
-        if (i_rst) ir = 8'h4c;  //jmp from RESET_VECTOR
+        if (i_rst) ir <= 8'h4c;  //jmp from RESET_VECTOR
         else ir <= opcode;
     end
 
@@ -649,6 +650,7 @@ module core_6502 #(
                 REG_Y:      sb_y=1;
                 REG_S:      sb_s=1;
                 REG_P:      db_p=1;
+                default:    begin end
             endcase
             sb_src = alu_en ? REG_ADD : op_sb_src;
             db_src = (db_write && (op_db_src != DB_P)) ? DB_SB : op_db_src;

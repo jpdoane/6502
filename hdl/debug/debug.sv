@@ -50,10 +50,10 @@ end
 
 logic [15:0] pc_r;
 int arg_cnt=0;
-always @(negedge i_clk ) begin
+always @(posedge i_clk ) begin
 
-    if (i_rst) cyc_cnt = 0;
-    else cyc_cnt = cyc_cnt+1;
+    if (i_rst) cyc_cnt <= 0;
+    else cyc_cnt <= cyc_cnt+1;
 
     pc_r <= pc;
 
@@ -120,14 +120,14 @@ final begin
     $fclose(log_fd);
 end
 
-function string format_addr(input int addr);
+function string format_addr(input int _addr);
     int base;
     string base_name;
     string name;
     base = 0;
     base_name = "0x0000";
     for (i=0; i<Nlabels; i++) begin
-        if (addr >= label_addrs[i] && label_addrs[i]>base) begin
+        if (_addr >= label_addrs[i] && label_addrs[i]>base) begin
             base = label_addrs[i];
             base_name = labels[i];
         end
@@ -135,12 +135,12 @@ function string format_addr(input int addr);
     // if (addr==base)
     //     $sformat(name, "%s", base_name);
     // else
-        $sformat(name, "%s+0x%0h", base_name, addr-base);
+        $sformat(name, "%s+0x%0h", base_name, _addr-base);
 
     format_addr = name;
 endfunction
 
-function string state_name(input int x);
+function string state_name(input logic[5:0] x);
     case(x)
         T0_FETCH: state_name = "T0_FCH";
         T1_DECODE: state_name = "T1_DCD";
@@ -192,7 +192,7 @@ function string state_name(input int x);
     endcase
 endfunction
 
-function string reg_name(input int x);
+function string reg_name(input logic [2:0] x);
     case(x)
         REG_Z: reg_name = "Z  ";
         REG_A: reg_name = "A  ";
@@ -206,7 +206,7 @@ function string reg_name(input int x);
     endcase
 endfunction
 
-function string db_name(input int x);
+function string db_name(input logic [2:0] x);
     case(x)
         DB_Z: db_name = "Z  ";
         DB_DATA: db_name = "DAT";
@@ -221,7 +221,7 @@ function string db_name(input int x);
 endfunction
 
 
-function string addr_name(input int x);
+function string addr_name(input logic [2:0] x);
     case(x)
         ADDR_PC: addr_name = "PC ";
         ADDR_DATA: addr_name = "DAT";
@@ -235,7 +235,7 @@ function string addr_name(input int x);
     endcase
 endfunction
 
-function string alu_name(input int x);
+function string alu_name(input logic [2:0] x);
     case(x)
         ALU_NOP: alu_name = "NOP";
         ALU_ADD: alu_name = "ADD";
@@ -250,7 +250,7 @@ function string alu_name(input int x);
 endfunction
 
 
-function string op_name(input int op);
+function string op_name(input logic [7:0] op);
     case(opcode)
         8'h00: op_name = "BRK";
         8'h01: op_name = "ORA";

@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 `include "defs.vh"
 
 module alu (
