@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-`include "defs.vh"
+`include "6502_defs.vh"
 
 module core_6502 #(
     parameter NMI_VECTOR=16'hfffa,
@@ -22,6 +22,13 @@ module core_6502 #(
     output logic sync,
     output logic jam
     );
+
+
+    (* mark_debug = "true" *)  logic [31:0] cpu_cycle=0;
+    always @(posedge i_clk ) begin
+        if (i_rst) cpu_cycle <= 0;
+        else cpu_cycle <= cpu_cycle+1;
+    end
 
 `ifdef DEBUG_CPU
     `include "debug/debug.sv"
@@ -142,10 +149,10 @@ module core_6502 #(
 
     //instruction pointer: pc of current opcode
     //unused by core, but really helpful for sim/debug
-`ifndef SYNTHESIS
-    logic [15:0] ip;
+// `ifndef SYNTHESIS
+    (* mark_debug = "true" *)  logic [15:0] ip;
     always @(posedge i_clk ) ip <= sync ? addr : ip;
-`endif 
+// `endif 
 
     assign addr = {adh, adl};
     assign pcsel = jump ? addr : pc;

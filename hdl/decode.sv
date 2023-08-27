@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-`include "defs.vh"
+`include "6502_defs.vh"
 
 module decode (
     input logic i_clk, i_rst,

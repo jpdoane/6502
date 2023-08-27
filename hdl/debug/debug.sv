@@ -8,14 +8,13 @@
 
 int log_fd, label_fd, Nlabels, i;
 int inst_cnt=0;
-int cyc_cnt=0;
 string labels[], _lbl, rline;
 int label_addrs[], _lbl_addr;
 int scanRet;
 int j1,j2;
 initial begin
     log_fd = $fopen(LOG_FILE, "w");
-    cyc_cnt = 0;
+    cpu_cycle = 0;
     inst_cnt = 0;
     
     Nlabels=0;
@@ -52,9 +51,6 @@ logic [15:0] pc_r;
 int arg_cnt=0;
 always @(posedge i_clk ) begin
 
-    if (i_rst) cyc_cnt <= 0;
-    else cyc_cnt <= cyc_cnt+1;
-
     pc_r <= pc;
 
     if (state==T1_DECODE) $fwrite( log_fd, " %s", op_name(opcode));
@@ -66,7 +62,7 @@ always @(posedge i_clk ) begin
     if (sync && inst_cnt>0) begin
         // reduce spaces depending on argument count to align reg dataus
         for(int p=0;p<5-arg_cnt;p=p+1) $fwrite( log_fd, "   ");
-        $fwrite( log_fd, "A:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n", a,x,y,p,s, cyc_cnt);
+        $fwrite( log_fd, "A:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n", a,x,y,p,s, cpu_cycle);
     end
 
     if (sync) begin
@@ -77,7 +73,7 @@ always @(posedge i_clk ) begin
 
 
     // $fwrite( log_fd, "%4h\t%s\tA:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n",
-    //                                 pc,state_name(state), a,x,y,p,s, cyc_cnt);
+    //                                 pc,state_name(state), a,x,y,p,s, cpu_cycle);
 
 
     // $fwrite( log_fd, "\t%s:\taddr:%s,%s=%h db:%h(%s) sb:%h(%s) %sA:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%d\n" ,
