@@ -1,5 +1,5 @@
 `ifndef LOG_FILE
-    parameter LOG_FILE = "debug.log";
+    parameter LOG_FILE = "logs/debug.log";
 `endif
 
 `ifndef LABEL_FILE
@@ -48,29 +48,47 @@ always @(posedge i_clk ) begin
 end
 
 logic [15:0] pc_r;
+logic [7:0] ip_op;
 int arg_cnt=0;
+int ip_cycle=0;
+logic new_inst, disp_inst;
 always @(posedge i_clk ) begin
 
-    pc_r <= pc;
+    if (i_rst) begin
+        pc_r <= 0;
+        arg_cnt=0;
+        inst_cnt<=0;
+        ip_cycle <= 0;
+        new_inst <= 0;
+        disp_inst <= 0;
+    end else begin
+        new_inst <= sync;
+        disp_inst <= new_inst;
 
-    if (state==T1_DECODE) $fwrite( log_fd, " %s", op_name(opcode));
-    if (inst_cnt>0 && pc != pc_r) begin
-        $fwrite( log_fd, " %2h", i_data);
-        arg_cnt = arg_cnt+1;
+        // pc_r <= pc;
+        // ip_op <= (state==T1_DECODE) ? ip_op : opcode;
+        // if (state==T1_DECODE) ip_op$fwrite( log_fd, " %s", op_name(opcode));
+        // if (inst_cnt>0 && pc != pc_r) begin
+        //     $fwrite( log_fd, " %2h", i_data);
+        //     arg_cnt = arg_cnt+1;
+        // end
+
+        // if (sync && inst_cnt>0) begin
+        //     // reduce spaces depending on argument count to align reg dataus
+        //     for(int p=0;p<5-arg_cnt;p=p+1) $fwrite( log_fd, "   ");
+        //     $fwrite( log_fd, "A:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n", a,x,y,p,s, ip_cycle);
+        // end
+
+        if (disp_inst) begin
+            // inst_cnt <= inst_cnt+1;
+            // $fwrite( log_fd, "%4h", addr);
+            // arg_cnt = 0;
+            // ip_cycle <= cpu_cycle+1;
+
+            $fwrite( log_fd, "%4h  %s        A:%2h X:%2h Y:%2h S:%2h P:%2h Cycle:%0d\n", ip, op_name(opcode), a,x,y,s,p&8'hdf, cpu_cycle);
+
+        end
     end
-
-    if (sync && inst_cnt>0) begin
-        // reduce spaces depending on argument count to align reg dataus
-        for(int p=0;p<5-arg_cnt;p=p+1) $fwrite( log_fd, "   ");
-        $fwrite( log_fd, "A:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n", a,x,y,p,s, cpu_cycle);
-    end
-
-    if (sync) begin
-        inst_cnt = inst_cnt+1;
-        $fwrite( log_fd, "%4h", addr);
-        arg_cnt = 0;
-    end
-
 
     // $fwrite( log_fd, "%4h\t%s\tA:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n",
     //                                 pc,state_name(state), a,x,y,p,s, cpu_cycle);

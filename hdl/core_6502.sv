@@ -5,8 +5,7 @@ module core_6502 #(
     parameter NMI_VECTOR=16'hfffa,
     parameter RST_VECTOR=16'hfffc,
     parameter IRQ_VECTOR=16'hfffe,
-    parameter INITIAL_STATUS=FL_I | FL_U,
-    parameter INITIAL_STACK=8'hfd
+    parameter INITIAL_STATUS=FL_I | FL_U
     )
     (
     input  logic i_clk, i_rst,
@@ -26,7 +25,7 @@ module core_6502 #(
 
     (* mark_debug = "true" *)  logic [31:0] cpu_cycle=0;
     always @(posedge i_clk ) begin
-        if (i_rst) cpu_cycle <= 0;
+        if (i_rst) cpu_cycle <= 1;
         else cpu_cycle <= cpu_cycle+1;
     end
 
@@ -101,7 +100,9 @@ module core_6502 #(
             ADDR_DATA: adl = i_data;
             ADDR_ADD: adl = add;
             ADDR_Z: adl = 8'b0;
-            ADDR_INT: adl = nmi_inst ? NMI_VECTOR[7:0] : IRQ_VECTOR[7:0];
+            ADDR_INT: adl = rst_inst ? RST_VECTOR[7:0] :
+                            nmi_inst ? NMI_VECTOR[7:0] :
+                            IRQ_VECTOR[7:0];
             ADDR_STACK: adl = s;
             default: adl = pcl; //ADDR_HOLD
         endcase
@@ -110,7 +111,9 @@ module core_6502 #(
             ADDR_DATA: adh = i_data;
             ADDR_ADD: adh = add;
             ADDR_Z: adh = 8'b0;
-            ADDR_INT: adh = nmi_inst ? NMI_VECTOR[15:8] : IRQ_VECTOR[15:8];
+            ADDR_INT: adh = rst_inst ? RST_VECTOR[15:8] :
+                            nmi_inst ? NMI_VECTOR[15:8] :
+                            IRQ_VECTOR[15:8];
             ADDR_STACK: adh = STACKPAGE;
             default: adh = pch; //ADDR_HOLD
         endcase
@@ -119,22 +122,25 @@ module core_6502 #(
     // interrupt handling 
     wire nmi_sync = sync & NMI & !nmi_r;    // edge detection on sync
     wire irq_masked = IRQ & !p[2];          // level detection
-    logic nmi_r, nmi_inst, irq_inst;
+    logic nmi_r, nmi_inst, irq_inst, rst_inst;
     wire intr_sync = nmi_sync | irq_masked;
-    wire intr_inst = nmi_inst | irq_inst;
+    wire intr_inst = nmi_inst | irq_inst | rst_inst;
     always @(posedge i_clk ) begin
         if (i_rst) begin
             nmi_r <= 0;
             nmi_inst <= 0;
             irq_inst <= 0;
+            rst_inst <= 1;
         end else begin
             nmi_r <= nmi_r;
             nmi_inst <= nmi_inst;
             irq_inst <= irq_inst;
+            rst_inst <= rst_inst;
             if (sync) begin
                 nmi_r <= NMI;
                 nmi_inst <= nmi_sync;
                 irq_inst <= irq_masked;
+                rst_inst <= 0;
             end
         end
     end
@@ -143,7 +149,7 @@ module core_6502 #(
     wire [7:0]  op_fetch = intr_inst ? 0 : i_data;
     assign opcode = (state==T1_DECODE) ? op_fetch : ir;
     always @(posedge i_clk ) begin
-        if (i_rst) ir <= 8'h4c;  //jmp from RESET_VECTOR
+        if (i_rst) ir <= 0;  //break from RESET_VECTOR
         else ir <= opcode;
     end
 
@@ -151,7 +157,9 @@ module core_6502 #(
     //unused by core, but really helpful for sim/debug
 // `ifndef SYNTHESIS
     (* mark_debug = "true" *)  logic [15:0] ip;
-    always @(posedge i_clk ) ip <= sync ? addr : ip;
+    always @(posedge i_clk ) begin
+        ip <= i_rst ? RST_VECTOR : sync ? addr : ip;
+    end
 // `endif 
 
     assign addr = {adh, adl};
@@ -212,7 +220,7 @@ module core_6502 #(
             default:    db = 8'h0;
         endcase
 
-        RW = !db_write;
+        RW = !db_write || rst_inst;
         dor = db;
     end
 
@@ -238,7 +246,7 @@ module core_6502 #(
             a <= 0;
             x <= 0;
             y <= 0;
-            s <= INITIAL_STACK;
+            s <= 0;
             p <= INITIAL_STATUS;              //disable IRQ on reset
             pch <= 0;
             pcl <= 0;
@@ -294,7 +302,7 @@ module core_6502 #(
     //state machine
     always @(posedge i_clk ) begin
         if (i_rst) begin
-            state <= T_BOOT;
+            state <= T1_DECODE;
         end
         else case(state)
             T0_FETCH:       state <= T1_DECODE;
@@ -305,7 +313,7 @@ module core_6502 #(
             T2_ABS:         state <= T3_ABS;
             T3_ABS:         state <= rmw ? T_RMW_EXEC : T0_FETCH;
             T2_ABSXY:       state <= T3_ABSXY;
-            T3_ABSXY:       state <= !skip ? T4_ABSXY : rmw ? T_RMW_EXEC : T0_FETCH;
+            T3_ABSXY:       state <= !skip ? T4_ABSXY : T0_FETCH;
             T4_ABSXY:       state <= rmw ? T_RMW_EXEC : T0_FETCH;
             T2_XIND:        state <= T3_XIND;
             T3_XIND:        state <= T4_XIND;
@@ -345,7 +353,6 @@ module core_6502 #(
             T3_JSR:         state <= T4_JSR;
             T4_JSR:         state <= T5_JSR;
             T5_JSR:         state <= T3_JUMP;
-            T_BOOT:         state <= T2_JUMP;
             default:        state <= T_JAM;
         endcase
 
@@ -438,12 +445,11 @@ module core_6502 #(
             T4_INDY:    begin
                         adl_src = ADDR_ADD;     // data address at {high,low} (assumes no carry)
                         adh_src = ADDR_DATA;
-                        if (ipage_up) begin
-                            sb_src = REG_Z;     // low = base + index overflowed, need to increment page
-                            ci = 1;
+                        if (ipage_up || store || rmw) begin
+                            sb_src = REG_Z;     // save base address in alu, adding zero (with carry if overflow)
+                            ci = ipage_up;      // low = base + index overflowed, need to increment page
                         end else begin
                             skip = 1;           // no carry, we can skip next state
-                            save = store;       // write data on store ops
                         end
                         end
 
