@@ -38,7 +38,23 @@ module core_6502 #(
     // sb: secondry bus: read from registers (a,x,y,s, zero)
     logic [7:0] db, sb;
 
+    // ready signal
     wire rdy = READY | ~RW; //ignore not ready when writing
+    logic rdy_r;
+    logic [7:0] data, data_reg;
+    always_ff @(posedge i_clk) begin
+        if (i_rst) begin
+            rdy_r <= 0;
+            data_reg <= 0;
+        end else begin
+            rdy_r <= rdy;
+            data_reg <= data;
+        end
+    end
+
+    // when not ready, use registered data (i.e. remember old data)
+    // otherwise, passthrough current data
+    assign data = rdy_r ? i_data : data_reg;
 
     // address registers
     logic [7:0] adl,adh;
@@ -97,7 +113,7 @@ module core_6502 #(
     always @(*) begin
         case(adl_src)
             ADDR_PC: adl = pc[7:0];
-            ADDR_DATA: adl = i_data;
+            ADDR_DATA: adl = data;
             ADDR_ADD: adl = add;
             ADDR_Z: adl = 8'b0;
             ADDR_INT: adl = rst_inst ? RST_VECTOR[7:0] :
@@ -108,7 +124,7 @@ module core_6502 #(
         endcase
         case(adh_src)
             ADDR_PC: adh = pc[15:8];
-            ADDR_DATA: adh = i_data;
+            ADDR_DATA: adh = data;
             ADDR_ADD: adh = add;
             ADDR_Z: adh = 8'b0;
             ADDR_INT: adh = rst_inst ? RST_VECTOR[15:8] :
@@ -132,11 +148,7 @@ module core_6502 #(
             irq_inst <= 0;
             rst_inst <= 1;
         end else begin
-            nmi_r <= nmi_r;
-            nmi_inst <= nmi_inst;
-            irq_inst <= irq_inst;
-            rst_inst <= rst_inst;
-            if (sync) begin
+            if (sync && rdy) begin
                 nmi_r <= NMI;
                 nmi_inst <= nmi_sync;
                 irq_inst <= irq_masked;
@@ -146,11 +158,11 @@ module core_6502 #(
     end
 
     // opcode fetch
-    wire [7:0]  op_fetch = intr_inst ? 0 : i_data;
+    wire [7:0]  op_fetch = intr_inst ? 0 : data;
     assign opcode = (state==T1_DECODE) ? op_fetch : ir;
     always @(posedge i_clk ) begin
         if (i_rst) ir <= 0;  //break from RESET_VECTOR
-        else ir <= opcode;
+        else if (rdy) ir <= opcode;
     end
 
     //instruction pointer: pc of current opcode
@@ -158,13 +170,14 @@ module core_6502 #(
 // `ifndef SYNTHESIS
     (* mark_debug = "true" *)  logic [15:0] ip;
     always @(posedge i_clk ) begin
-        ip <= i_rst ? RST_VECTOR : sync ? addr : ip;
+        if (i_rst) ip <= RST_VECTOR;
+        else if (sync && rdy) ip <= addr;
     end
 // `endif 
 
     assign addr = {adh, adl};
     assign pcsel = jump ? addr : pc;
-    assign nextpc = (sync | inc_pc | jump) & !intr_sync ? pcsel + 1 : pcsel;
+    assign nextpc = (sync | inc_pc | jump) && !intr_sync ? pcsel + 1 : pcsel;
 
 
     // decode instruction
@@ -206,11 +219,11 @@ module core_6502 #(
             REG_Y: sb = y;
             REG_S: sb = s;
             REG_ADD: sb = add;
-            REG_DATA: sb = i_data;
+            REG_DATA: sb = data;
             default: sb = 8'h0;
         endcase
         case(db_src)
-            DB_DATA:    db = i_data;
+            DB_DATA:    db = data;
             DB_PCL:     db = pc[7:0];
             DB_PCH:     db = pc[15:8];
             DB_S:       db = s;
@@ -258,7 +271,7 @@ module core_6502 #(
             bpage_up <= 0;
             bpage_down <= 0;
             
-        end else begin
+        end else if(rdy) begin
             rpop <= pop;
             rexec <= exec;
 
@@ -304,7 +317,8 @@ module core_6502 #(
         if (i_rst) begin
             state <= T1_DECODE;
         end
-        else case(state)
+        else if (rdy) begin
+            case(state)
             T0_FETCH:       state <= T1_DECODE;
             T1_DECODE:      state <= initial_state;
             T2_ZPG:         state <= rmw ? T_RMW_EXEC : T0_FETCH;
@@ -354,9 +368,8 @@ module core_6502 #(
             T4_JSR:         state <= T5_JSR;
             T5_JSR:         state <= T3_JUMP;
             default:        state <= T_JAM;
-        endcase
-
-        if (~rdy) state <= state;
+            endcase
+        end
     end
 
     // control
