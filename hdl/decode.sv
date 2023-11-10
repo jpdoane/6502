@@ -2,7 +2,7 @@
 `include "6502_defs.vh"
 
 module decode (
-    input logic i_clk, i_rst,
+    input logic i_clk, i_rst, rdy,
     input  logic [7:0] opcode,
     input  logic [7:0] pstatus,
 
@@ -112,7 +112,7 @@ module decode (
         if(i_rst) begin
             set_mask <= 8'h0;
             clear_mask <= 8'h0;
-        end else begin
+        end else if(rdy) begin
             set_mask <= 8'h0;
             clear_mask <= 8'h0;
             casez(opcode)
@@ -134,7 +134,7 @@ module decode (
         if(i_rst) begin
             bus_ctl <= {DB_Z, REG_Z, REG_Z};
             alu_ctl <= {ALU_NOP, 6'b000000};
-        end else begin
+        end else if(rdy) begin
 
             // decode bus routing
             casez(opcode)

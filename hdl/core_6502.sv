@@ -184,6 +184,7 @@ module core_6502 #(
     decode u_decode(
         .i_clk         (i_clk         ),
         .i_rst         (i_rst         ),
+        .rdy           (rdy),
         .opcode        (opcode        ),
         .pstatus       (p             ),
         .initial_state (initial_state ),
