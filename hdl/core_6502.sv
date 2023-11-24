@@ -483,6 +483,7 @@ module core_6502 #(
                         adh_src = ADDR_Z;
                         sb_src = REG_ADD;       // increment base+index+1 for high address location
                         ci = 1;
+                        db_src = DB_Z;
                         end
             T4_XIND:    begin
                         sb_src = REG_Z;         // read low address and hold in alu by computing (low+0)
