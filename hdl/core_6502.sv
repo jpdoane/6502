@@ -22,13 +22,6 @@ module core_6502 #(
     output logic jam
     );
 
-
-    (* mark_debug = "true" *)  logic [31:0] cpu_cycle=0;
-    always @(posedge i_clk ) begin
-        if (i_rst) cpu_cycle <= 1;
-        else cpu_cycle <= cpu_cycle+1;
-    end
-
 `ifdef DEBUG_CPU
     `include "debug/debug.sv"
 `endif 
@@ -98,7 +91,7 @@ module core_6502 #(
     logic skip;
     logic exec, rexec;
     logic save;
-    logic jump;
+    logic jump, handle_int;
     logic holdalu;
     logic db_write;
     logic sb_a;
@@ -116,8 +109,8 @@ module core_6502 #(
             ADDR_DATA: adl = data;
             ADDR_ADD: adl = add;
             ADDR_Z: adl = 8'b0;
-            ADDR_INT: adl = rst_inst ? RST_VECTOR[7:0] :
-                            nmi_inst ? NMI_VECTOR[7:0] :
+            ADDR_INT: adl = rst_event ? RST_VECTOR[7:0] :
+                            nmi_event ? NMI_VECTOR[7:0] :
                             IRQ_VECTOR[7:0];
             ADDR_STACK: adl = s;
             default: adl = pcl; //ADDR_HOLD
@@ -127,38 +120,45 @@ module core_6502 #(
             ADDR_DATA: adh = data;
             ADDR_ADD: adh = add;
             ADDR_Z: adh = 8'b0;
-            ADDR_INT: adh = rst_inst ? RST_VECTOR[15:8] :
-                            nmi_inst ? NMI_VECTOR[15:8] :
+            ADDR_INT: adh = rst_event ? RST_VECTOR[15:8] :
+                            nmi_event ? NMI_VECTOR[15:8] :
                             IRQ_VECTOR[15:8];
             ADDR_STACK: adh = STACKPAGE;
             default: adh = pch; //ADDR_HOLD
         endcase
     end
 
-    // interrupt handling 
-    wire nmi_sync = sync & NMI & !nmi_r;    // edge detection on sync
-    wire irq_masked = IRQ & !p[2];          // level detection
-    logic nmi_r, nmi_inst, irq_inst, rst_inst;
-    wire intr_sync = nmi_sync | irq_masked;
-    wire intr_inst = nmi_inst | irq_inst | rst_inst;
+    logic nmi_event, nmi_handled, irq_event, rst_event;
+    logic fetch_intr;
+    wire IRQ_masked = IRQ && !p[2];
     always @(posedge i_clk ) begin
         if (i_rst) begin
-            nmi_r <= 0;
-            nmi_inst <= 0;
-            irq_inst <= 0;
-            rst_inst <= 1;
+            nmi_event <= 0;
+            irq_event <= 0;
+            rst_event <= 1;
+            nmi_handled <= 0;
         end else begin
-            if (sync && rdy) begin
-                nmi_r <= NMI;
-                nmi_inst <= nmi_sync;
-                irq_inst <= irq_masked;
-                rst_inst <= 0;
+
+            nmi_event <= NMI && !nmi_handled;
+            if (IRQ_masked)
+                irq_event <= 1;
+            
+            if(handle_int) begin
+                nmi_handled <= nmi_event;
+                nmi_event <= 0;
+                irq_event <= 0;
+                rst_event <= 0;
             end
+
+            if(!NMI) nmi_handled <= 0;
+
+            // set ir to BRK (0) rather than fetched instruction
+            fetch_intr <= nmi_event | irq_event | rst_event;
         end
     end
 
-    // opcode fetch
-    wire [7:0]  op_fetch = intr_inst ? 0 : data;
+    // opcode fetch and interrupt injection
+    wire [7:0]  op_fetch = fetch_intr ? 0 : data;
     assign opcode = (state==T1_DECODE) ? op_fetch : ir;
     always @(posedge i_clk ) begin
         if (i_rst) ir <= 0;  //break from RESET_VECTOR
@@ -166,7 +166,7 @@ module core_6502 #(
     end
 
     //instruction pointer: pc of current opcode
-    //unused by core, but really helpful for sim/debug
+    //unused by core, but helpful for sim/debug
 // `ifndef SYNTHESIS
     (* mark_debug = "true" *)  logic [15:0] ip;
     always @(posedge i_clk ) begin
@@ -177,7 +177,8 @@ module core_6502 #(
 
     assign addr = {adh, adl};
     assign pcsel = jump ? addr : pc;
-    assign nextpc = (sync | inc_pc | jump) && !intr_sync ? pcsel + 1 : pcsel;
+    assign nextpc = (sync | inc_pc | jump) && !((nmi_event || irq_event) && sync) ? pcsel + 1 : pcsel;
+    // assign nextpc = (sync | inc_pc | jump) ? pcsel + 1 : pcsel;
 
 
     // decode instruction
@@ -228,13 +229,13 @@ module core_6502 #(
             DB_PCL:     db = pc[7:0];
             DB_PCH:     db = pc[15:8];
             DB_S:       db = s;
-            DB_P:       db = irq_inst ? p : p | FL_BU; // set break flags unless irq 
+            DB_P:       db = irq_event ? p : p | FL_BU; // set break flags unless irq 
             DB_A:       db = a;
             DB_SB:      db = sb;
             default:    db = 8'h0;
         endcase
 
-        RW = !db_write || rst_inst;
+        RW = !db_write || rst_event;
         dor = db;
     end
 
@@ -308,7 +309,7 @@ module core_6502 #(
             bpage_up <= bi[7] & !ai[7] & !aluN; // crossed to next page if base>127, offset>0, and result <= 127
             bpage_down <= !bi[7] & ai[7] & aluN; // crossed to prev page if base<=127, offset<0, and result > 127
 
-            p[2] <= p[2] | irq_inst | nmi_inst; // set interrupt bit
+            if (handle_int && (irq_event | nmi_event)) p[2] <= 1; // set interrupt bit
             p[5] <= p[5];                       //never change bit 5
         end
     end
@@ -387,6 +388,7 @@ module core_6502 #(
         jump        = 0;
         jam         = 0;
         sync        = 0;
+        handle_int  = 0;
 
         //default bus config
         db_src  = DB_DATA;
@@ -607,6 +609,7 @@ module core_6502 #(
                         adl_src = ADDR_INT;     // jump to interrupt register
                         adh_src = ADDR_INT;
                         jump = 1;
+                        handle_int = 1;
                         end
 
 

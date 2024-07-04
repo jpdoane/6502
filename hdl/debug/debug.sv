@@ -6,6 +6,13 @@
     parameter LABEL_FILE = "";
 `endif
 
+    (* mark_debug = "true" *)  logic [31:0] cpu_cycle=0;
+    always @(posedge i_clk ) begin
+        if (i_rst) cpu_cycle <= 1;
+        else cpu_cycle <= cpu_cycle+1;
+    end
+
+
 int log_fd, label_fd, Nlabels, i;
 int inst_cnt=0;
 string labels[], _lbl, rline;
