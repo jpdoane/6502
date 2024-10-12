@@ -1,7 +1,8 @@
-`include "defs.vh"
+`timescale 1ns/1ps
+`include "6502_defs.vh"
 
 module decode (
-    input logic i_clk, i_rst,
+    input logic i_clk, i_rst, rdy,
     input  logic [7:0] opcode,
     input  logic [7:0] pstatus,
 
@@ -28,7 +29,9 @@ module decode (
     output logic [7:0] set_mask, clear_mask // set or clear flags
     );
 
-    logic [10:0] bus_ctl;
+/* verilator lint_off CASEOVERLAP */
+
+    logic [8:0] bus_ctl;
     assign {db_src, sb_src, dst} = bus_ctl;
     assign mem_read = db_src == DB_DATA;
     assign mem_write = dst == REG_DATA;
@@ -109,7 +112,7 @@ module decode (
         if(i_rst) begin
             set_mask <= 8'h0;
             clear_mask <= 8'h0;
-        end else begin
+        end else if(rdy) begin
             set_mask <= 8'h0;
             clear_mask <= 8'h0;
             casez(opcode)
@@ -120,6 +123,7 @@ module decode (
                 8'b001_110_00: set_mask <= FL_C;   // SEC
                 8'b011_110_00: set_mask <= FL_I;   // SEI
                 8'b111_110_00: set_mask <= FL_D;   // SED
+                default:    begin end
             endcase
         end
     end
@@ -129,8 +133,8 @@ module decode (
     always @(posedge i_clk ) begin
         if(i_rst) begin
             bus_ctl <= {DB_Z, REG_Z, REG_Z};
-            alu_ctl <= {1'b0, ALU_NOP, 2'b00, CARRY_Z, FL_NONE};
-        end else begin
+            alu_ctl <= {ALU_NOP, 6'b000000};
+        end else if(rdy) begin
 
             // decode bus routing
             casez(opcode)
@@ -200,5 +204,6 @@ module decode (
         end
     end
 
+/* verilator lint_on CASEOVERLAP */
 
 endmodule

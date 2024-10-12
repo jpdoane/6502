@@ -1,21 +1,27 @@
 `ifndef LOG_FILE
-    parameter LOG_FILE = "debug.log";
+    parameter LOG_FILE = "logs/debug.log";
 `endif
 
 `ifndef LABEL_FILE
     parameter LABEL_FILE = "";
 `endif
 
+    (* mark_debug = "true" *)  logic [31:0] cpu_cycle=0;
+    always @(posedge i_clk ) begin
+        if (i_rst) cpu_cycle <= 1;
+        else cpu_cycle <= cpu_cycle+1;
+    end
+
+
 int log_fd, label_fd, Nlabels, i;
 int inst_cnt=0;
-int cyc_cnt=0;
 string labels[], _lbl, rline;
 int label_addrs[], _lbl_addr;
 int scanRet;
 int j1,j2;
 initial begin
     log_fd = $fopen(LOG_FILE, "w");
-    cyc_cnt = 0;
+    cpu_cycle = 0;
     inst_cnt = 0;
     
     Nlabels=0;
@@ -49,35 +55,50 @@ always @(posedge i_clk ) begin
 end
 
 logic [15:0] pc_r;
+logic [7:0] ip_op;
 int arg_cnt=0;
-always @(negedge i_clk ) begin
+int ip_cycle=0;
+logic new_inst, disp_inst;
+always @(posedge i_clk ) begin
 
-    if (i_rst) cyc_cnt = 0;
-    else cyc_cnt = cyc_cnt+1;
+    if (i_rst) begin
+        pc_r <= 0;
+        arg_cnt=0;
+        inst_cnt<=0;
+        ip_cycle <= 0;
+        new_inst <= 0;
+        disp_inst <= 0;
+    end else begin
+        new_inst <= sync;
+        disp_inst <= new_inst;
 
-    pc_r <= pc;
+        // pc_r <= pc;
+        // ip_op <= (state==T1_DECODE) ? ip_op : opcode;
+        // if (state==T1_DECODE) ip_op$fwrite( log_fd, " %s", op_name(opcode));
+        // if (inst_cnt>0 && pc != pc_r) begin
+        //     $fwrite( log_fd, " %2h", i_data);
+        //     arg_cnt = arg_cnt+1;
+        // end
 
-    if (state==T1_DECODE) $fwrite( log_fd, " %s", op_name(opcode));
-    if (inst_cnt>0 && pc != pc_r) begin
-        $fwrite( log_fd, " %2h", i_data);
-        arg_cnt = arg_cnt+1;
+        // if (sync && inst_cnt>0) begin
+        //     // reduce spaces depending on argument count to align reg dataus
+        //     for(int p=0;p<5-arg_cnt;p=p+1) $fwrite( log_fd, "   ");
+        //     $fwrite( log_fd, "A:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n", a,x,y,p,s, ip_cycle);
+        // end
+
+        if (disp_inst) begin
+            // inst_cnt <= inst_cnt+1;
+            // $fwrite( log_fd, "%4h", addr);
+            // arg_cnt = 0;
+            // ip_cycle <= cpu_cycle+1;
+
+            $fwrite( log_fd, "%4h  %s        A:%2h X:%2h Y:%2h S:%2h P:%2h Cycle:%0d\n", ip, op_name(opcode), a,x,y,s,p&8'hdf, cpu_cycle);
+
+        end
     end
-
-    if (sync && inst_cnt>0) begin
-        // reduce spaces depending on argument count to align reg dataus
-        for(int p=0;p<5-arg_cnt;p=p+1) $fwrite( log_fd, "   ");
-        $fwrite( log_fd, "A:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n", a,x,y,p,s, cyc_cnt);
-    end
-
-    if (sync) begin
-        inst_cnt = inst_cnt+1;
-        $fwrite( log_fd, "%4h", addr);
-        arg_cnt = 0;
-    end
-
 
     // $fwrite( log_fd, "%4h\t%s\tA:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%0d\n",
-    //                                 pc,state_name(state), a,x,y,p,s, cyc_cnt);
+    //                                 pc,state_name(state), a,x,y,p,s, cpu_cycle);
 
 
     // $fwrite( log_fd, "\t%s:\taddr:%s,%s=%h db:%h(%s) sb:%h(%s) %sA:%2h X:%2h Y:%2h P:%2h SP:%2h CYC:%d\n" ,
@@ -120,14 +141,14 @@ final begin
     $fclose(log_fd);
 end
 
-function string format_addr(input int addr);
+function string format_addr(input int _addr);
     int base;
     string base_name;
     string name;
     base = 0;
     base_name = "0x0000";
     for (i=0; i<Nlabels; i++) begin
-        if (addr >= label_addrs[i] && label_addrs[i]>base) begin
+        if (_addr >= label_addrs[i] && label_addrs[i]>base) begin
             base = label_addrs[i];
             base_name = labels[i];
         end
@@ -135,12 +156,12 @@ function string format_addr(input int addr);
     // if (addr==base)
     //     $sformat(name, "%s", base_name);
     // else
-        $sformat(name, "%s+0x%0h", base_name, addr-base);
+        $sformat(name, "%s+0x%0h", base_name, _addr-base);
 
     format_addr = name;
 endfunction
 
-function string state_name(input int x);
+function string state_name(input logic[5:0] x);
     case(x)
         T0_FETCH: state_name = "T0_FCH";
         T1_DECODE: state_name = "T1_DCD";
@@ -192,7 +213,7 @@ function string state_name(input int x);
     endcase
 endfunction
 
-function string reg_name(input int x);
+function string reg_name(input logic [2:0] x);
     case(x)
         REG_Z: reg_name = "Z  ";
         REG_A: reg_name = "A  ";
@@ -206,7 +227,7 @@ function string reg_name(input int x);
     endcase
 endfunction
 
-function string db_name(input int x);
+function string db_name(input logic [2:0] x);
     case(x)
         DB_Z: db_name = "Z  ";
         DB_DATA: db_name = "DAT";
@@ -221,7 +242,7 @@ function string db_name(input int x);
 endfunction
 
 
-function string addr_name(input int x);
+function string addr_name(input logic [2:0] x);
     case(x)
         ADDR_PC: addr_name = "PC ";
         ADDR_DATA: addr_name = "DAT";
@@ -235,7 +256,7 @@ function string addr_name(input int x);
     endcase
 endfunction
 
-function string alu_name(input int x);
+function string alu_name(input logic [2:0] x);
     case(x)
         ALU_NOP: alu_name = "NOP";
         ALU_ADD: alu_name = "ADD";
@@ -250,7 +271,7 @@ function string alu_name(input int x);
 endfunction
 
 
-function string op_name(input int op);
+function string op_name(input logic [7:0] op);
     case(opcode)
         8'h00: op_name = "BRK";
         8'h01: op_name = "ORA";

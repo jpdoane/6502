@@ -1,4 +1,6 @@
-`include "defs.vh"
+`timescale 1ns/1ps
+
+`include "6502_defs.vh"
 
 module alu (
     input  logic [7:0] ai, bi,
