@@ -1,0 +1,6 @@
+[submodule "unittests/65x02"]
+	path = unittests/65x02
+	url = https://github.com/SingleStepTests/65x02.git
+[submodule "unittests/json"]
+	path = unittests/json
+	url = https://github.com/nlohmann/json.git

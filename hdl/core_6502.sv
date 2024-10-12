@@ -20,6 +20,17 @@ module core_6502 #(
     output logic RW,
     output logic sync,
     output logic jam
+
+    `ifdef DEBUG_REG
+        ,input  logic reg_set_en,
+        input  logic [7:0] pc_set,
+        input  logic [7:0] s_set,
+        input  logic [7:0] a_set,
+        input  logic [7:0] x_set,
+        input  logic [7:0] y_set,
+        input  logic [7:0] p_set
+    `endif 
+
     );
 
 `ifdef DEBUG_CPU
@@ -281,6 +292,17 @@ module core_6502 #(
             p[2] <= p[2] | irq_inst | nmi_inst; // set interrupt bit
             p[5] <= p[5];                       //never change bit 5
         end
+
+        `ifdef DEBUG_REG
+            if(reg_set_en) begin
+                pc <= pc_set;
+                s <= s_set;
+                a <= a_set;
+                x <= x_set;
+                y <= y_set;
+                p <= p_set;     
+            end
+        `endif
     end
 
     //state machine

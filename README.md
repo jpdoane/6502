@@ -14,7 +14,7 @@ $ sudo apt install iverilog gtkwave xa65
 
 Simulate testbench and view in gtkwave
 ```
-$ cd tb 
+$ cd test
 $ make 
 ```
 
