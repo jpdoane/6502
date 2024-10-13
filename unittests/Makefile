@@ -1,15 +1,12 @@
 include ../inc/make.inc
 
-TOP=cpu_tb
-ASM_SOURCE = test6502.s
+TOP=core_6502
+VERILATE_TOP=test_main.cpp
+VERILATE_INCL=input.vc
+HDL_SOURCE = $(CPU_SOURCE)
 
-include ../inc/make.build
+include ../inc/make.verilator
 
-HDL_SOURCE = $(CPU_SOURCE) $(TOP).sv
-HDL_INCLUDE = $(CPU_INCLUDE)
-CUSTOMSIMARGS=-DDEBUG_REG=1
-SIMREQS=$(OBJFILE)
+VERILATOR_FLAGS += -DDEBUG_REG=1
 
-include ../inc/make.sim
-
- .DEFAULT_GOAL = sim
+ .DEFAULT_GOAL = run
