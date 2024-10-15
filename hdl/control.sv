@@ -1,12 +1,7 @@
 `timescale 1ns/1ps
 `include "6502_defs.vh"
 
-module core_6502 #(
-    parameter NMI_VECTOR=16'hfffa,
-    parameter RST_VECTOR=16'hfffc,
-    parameter IRQ_VECTOR=16'hfffe,
-    parameter INITIAL_STATUS=FL_I | FL_U
-    )
+module control #()
     (
     input  logic clk_m1,
     input  logic clk_m2,
@@ -23,37 +18,156 @@ module core_6502 #(
     output logic sync,
     output logic jam
 
-    `ifdef DEBUG_REG
-        ,input  logic reg_set_en,
-        input  logic [15:0] pc_set,
-        input  logic [7:0] s_set,
-        input  logic [7:0] a_set,
-        input  logic [7:0] x_set,
-        input  logic [7:0] y_set,
-        input  logic [7:0] p_set,
-        output  logic [15:0] pc_dbg,
-        output  logic [7:0] s_dbg,
-        output  logic [7:0] a_dbg,
-        output  logic [7:0] x_dbg,
-        output  logic [7:0] y_dbg,
-        output  logic [7:0] p_dbg
-    `endif 
-
     );
 
-`ifdef DEBUG_CPU
-    `include "debug/debug.sv"
-`endif 
-`ifdef DEBUG_REG
+    // data_reg: input data registered on m2
+
+    reg rstg, intg;
+
+
+    // branch logic
+    logic take_branch;
     always_comb begin
-        pc_dbg = pc;
-        s_dbg = s;
-        a_dbg = a;
-        x_dbg = x;
-        y_dbg = y;
-        p_dbg = p;
+        case(opcode[7:5]) //op_a
+            3'h0:   take_branch = !p[7]; // BPL
+            3'h1:   take_branch = p[7];  // BMI
+            3'h2:   take_branch = !p[6]; // BVC
+            3'h3:   take_branch = p[6];  // BVS
+            3'h4:   take_branch = !p[0]; // BCC
+            3'h5:   take_branch = p[0];  // BCS
+            3'h6:   take_branch = !p[1]; // BNE
+            3'h7:   take_branch = p[1];  // BEQ
+        endcase
     end
-`endif
+
+    // predecode logic
+    // valid only on instruction fetch (sync=1)
+    logic [7:0] ir_in;
+    logic two_cycle;
+    always_comb begin
+        ir_in = (rstg || intg) ? 0 : data_in;
+
+        // early decode 2 cycle instructions to set T0+2 special case for timing state
+        // TZPRE in block diagram
+        two_cycle = (ir_in == 8'b1??_000_?0) ||                 // LD/CP IMM
+                    (ir_in[4:0] == 5'b010??) ||                 // IMM or IMPL
+                    (ir_in[4:0] == 5'b110?0) ||                 // IMPL
+                   ((ir_in[4:0] == 5'b10000) && !take_branch);  // branch not taken
+    end
+
+    // ir
+    logic sync;
+    always @(posedge clk_m1 ) begin
+        if (i_rst) ir <= 0;
+        else if (rdy && sync)
+            ir <= ir_in;
+    end
+
+    // 2-byte, 2 cycle opcode summary:
+    // https://www.nesdev.org/wiki/Visual6502wiki/6502_Timing_States
+    //
+    //      OP 1                            OP 2
+    //      ----------------------------    ---------------
+    // m1   T0: PC => addr                   
+    // m2   T0: bus => data_reg              
+    // m1   T1: data => ir, PC+1 => addr
+    // m2   T1: bus => data_reg, decode
+    // m1   T2: data_reg => alu (via DB)    T0: PC => addr
+    // m2   T2: alu=>add                    T0: bus => data_reg
+    // m1     : add=>a                      T1: data => ir, PC+1 => addr
+    // m2                                   T1: bus => data_reg, decode
+    // m1                                   T2: data_reg => alu (via DB)
+    // m2                                   T2: alu=>add
+    // m1                                       add=>a
+
+    // timing state machine
+    logic [5:0] Tstate, Tnext;
+    logic T0next;           // signal that this is second to last cycle and next cycle is T0
+
+    always_comb begin
+        if( two_cycle && sync)  Tnext = 6'b101;         // T0+2
+        else if (T0next)        Tnext = 6'b1;           // T0
+        else                    Tnext = Tstate << 1;    // T++
+
+        sync = Tstate[1];  // fetch opcode
+    end
+
+    localparam Treset = 6'b1;
+    always_ff @(posedge clk_m1 ) begin
+        if (i_rst) Tstate <= Trst;
+        else Tstate <= Tnext;
+    end
+
+    // decode logic
+    // this is analogous to the PLA decode rom in the actual 6502
+
+    always @(*) begin
+        casez(ir)
+            8'b000_000_00:  // BRK
+            8'b001_000_00:  // JSR
+            8'b010_000_00:  // RTI
+            8'b011_000_00:  // RTS
+            8'b???_000_?1:  // X,ind
+            8'b1??_000_?0:  // LD/CP imm
+            8'b???_001_??:  // zpg
+            8'b0?0_010_00:  // php,pha
+            8'b0?1_010_00:  // plp,pha
+            8'b???_010_??:  // imm or impl
+            8'b010_011_00:  // jmp abs
+            8'b011_011_00:  // jmp ind
+            8'b???_011_??:  // abs
+            8'b???_100_00:  // conditional branch
+            8'b???_100_?1:  // alu ind,Y ops
+            8'b???_101_??:  // zpg X/Y
+            8'b???_110_?0:  // impl
+            8'b???_110_?1:  // abs, Y
+            8'b???_111_??:  // abs,X/Y
+        endcase
+    end
+
+
+
+    // decode
+    // combinatoric from ir and timing
+    decode u_decode(
+        .i_clk         (i_clk         ),
+        .i_rst         (i_rst         ),
+        .rdy           (rdy),
+        .opcode        (opcode        ),
+        .pstatus       (p             ),
+        .initial_state (initial_state ),
+        .single_byte   (single_byte   ),
+        .idx_XY        (idx_XY   ),
+        .mem_read       (mem_read),
+        .mem_write      (mem_write),
+        .reg_write      (reg_write),
+        .sb_src        (op_sb_src        ),
+        .db_src        (op_db_src        ),
+        .dst       (op_dst       ),
+        .alu_en        (alu_en        ),
+        .alu_OP        (op_alu_OP        ),
+        .ai_inv        (op_ai_inv        ),
+        .bi_inv        (op_bi_inv        ),
+        .Pci            (op_Pci      ),
+        .ci             (op_ci      ),
+        .setV             (setV      ),
+        .setC             (setC      ),
+        .set_mask      (set_mask      ),
+        .clear_mask    (clear_mask    )
+    );
+
+
+
+
+    // opcode fetch and interrupt injection
+    wire [7:0]  op_fetch = fetch_instr ? 0 : data;
+    assign opcode = (state==T1_DECODE) ? op_fetch : ir;
+    always @(posedge clk_m1 ) begin
+        if (i_rst) ir <= 0;  //break from RESET_VECTOR
+        else if (rdy && state==T1_DECODE) ir <= data;
+    end
+
+
 
     // busses
     // db: data bus: typically memory read, but can be addr_lo or zero
@@ -186,50 +300,6 @@ module core_6502 #(
         end
     end
 
-    // predecode register
-    reg [7:0] pd_reg;
-    always_ff @(posedge clk_m2 ) begin
-        if (i_rst) pd_reg <= 0;
-        else pd_reg <= data_i;
-    end
-
-    // predecode logic
-    reg tzpre;  // T0 (load next instruction)
-    always_comb begin
-        tzpre;
-    end
-
-    // timing generation
-    reg [7:0] tstate;   //one hot state
-    reg tlast;
-    always_ff @(posedge clk_m2 ) begin
-        if (i_rst)
-            tstate <= 0;
-        else // shift in new tzpre, advance old state and clear on tlast
-            tstate <= {(tstate[6:1] .& ~tlast), tzpre};
-    end
-    wire sync = tstate[1];
-
-    always_comb begin
-        if (i_rst) pd_reg <= 0;
-        else pd_reg <= data_i;
-    end
-
-
-    // ir
-    always @(posedge clk_m1 ) begin
-        if (i_rst) ir <= 0;  //break from RESET_VECTOR
-        else if (rdy && state==T1_DECODE) ir <= data;
-    end
-
-
-    // opcode fetch and interrupt injection
-    wire [7:0]  op_fetch = fetch_instr ? 0 : data;
-    assign opcode = (state==T1_DECODE) ? op_fetch : ir;
-    always @(posedge clk_m1 ) begin
-        if (i_rst) ir <= 0;  //break from RESET_VECTOR
-        else if (rdy && state==T1_DECODE) ir <= data;
-    end
 
     //instruction pointer: pc of current opcode
     //unused by core, but helpful for sim/debug

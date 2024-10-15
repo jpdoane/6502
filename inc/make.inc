@@ -3,7 +3,7 @@ PROJ_ROOT = $(abspath $(SCRIPTS)/..)
 
 ARTYZ7_XDC =  $(SCRIPTS)/artyz7.xdc
 
-CPU_SOURCE = $(wildcard $(PROJ_ROOT)/hdl/*.sv) 
+CPU_SOURCE = $(wildcard $(PROJ_ROOT)/hdl/*.sv)
 CPU_INCLUDE = $(PROJ_ROOT)/hdl 
 
 # CLOCK_XDC = $(wildcard $(MODULES)/clocks/*.xdc)
