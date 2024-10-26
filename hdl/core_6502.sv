@@ -23,18 +23,34 @@ module core_6502 #(
 
     `ifdef DEBUG_REG
         ,input  logic reg_set_en,
-        input  logic [7:0] pc_set,
+        input  logic [15:0] pc_set,
         input  logic [7:0] s_set,
         input  logic [7:0] a_set,
         input  logic [7:0] x_set,
         input  logic [7:0] y_set,
-        input  logic [7:0] p_set
+        input  logic [7:0] p_set,
+        output  logic [15:0] pc_dbg,
+        output  logic [7:0] s_dbg,
+        output  logic [7:0] a_dbg,
+        output  logic [7:0] x_dbg,
+        output  logic [7:0] y_dbg,
+        output  logic [7:0] p_dbg
     `endif 
 
     );
 
 `ifdef DEBUG_CPU
     `include "debug/debug.sv"
+`endif 
+`ifdef DEBUG_REG
+    always_comb begin
+        pc_dbg = pc;
+        s_dbg = s;
+        a_dbg = a;
+        x_dbg = x;
+        y_dbg = y;
+        p_dbg = p;
+    end
 `endif 
 
     // busses
@@ -63,11 +79,11 @@ module core_6502 #(
     // address registers
     logic [7:0] adl,adh;
     logic [7:0] pcl, pch;
-    logic [15:0] pc, pcsel, nextpc;
+    logic [15:0] pc, pcsel, nextpc /*verilator public_flat*/;
 
     // registers
     logic [7:0] ir, add;
-    logic [7:0] a, s, x, y, p;
+    logic [7:0] a, s, x, y, p /*verilator public_flat*/;
 
       // state
     logic [5:0] state, initial_state;
@@ -391,9 +407,23 @@ module core_6502 #(
             T3_JSR:         state <= T4_JSR;
             T4_JSR:         state <= T5_JSR;
             T5_JSR:         state <= T3_JUMP;
+
+            `ifdef DEBUG_REG
+            T0_DEBUG:       state <= T1_DECODE;
+            `endif
+
             default:        state <= T_JAM;
             endcase
+
+        `ifdef DEBUG_REG
+            if(reg_set_en) begin
+                state <= T0_DEBUG;
+            end
+        `endif
+
+
         end
+
     end
 
     // control
@@ -675,6 +705,12 @@ module core_6502 #(
                         holdalu = 1;            // continue to hold new pcl in alu
                         end
             // state then transfers to T3_JUMP, where {pch, pcl} -> pc
+
+            `ifdef DEBUG_REG
+                T0_DEBUG: begin
+                            sync = 1;
+                        end
+            `endif
 
             default:    jam = 1;
         endcase

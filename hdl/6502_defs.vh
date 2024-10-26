@@ -57,7 +57,7 @@ parameter T2_JUMPIND    =6'h2f;
 parameter T3_JUMPIND    =6'h30;
 parameter T4_JUMPIND    =6'h31;
 parameter T5_JUMPIND    =6'h32;
-
+parameter T0_DEBUG      =6'h3f;
 
 parameter REG_Z      =3'h0;
 parameter REG_A      =3'h1;
