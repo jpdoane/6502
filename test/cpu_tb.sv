@@ -21,9 +21,11 @@ module cpu_tb();
     end
 
     always #1 clk = ~clk;
+    wire clk_m1 = clk;
+    wire clk_m2 = ~clk;
 
     logic [7:0] uart_out;
-    always @(posedge clk ) begin
+    always @(posedge clk_m2 ) begin
         if (!RW && addr == UART_DATA) begin
             uart_out <=  dout;
             $write( "%c", dout);
@@ -45,7 +47,7 @@ module cpu_tb();
     logic [7:0] dout;
     logic [7:0] din = 8'b0;
     logic RW;
-    always @(posedge clk) begin
+    always @(posedge clk_m2) begin
         din <= BRAM[addr];
         if (!RW)
             BRAM[addr] <= dout;
@@ -69,9 +71,10 @@ module cpu_tb();
     logic SYNC;
 
     core_6502 u_core_6502 (
-        .i_clk   (clk   ),
-        .i_rst   (rst   ),
-        .i_data  (din  ),
+        .clk_m1   (clk_m1   ),
+        .clk_m2   (clk_m2   ),
+        .rst   (rst   ),
+        .data_i  (din  ),
         .READY (READY ),
         .SV    (SV    ),
         .NMI   (NMI   ),

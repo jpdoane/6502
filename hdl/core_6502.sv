@@ -1,6 +1,14 @@
 `timescale 1ns/1ps
 `include "6502_defs.vh"
 
+// 6502 uses level-triggered logic with latches that are updated during clk=1
+// FPGA uses edge-triggered logic with registers loaded on posedge(clk)
+// thus latches active on clk_m1 phase should be implemented as registers triggered on posedge(m2) and vice versa 
+
+// unlike 6502 latches, registers are not transparent, cannot forward updated state on same clock,
+// so several in several cases we will need special logic
+
+
 module core_6502 #(
     parameter NMI_VECTOR=16'hfffa,
     parameter RST_VECTOR=16'hfffc,
@@ -8,8 +16,10 @@ module core_6502 #(
     parameter INITIAL_STATUS=FL_I | FL_U
     )
     (
-    input  logic i_clk, i_rst,
-    input  logic [7:0] i_data,
+    input  logic clk_m1,
+    input  logic clk_m2,
+    input  logic rst,
+    input  logic [7:0] data_i,
     input  logic READY,
     input  logic SV,
     input  logic NMI,
@@ -23,7 +33,7 @@ module core_6502 #(
 
     `ifdef DEBUG_REG
         ,input  logic reg_set_en,
-        input  logic [7:0] pc_set,
+        input  logic [15:0] pc_set,
         input  logic [7:0] s_set,
         input  logic [7:0] a_set,
         input  logic [7:0] x_set,
@@ -44,21 +54,17 @@ module core_6502 #(
 
     // ready signal
     wire rdy = READY | ~RW; //ignore not ready when writing
-    logic rdy_r;
-    logic [7:0] data, data_reg;
-    always_ff @(posedge i_clk) begin
-        if (i_rst) begin
-            rdy_r <= 0;
-            data_reg <= 0;
+
+    logic [7:0] data;
+    always_ff @(posedge clk_m1) begin
+        if (rst) begin
+            data <= 0;
         end else begin
-            rdy_r <= rdy;
-            data_reg <= data;
+            data <= data_i;
+            // TODO: when to we need this?
+            // if(rdy) data <= data_i;
         end
     end
-
-    // when not ready, use registered data (i.e. remember old data)
-    // otherwise, passthrough current data
-    assign data = rdy_r ? i_data : data_reg;
 
     // address registers
     logic [7:0] adl,adh;
@@ -142,8 +148,8 @@ module core_6502 #(
     logic nmi_event, nmi_handled, irq_event, rst_event;
     logic fetch_intr;
     wire IRQ_masked = IRQ && !p[2];
-    always @(posedge i_clk ) begin
-        if (i_rst) begin
+    always @(posedge clk_m2 ) begin
+        if (rst) begin
             nmi_event <= 0;
             irq_event <= 0;
             rst_event <= 1;
@@ -171,8 +177,8 @@ module core_6502 #(
     // opcode fetch and interrupt injection
     wire [7:0]  op_fetch = fetch_intr ? 0 : data;
     assign opcode = (state==T1_DECODE) ? op_fetch : ir;
-    always @(posedge i_clk ) begin
-        if (i_rst) ir <= 0;  //break from RESET_VECTOR
+    always @(posedge clk_m2 ) begin
+        if (rst) ir <= 0;  //break from RESET_VECTOR
         else if (rdy) ir <= opcode;
     end
 
@@ -180,8 +186,8 @@ module core_6502 #(
     //unused by core, but helpful for sim/debug
 // `ifndef SYNTHESIS
     (* mark_debug = "true" *)  logic [15:0] ip;
-    always @(posedge i_clk ) begin
-        if (i_rst) ip <= RST_VECTOR;
+    always @(posedge clk_m2 ) begin
+        if (rst) ip <= RST_VECTOR;
         else if (sync && rdy) ip <= addr;
     end
 // `endif 
@@ -194,8 +200,8 @@ module core_6502 #(
 
     // decode instruction
     decode u_decode(
-        .i_clk         (i_clk         ),
-        .i_rst         (i_rst         ),
+        .clk_m2        (clk_m2         ),
+        .rst           (rst         ),
         .rdy           (rdy),
         .opcode        (opcode        ),
         .pstatus       (p             ),
@@ -267,8 +273,8 @@ module core_6502 #(
 
 
     //registers
-    always @(posedge i_clk ) begin
-        if (i_rst) begin
+    always @(posedge clk_m2 ) begin
+        if (rst) begin
             a <= 0;
             x <= 0;
             y <= 0;
@@ -337,8 +343,8 @@ module core_6502 #(
     end
 
     //state machine
-    always @(posedge i_clk ) begin
-        if (i_rst) begin
+    always @(posedge clk_m2 ) begin
+        if (rst) begin
             state <= T1_DECODE;
         end
         else if (rdy) begin

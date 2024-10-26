@@ -23,7 +23,8 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
 
         // clock falling edge
         context->timeInc(1);
-        top->i_clk = 0;
+        top->clk_m1 = 0;
+        top->clk_m2 = ~top->clk_m1;
         top->eval();
         if (tfp) tfp->dump(Verilated::time());
 
@@ -35,7 +36,8 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
 
         // clock rising edge
         context->timeInc(1);
-        top->i_clk = 1;
+        top->clk_m1 = 1;
+        top->clk_m2 = ~top->clk_m1;
         top->eval();
 
         // sim ram
@@ -196,10 +198,10 @@ int main(int argc, char** argv, char** env) {
     std::vector<uint8_t> ram(65536);
 
     // Assert reset for a few clocks
-    top->i_rst = 1;  
+    top->rst = 1;  
     for (int i=0; i<3; i++) clock_cpu(context, top, ram, tfp);
     // Clear reset for a few clocks (CPU will boot to reset vector)
-    top->i_rst = 0;  
+    top->rst = 0;  
     for (int i=0; i<5; i++) clock_cpu(context, top, ram, tfp);
 
    

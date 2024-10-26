@@ -2,7 +2,7 @@
 `include "6502_defs.vh"
 
 module decode (
-    input logic i_clk, i_rst, rdy,
+    input logic clk_m2, rst, rdy,
     input  logic [7:0] opcode,
     input  logic [7:0] pstatus,
 
@@ -108,8 +108,8 @@ module decode (
     assign idx_XY = (opcode ==? 8'b???_1?0_?1 || opcode ==? 8'b10?_1?1_1?) ? IDX_Y : IDX_X;
 
     // set and clear masks
-    always @(posedge i_clk ) begin
-        if(i_rst) begin
+    always @(posedge clk_m2 ) begin
+        if(rst) begin
             set_mask <= 8'h0;
             clear_mask <= 8'h0;
         end else if(rdy) begin
@@ -130,8 +130,8 @@ module decode (
 
     // decode opcode
     // https://www.masswerk.at/6502/6502_instruction_set.html#layout
-    always @(posedge i_clk ) begin
-        if(i_rst) begin
+    always @(posedge clk_m2 ) begin
+        if(rst) begin
             bus_ctl <= {DB_Z, REG_Z, REG_Z};
             alu_ctl <= {ALU_NOP, 6'b000000};
         end else if(rdy) begin

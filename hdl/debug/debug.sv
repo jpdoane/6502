@@ -7,8 +7,8 @@
 `endif
 
     (* mark_debug = "true" *)  logic [31:0] cpu_cycle=0;
-    always @(posedge i_clk ) begin
-        if (i_rst) cpu_cycle <= 1;
+    always @(posedge clk_m1 ) begin
+        if (rst) cpu_cycle <= 1;
         else cpu_cycle <= cpu_cycle+1;
     end
 
@@ -47,7 +47,7 @@ initial begin
 end
 
 logic upa,upx,upy,ups;
-always @(posedge i_clk ) begin
+always @(posedge clk_m1 ) begin
     upa <= sb_a;
     upx <= sb_x;
     upy <= sb_y;
@@ -59,9 +59,9 @@ logic [7:0] ip_op;
 int arg_cnt=0;
 int ip_cycle=0;
 logic new_inst, disp_inst;
-always @(posedge i_clk ) begin
+always @(posedge clk_m1 ) begin
 
-    if (i_rst) begin
+    if (rst) begin
         pc_r <= 0;
         arg_cnt=0;
         inst_cnt<=0;
