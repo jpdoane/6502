@@ -38,13 +38,32 @@ module core_6502 #(
         input  logic [7:0] a_set,
         input  logic [7:0] x_set,
         input  logic [7:0] y_set,
-        input  logic [7:0] p_set
+        input  logic [7:0] p_set,
+        output  logic [15:0] pc_dbg,
+        output  logic [7:0] s_dbg,
+        output  logic [7:0] a_dbg,
+        output  logic [7:0] x_dbg,
+        output  logic [7:0] y_dbg,
+        output  logic [7:0] p_dbg
     `endif 
 
     );
 
+
+
+    
 `ifdef DEBUG_CPU
     `include "debug/debug.sv"
+`endif 
+`ifdef DEBUG_REG
+    always_comb begin
+        pc_dbg = pc;
+        s_dbg = s;
+        a_dbg = a;
+        x_dbg = x;
+        y_dbg = y;
+        p_dbg = p;
+    end
 `endif 
 
     // busses
@@ -69,11 +88,11 @@ module core_6502 #(
     // address registers
     logic [7:0] adl,adh;
     logic [7:0] pcl, pch;
-    logic [15:0] pc, pcsel, nextpc;
+    logic [15:0] pc, pcsel, nextpc /*verilator public_flat*/;
 
     // registers
     logic [7:0] ir, add;
-    logic [7:0] a, s, x, y, p;
+    logic [7:0] a, s, x, y, p /*verilator public_flat*/;
 
       // state
     logic [5:0] state, initial_state;
