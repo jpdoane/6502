@@ -416,9 +416,23 @@ module core_6502 #(
             T3_JSR:         state <= T4_JSR;
             T4_JSR:         state <= T5_JSR;
             T5_JSR:         state <= T3_JUMP;
+
+            `ifdef DEBUG_REG
+            T0_DEBUG:       state <= T1_DECODE;
+            `endif
+
             default:        state <= T_JAM;
             endcase
+
+        `ifdef DEBUG_REG
+            if(reg_set_en) begin
+                state <= T0_DEBUG;
+            end
+        `endif
+
+
         end
+
     end
 
     // control
@@ -700,6 +714,12 @@ module core_6502 #(
                         holdalu = 1;            // continue to hold new pcl in alu
                         end
             // state then transfers to T3_JUMP, where {pch, pcl} -> pc
+
+            `ifdef DEBUG_REG
+                T0_DEBUG: begin
+                            sync = 1;
+                        end
+            `endif
 
             default:    jam = 1;
         endcase

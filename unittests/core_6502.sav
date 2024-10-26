@@ -1,0 +1,28 @@
+[*]
+[*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
+[*] Sat Oct 26 16:17:40 2024
+[*]
+[dumpfile] "/home/jpdoane/dev/6502/unittests/build/logs/core_6502.fst"
+[dumpfile_mtime] "Sat Oct 26 16:15:30 2024"
+[dumpfile_size] 3522
+[savefile] "/home/jpdoane/dev/6502/unittests/core_6502.sav"
+[timestart] 0
+[size] 960 1015
+[pos] 499 -208
+*-3.190997 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] core_6502.
+[treeopen] core_6502.core_6502.
+[sst_width] 211
+[signals_width] 118
+[sst_expanded] 1
+[sst_vpaned_height] 288
+@28
+core_6502.core_6502.i_clk
+core_6502.core_6502.i_rst
+@22
+core_6502.core_6502.i_data[7:0]
+core_6502.core_6502.addr[15:0]
+@28
+core_6502.RW
+[pattern_trace] 1
+[pattern_trace] 0
