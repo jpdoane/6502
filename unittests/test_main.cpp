@@ -40,9 +40,15 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
 
         // sim ram
         if( rw )
+        {
             top->i_data = dread;
+            // std::cout << "reading [" << busaddr << "] -> " << (int) dread << std::endl;
+        }
         else
+        {
             ram[busaddr] = dwrite;
+            // std::cout << "writing [" << busaddr << "] <- " << (int) dwrite << std::endl;
+        }
 
         top->eval();
 }
@@ -80,8 +86,8 @@ int check_cycle(const std::unique_ptr<Vcore_6502> &top,
         }
         if( cycle.data != ram[top->addr])
         {
-            std::cerr << "Error: expected bus data " << cycle.data <<
-                        " but observed " << ram[top->addr] << " in cycle " << cycle_cnt << std::endl;
+            std::cerr << "Error: expected bus data " << (int) cycle.data <<
+                        " but observed " << (int) ram[top->addr] << " in cycle " << cycle_cnt << std::endl;
             rv = 3;
         }
 
@@ -137,7 +143,10 @@ int run_test(const std::unique_ptr<VerilatedContext> &context,
 
     // initialize ram
     for (int i=0; i<test.init.ram.size(); i++)
+    {
         ram[test.init.ram[i].addr] = test.init.ram[i].data;
+        // std::cout << "initializing ram[" << test.init.ram[i].addr << "] <- " << (int) test.init.ram[i].data << std::endl;
+    }
 
     clock_cpu(context, top, ram, tfp, 1);
     top->reg_set_en = 0;
@@ -203,7 +212,7 @@ int main(int argc, char** argv, char** env) {
     for (int i=0; i<5; i++) clock_cpu(context, top, ram, tfp);
 
    
-    auto testset = read_testset("/home/jpdoane/6502/unittests/65x02/nes6502/v1/69.json");
+    auto testset = read_testset("/home/jpdoane/dev/6502/unittests/65x02/nes6502/v1/69.json");    
     for(auto test: testset)
         if(run_test(context, top, ram, test, tfp)) break;
 
