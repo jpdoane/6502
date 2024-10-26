@@ -42,7 +42,7 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
 
         // sim ram
         if( rw )
-            top->i_data = dread;
+            top->data_i = dread;
         else
             ram[busaddr] = dwrite;
 
@@ -205,7 +205,7 @@ int main(int argc, char** argv, char** env) {
     for (int i=0; i<5; i++) clock_cpu(context, top, ram, tfp);
 
    
-    auto testset = read_testset("/home/jpdoane/6502/unittests/65x02/nes6502/v1/69.json");
+    auto testset = read_testset("./65x02/nes6502/v1/69.json");
     for(auto test: testset)
         if(run_test(context, top, ram, test, tfp)) break;
 
