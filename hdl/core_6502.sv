@@ -164,15 +164,18 @@ module core_6502 #(
 
     // ADDRESS BUS
     // external address bus updated on m1
-    // always @(posedge clk_m1 ) begin
-    //     if (rst) begin
-    //         addr <= 0;
-    //     end else begin
-    //         if (update_addrh) addr[15:8] <= adh;
-    //         if (update_addrl) addr[7:0] <= adl;
-    //     end
-    // end
-    assign addr = {adh, adl};
+    always @(posedge clk_m1 ) begin
+        if (rst) begin
+            addr <= 0;
+        end else begin
+            if (update_addrh) addr[15:8] <= adh;
+            if (update_addrl) addr[7:0] <= adl;
+
+            if(reg_set_en) addr <= pc_set;
+
+        end
+    end
+    // assign addr = {adh, adl};
     logic [7:0] adl,adh;
     always @(*) begin
         case(adl_src)
@@ -537,7 +540,7 @@ module core_6502 #(
 
             `ifdef DEBUG_REG
                 if(reg_set_en) begin
-                    state <= T1;
+                    state <= T1_DEBUG;
                 end
             `endif
 
@@ -612,6 +615,10 @@ module core_6502 #(
                 sync = 1;
                 exec = 1; // configure alu
                 save = 1; // register result
+                Tlast = two_cycle;
+                end
+            T1_DEBUG: begin
+                sync = 1;
                 Tlast = two_cycle;
                 end
             T_JAM: begin

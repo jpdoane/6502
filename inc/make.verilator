@@ -80,9 +80,6 @@ run: prebuild
 	$(BUILD_PATH)/V$(TOP) $(VERILATE_ARGS)
 
 view: 
-	@gtkwave $(WAVEFILE) -a $(WAVESAVEFILE) &
-
-clean :
-	-rm -rf $(BUILD_PATH)
+	@gtkwave $(WAVEFILE) -a $(WAVESAVEFILE) > /dev/null 2>&1 &
 
 .PHONY: prebuild

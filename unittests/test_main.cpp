@@ -58,7 +58,7 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
 void dump_regs(const std::unique_ptr<Vcore_6502> &top,
                 const std::vector<uint8_t> &ram)
 {
-    std::cout << "REGS: pc=" << (int) top->pc_dbg <<
+    std::cout << std::hex << "REGS: pc=" << (int) top->pc_dbg <<
                 ", s=" << (int) top->s_dbg <<
                 ", a=" << (int) top->a_dbg <<
                 ", x=" << (int) top->x_dbg <<
@@ -76,19 +76,19 @@ int check_cycle(const std::unique_ptr<Vcore_6502> &top,
 
         if(cycle.rw != top->RW)
         {
-            std::cerr << "Error: expected " << (cycle.rw ? "read" : "write") <<
+            std::cerr << std::hex << "Error: expected " << (cycle.rw ? "read" : "write") <<
                         " but observed " << (top->RW ? "read" : "write") << " in cycle " << cycle_cnt << std::endl;
             rv = 2;
         }
         if(cycle.addr != top->addr)
         {
-            std::cerr << "Error: expected bus address " << cycle.addr <<
+            std::cerr << std::hex << "Error: expected bus address " << cycle.addr <<
                         " but observed " << top->addr << " in cycle " << cycle_cnt << std::endl;
             rv = 1;
         }
         if( cycle.data != ram[top->addr])
         {
-            std::cerr << "Error: expected bus data " << (int) cycle.data <<
+            std::cerr << std::hex << "Error: expected bus data " << (int) cycle.data <<
                         " but observed " << (int) ram[top->addr] << " in cycle " << cycle_cnt << std::endl;
             rv = 3;
         }
@@ -105,18 +105,18 @@ int check_state(    const UnitTestState &state,
 {
     int rv=0;
 
-    if(pc != state.pc) { std::cerr << "Expected pc "<< (int) state.pc << " but observed " << (int) pc << std::endl; rv=4; }
-    if(top->s_dbg != state.s) { std::cerr << "Expected s " << (int) state.s << " but observed " <<  (int) top->s_dbg << std::endl; rv=5; }
-    if(top->a_dbg != state.a) { std::cerr << "Expected a " << (int) state.a << " but observed " <<  (int) top->a_dbg << std::endl; rv=6; }
-    if(top->x_dbg != state.x) { std::cerr << "Expected x " << (int) state.x << " but observed " <<  (int) top->x_dbg << std::endl; rv=7; }
-    if(top->y_dbg != state.y) { std::cerr << "Expected y " << (int) state.y << " but observed " <<  (int) top->y_dbg << std::endl; rv=8; }
-    if(top->p_dbg != state.p) { std::cerr << "Expected p " << (int) state.p << " but observed " <<  (int) top->p_dbg << std::endl; rv=9; }
+    if(pc != state.pc) { std::cerr << "Expected pc="<< (int) state.pc << " but observed " << (int) pc << std::endl; rv=4; }
+    if(top->s_dbg != state.s) { std::cerr << std::hex << "Expected s=" << (int) state.s << " but observed " <<  (int) top->s_dbg << std::endl; rv=5; }
+    if(top->a_dbg != state.a) { std::cerr << std::hex << "Expected a=" << (int) state.a << " but observed " <<  (int) top->a_dbg << std::endl; rv=6; }
+    if(top->x_dbg != state.x) { std::cerr << std::hex << "Expected x=" << (int) state.x << " but observed " <<  (int) top->x_dbg << std::endl; rv=7; }
+    if(top->y_dbg != state.y) { std::cerr << std::hex << "Expected y=" << (int) state.y << " but observed " <<  (int) top->y_dbg << std::endl; rv=8; }
+    if(top->p_dbg != state.p) { std::cerr << std::hex << "Expected p=" << (int) state.p << " but observed " <<  (int) top->p_dbg << std::endl; rv=9; }
     
     for (int i=0; i<state.ram.size(); i++)
     {
         if(ram[state.ram[i].addr] != state.ram[i].data)
             {
-                std::cerr << "Expected [" << (int) state.ram[i].addr << "] " << (int) state.ram[i].data <<
+                std::cerr << std::hex << "Expected [" << (int) state.ram[i].addr << "] " << (int) state.ram[i].data <<
                             " but observed " << (int) ram[state.ram[i].addr] << std::endl;
                 rv=10;
             }
@@ -130,9 +130,10 @@ int run_test(const std::unique_ptr<VerilatedContext> &context,
             const std::unique_ptr<Vcore_6502> &top,
             std::vector<uint8_t> &ram,
             const UnitTest &test,
+            int idx,
             VerilatedFstC* tfp = nullptr) {
 
-    std::cout << "Test: " << test.name << "...  ";
+    std::cout << "Test " << idx << ": " << test.name << "...  ";
 
     // initialize registers
     top->pc_set = test.init.pc;
@@ -213,10 +214,10 @@ int main(int argc, char** argv, char** env) {
     top->rst = 0;  
     for (int i=0; i<5; i++) clock_cpu(context, top, ram, tfp);
 
-   
-    auto testset = read_testset("./65x02/nes6502/v1/69.json");    
-    for(auto test: testset)
-        if(run_test(context, top, ram, test, tfp)) break;
+    
+    auto testset = read_testset("./65x02/nes6502/v1/69.json");
+    for(std::size_t i = 0; i < testset.size(); ++i)
+        if(run_test(context, top, ram, testset[i], i, tfp)) break;
 
     clock_cpu(context, top, ram, tfp);
     clock_cpu(context, top, ram, tfp);

@@ -1,37 +1,71 @@
 [*]
-[*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
-[*] Sat Dec  7 19:12:57 2024
+[*] GTKWave Analyzer v3.3.116 (w)1999-2023 BSI
+[*] Wed Dec 18 04:44:37 2024
 [*]
-[dumpfile] "/home/jpdoane/dev/6502/unittests/build/logs/core_6502.fst"
-[dumpfile_mtime] "Sat Dec  7 19:07:16 2024"
-[dumpfile_size] 3743
-[savefile] "/home/jpdoane/dev/6502/unittests/core_6502.sav"
-[timestart] 0
-[size] 960 1015
-[pos] -1 -1
-*-3.190997 15 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[dumpfile] "/home/jpdoane/6502/unittests/build/logs/core_6502.fst"
+[dumpfile_mtime] "Wed Dec 18 04:33:47 2024"
+[dumpfile_size] 28227
+[savefile] "/home/jpdoane/6502/unittests/core_6502.sav"
+[timestart] 14
+[size] 942 972
+[pos] 1932 8
+*-3.048910 25 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] core_6502.
 [treeopen] core_6502.core_6502.
-[sst_width] 211
-[signals_width] 118
+[sst_width] 276
+[signals_width] 213
 [sst_expanded] 1
-[sst_vpaned_height] 288
-@28
+[sst_vpaned_height] 270
+@22
 core_6502.core_6502.clk_m1
-@29
 core_6502.core_6502.clk_m2
-@420
+@24
 core_6502.core_6502.cycle
-@28
+@22
 core_6502.core_6502.reg_set_en
 @2022
-^1 /home/jpdoane/dev/6502/inc/wavefilters/states.txt
+^1 /home/jpdoane/6502/inc/wavefilters/states.txt
 core_6502.core_6502.state[5:0]
-@24
+@800200
+-addr bus
+@22
+core_6502.RW
+@c00022
 core_6502.core_6502.addr[15:0]
+@28
+(0)core_6502.core_6502.addr[15:0]
+(1)core_6502.core_6502.addr[15:0]
+(2)core_6502.core_6502.addr[15:0]
+(3)core_6502.core_6502.addr[15:0]
+(4)core_6502.core_6502.addr[15:0]
+(5)core_6502.core_6502.addr[15:0]
+(6)core_6502.core_6502.addr[15:0]
+(7)core_6502.core_6502.addr[15:0]
+(8)core_6502.core_6502.addr[15:0]
+(9)core_6502.core_6502.addr[15:0]
+(10)core_6502.core_6502.addr[15:0]
+(11)core_6502.core_6502.addr[15:0]
+(12)core_6502.core_6502.addr[15:0]
+(13)core_6502.core_6502.addr[15:0]
+(14)core_6502.core_6502.addr[15:0]
+(15)core_6502.core_6502.addr[15:0]
+@1401200
+-group_end
+@22
 core_6502.core_6502.pc[15:0]
 core_6502.core_6502.pcinc[15:0]
-@28
-core_6502.RW
+core_6502.core_6502.data[7:0]
+@1000200
+-addr bus
+@800200
+-reg
+@22
+core_6502.core_6502.a[7:0]
+core_6502.core_6502.s[7:0]
+core_6502.core_6502.x[7:0]
+core_6502.core_6502.y[7:0]
+core_6502.core_6502.p[7:0]
+@1000200
+-reg
 [pattern_trace] 1
 [pattern_trace] 0
