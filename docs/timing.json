@@ -1,0 +1,52 @@
+{ signal: [
+    { name: "clk m1",   wave: "P....." },
+    { name: "clk m2",   wave: "P....." , phase: 1 },
+    [ "Immediate",
+    { name: "State",    wave: "x222xx", data: ["T1 Fetch", "T0/T2 Exec", "T1 Fetch"]},
+    { name: "Addr bus",       wave: "x222xx", data: ["PC", "PC+1", "PC+2"] },
+    { name: "Data bus",  wave: "xx333x", data: ["opcode", "data", "next op"], phase: 1 },
+    { name: "Data reg", wave: "xx22xx", data: ["opcode", "data"]},
+    { name: "IR",       wave: "xx2.xx", data: ["opcode"] },
+    { name: "ALUin",    wave: "xxx2xx", data: ["data"] },
+    { name: "ALUout",   wave: "xxxx3x", data: ["result"], phase: 1 },
+    { name: "reg",      wave: "xxxx2x", data: ["result"] }
+    ], {},
+    [ "ZPG",
+    { name: "State",    wave: "x2222xx", data: ["T1 Fetch", "T2", "T0 Exec", "T1 Fetch"]},
+    { name: "Addr high", wave: "x2222xx", data: ["PC", "PC+1", "00", "PC+2"] },
+    { name: "Addr low", wave: "x2222xx", data: ["PC", "PC+1", "ADL", "PC+2"] },
+    { name: "Data bus", wave: "xx3333x", data: ["opcode", "ADL","data", "next op"], phase: 1 },
+    { name: "Data reg", wave: "xx222xx", data: ["opcode", "ADL","data"]},
+    { name: "IR",       wave: "xx2..xx", data: ["opcode"] },
+    { name: "ALUin",    wave: "xxxx2xx", data: ["data"] },
+    { name: "ALUout",   wave: "xxxxx3x", data: ["result"], phase: 1 },
+    { name: "reg",      wave: "xxxxx2x", data: ["result"] }
+    ], {},
+    [ "ABS",
+    { name: "State",    wave: "x22222xx", data: ["T1 Fetch", "T2", "T3", "T0 Exec", "T1 Fetch"]},
+    { name: "Addr high", wave: "x22222xx", data: ["PC", "PC+1", "PC+2", "ADH", "PC+3"] },
+    { name: "Addr low", wave: "x22222xx", data: ["PC", "PC+1", "PC+2", "ADL", "PC+3"] },
+    { name: "Data bus", wave: "xx33333x", data: ["opcode", "ADL","ADH", "data", "next op"], phase: 1 },
+    { name: "Data reg", wave: "xx2222xx", data: ["opcode", "ADL","ADH","data"]},
+    { name: "IR",       wave: "xx2...xx", data: ["opcode"] },
+    { name: "ALUin",    wave: "xxxxx2xx", data: ["data"] },
+    { name: "ALUout",   wave: "xxxxxx3x", data: ["result"], phase: 1 },
+    { name: "reg",      wave: "xxxxxx2x", data: ["result"] }
+    ], {},
+    [ "IND,X",
+    { name: "State",    wave: "x2222222xx", data: ["T1 Fetch", "T2", "T3", "T4", "T5", "T0 Exec", "T1 Fetch"]},
+    { name: "Addr high", wave: "x2222222xx", data: ["PC", "PC+1", "00", "00", "00", "ADH", "PC+2"] },
+    { name: "Addr low", wave: "x2222222xx", data: ["PC", "PC+1", "BAL", "BAL+X", "BAL+X+1", "ADL", "PC+2"] },
+    { name: "Data bus", wave: "xx33x333xx", data: ["opcode", "BAL", "ADL","ADH", "data", "next op"], phase: 1 },
+    { name: "Data reg", wave: "xx22x2222x", data: ["opcode", "BAL", "ADL","ADH", "data", "next op"]},
+    { name: "IR",       wave: "xx2.....xx", data: ["opcode"] },
+    { name: "ALUin",    wave: "xxx22xx2xx", data: ["BAL", "BAL+X", "data"] },
+    { name: "ALUout",   wave: "xxxx33xx3x", data: ["BAL+X", "BAL+X+1","result"], phase: 1 },
+    { name: "reg",      wave: "xxxxxxxx2x", data: ["result"] }
+    ]
+    ],
+  head:{
+    text:"2 cycle OP"
+  },
+  config: { hscale: 2 }
+}

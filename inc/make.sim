@@ -28,7 +28,7 @@ $(SIMFILE):  $(abspath $(HDL_SOURCE)) $(SIMREQS)
 	$(SIM) $(SIMARGS) -o $@ -s $(TOP) \
 	-D'DUMP_WAVE_FILE="$(WAVEFILE)"' \
 	-I $(HDL_INCLUDE) \
-	$(CUSTOMSIMARGS) $^ 
+	$(CUSTOMSIMARGS) $(abspath $(HDL_SOURCE))
 
 
 .PHONY: view

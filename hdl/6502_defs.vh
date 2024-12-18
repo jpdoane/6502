@@ -7,57 +7,73 @@ parameter STACKPAGE = 8'h01;
 
 //states
 
-parameter T0_FETCH      =6'h0;
-parameter T1_DECODE     =6'h1;
+parameter T0      =6'h34;
+parameter T1      =6'h35;
+parameter T2      =6'h36;
+parameter T3      =6'h37;
+parameter T4      =6'h38;
+parameter T5      =6'h39;
+parameter T6      =6'h3a;
+
+
+parameter T0_EXEC      =6'h33;
+parameter T1_DEBUG      =6'h3f;
+parameter T1_FETCH      =6'h0;
+
+parameter T2_DECODE     =6'h1;
+
 parameter T2_ZPG        =6'h2;
 parameter T2_ZPGXY      =6'h3;
-parameter T3_ZPGXY      =6'h4;
-parameter T2_ABS        =6'h5;
-parameter T3_ABS        =6'h6;
 parameter T2_ABSXY      =6'h7;
-parameter T3_ABSXY      =6'h8;
-parameter T4_ABSXY      =6'h9;
+parameter T2_ABS        =6'h5;
 parameter T2_XIND       =6'hb;
-parameter T3_XIND       =6'hc;
-parameter T4_XIND       =6'hd;
-parameter T5_XIND       =6'he;
 parameter T2_INDY       =6'hf;
+parameter T2_JUMP        =6'h17;
+parameter T2_BRANCH     =6'h19;
+parameter T2_PUSH       =6'h1c;
+parameter T2_POP        =6'h1d;
+parameter T2_BRK        =6'h1f;
+parameter T2_RTI        =6'h23;
+parameter T2_RTS        =6'h27;
+parameter T2_JSR        =6'h2b;
+parameter T2_JUMPIND    =6'h2f;
+
+parameter T3_ZPGXY      =6'h4;
+parameter T3_ABS        =6'h6;
+parameter T3_ABSXY      =6'h8;
+parameter T3_XIND       =6'hc;
 parameter T3_INDY       =6'h10;
+parameter T3_JUMP        =6'h18;
+parameter T3_BRANCH     =6'h1a;
+parameter T3_POP        =6'h1e;
+parameter T3_BRK        =6'h20;
+parameter T3_RTI        =6'h24;
+parameter T3_RTS        =6'h28;
+parameter T3_JSR        =6'h2c;
+parameter T3_JUMPIND    =6'h30;
+
+parameter T4_ABSXY      =6'h9;
+parameter T4_XIND       =6'hd;
 parameter T4_INDY       =6'h11;
+parameter T4_BRANCH     =6'h1b;
+parameter T4_BRK        =6'h21;
+parameter T4_RTI        =6'h25;
+parameter T4_RTS        =6'h29;
+parameter T4_JSR        =6'h2d;
+parameter T4_JUMPIND    =6'h31;
+
+parameter T5_XIND       =6'he;
 parameter T5_INDY       =6'h12;
+parameter T5_BRK        =6'h22;
+parameter T5_RTI        =6'h26;
+parameter T5_RTS        =6'h2a;
+parameter T5_JSR        =6'h2e;
+parameter T5_JUMPIND    =6'h32;
+
 parameter T_RMW_EXEC    =6'h13;
 parameter T_RMW_STORE   =6'h14;
 parameter T_BOOT        =6'h15;
 parameter T_JAM         =6'h16;
-parameter T2_JUMP        =6'h17;
-parameter T3_JUMP        =6'h18;
-parameter T2_BRANCH     =6'h19;
-parameter T3_BRANCH     =6'h1a;
-parameter T4_BRANCH     =6'h1b;
-parameter T2_PUSH       =6'h1c;
-parameter T2_POP        =6'h1d;
-parameter T3_POP        =6'h1e;
-parameter T2_BRK        =6'h1f;
-parameter T3_BRK        =6'h20;
-parameter T4_BRK        =6'h21;
-parameter T5_BRK        =6'h22;
-parameter T2_RTI        =6'h23;
-parameter T3_RTI        =6'h24;
-parameter T4_RTI        =6'h25;
-parameter T5_RTI        =6'h26;
-parameter T2_RTS        =6'h27;
-parameter T3_RTS        =6'h28;
-parameter T4_RTS        =6'h29;
-parameter T5_RTS        =6'h2a;
-parameter T2_JSR        =6'h2b;
-parameter T3_JSR        =6'h2c;
-parameter T4_JSR        =6'h2d;
-parameter T5_JSR        =6'h2e;
-parameter T2_JUMPIND    =6'h2f;
-parameter T3_JUMPIND    =6'h30;
-parameter T4_JUMPIND    =6'h31;
-parameter T5_JUMPIND    =6'h32;
-parameter T0_DEBUG      =6'h3f;
 
 parameter REG_Z      =3'h0;
 parameter REG_A      =3'h1;
@@ -82,18 +98,25 @@ parameter ADDR_DATA   = 3'h1;
 parameter ADDR_RES  = 3'h2;
 parameter ADDR_ADD  = 3'h3;
 parameter ADDR_Z    = 3'h4;
-parameter ADDR_HOLD = 3'h5; 
-parameter ADDR_INT = 3'h6;
-parameter ADDR_STACK = 3'h7;
+parameter ADDR_INT = 3'h5;
+parameter ADDR_STACK = 3'h6;
 
-parameter ALU_NOP   =3'h0;
-parameter ALU_ADD   =3'h1;
-parameter ALU_AND   =3'h2;
-parameter ALU_OR    =3'h3;
-parameter ALU_XOR   =3'h4;
-parameter ALU_SR    =3'h5;
-parameter ALU_SL    =3'h6;
-parameter ALU_BIT   =3'h7;
+parameter ALU_NOP   =4'h0;
+parameter ALU_ADD   =4'h1;
+parameter ALU_AND   =4'h2;
+parameter ALU_OR    =4'h3;
+parameter ALU_XOR   =4'h4;
+parameter ALU_SR    =4'h5;
+parameter ALU_SL    =4'h6;
+parameter ALU_BIT   =4'h7;
+parameter ALU_INC   =4'h8;
+parameter ALU_DEC   =4'h9;
+
+parameter ADD_BUS    =2'b01;
+parameter ADD_INVBUS =2'b11;
+parameter ADD_Z      =2'b00;
+parameter ADD_N      =2'b10;
+
 
 
 parameter IDX_X     =1'b1;

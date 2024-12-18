@@ -1,0 +1,48 @@
+[*]
+[*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
+[*] Sat Dec  7 18:35:33 2024
+[*]
+[dumpfile] "/home/jpdoane/dev/6502/test/build/cpu_tb.vcd"
+[dumpfile_mtime] "Sat Dec  7 18:29:45 2024"
+[dumpfile_size] 10819
+[savefile] "/home/jpdoane/dev/6502/test/cpu_tb.sav"
+[timestart] 0
+[size] 960 1015
+[pos] -1 -1
+*-22.663851 9530000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] cpu_tb.
+[treeopen] cpu_tb.u_core_6502.
+[sst_width] 37
+[signals_width] 173
+[sst_expanded] 0
+[sst_vpaned_height] 277
+@420
+cpu_tb.u_core_6502.cycle
+@28
+cpu_tb.u_core_6502.rst
+cpu_tb.u_core_6502.clk_m1
+cpu_tb.u_core_6502.clk_m2
+@22
+cpu_tb.u_core_6502.pc[15:0]
+@2022
+^1 /home/jpdoane/dev/6502/inc/wavefilters/6502_opcodes.txt
+cpu_tb.u_core_6502.ir[7:0]
+@2023
+^2 /home/jpdoane/dev/6502/inc/wavefilters/states.txt
+cpu_tb.u_core_6502.state[5:0]
+@28
+cpu_tb.u_core_6502.sync
+@22
+cpu_tb.u_core_6502.addr[15:0]
+cpu_tb.u_core_6502.data[7:0]
+cpu_tb.u_core_6502.dor[7:0]
+@28
+cpu_tb.u_core_6502.RW
+@22
+cpu_tb.u_core_6502.a[7:0]
+cpu_tb.u_core_6502.x[7:0]
+cpu_tb.u_core_6502.y[7:0]
+cpu_tb.u_core_6502.s[7:0]
+cpu_tb.u_core_6502.p[7:0]
+[pattern_trace] 1
+[pattern_trace] 0

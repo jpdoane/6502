@@ -5,7 +5,7 @@
 module alu (
     input  logic [7:0] ai, bi,
     input  logic ci,
-    input  logic [2:0] op,
+    input  logic [3:0] op,
 
     output logic [7:0] out,
     output logic N,V,Z,C
@@ -21,6 +21,7 @@ module alu (
         C = 0;
         BIT=0;
 
+        
         case(op)
             ALU_BIT:    begin out = aandb; BIT=1; end
             ALU_AND:    out = aandb;

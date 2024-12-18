@@ -1138,3 +1138,7 @@ nAA:
 	.byt		34
 
 .asc "We are at the end!", 10, 0
+
+; reset = $fffc
+; .dsb reset-*  ; zero pad until reset
+; 	.word		text

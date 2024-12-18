@@ -2,7 +2,7 @@
 `include "6502_defs.vh"
 
 module decode (
-    input logic clk_m2, rst, rdy,
+    input logic clk, rst, rdy,
     input  logic [7:0] opcode,
     input  logic [7:0] pstatus,
 
@@ -21,7 +21,7 @@ module decode (
 
     // alu ctl
     output logic alu_en,        // enable alu for this opcode
-    output logic [2:0] alu_OP,  // alu operation
+    output logic [3:0] alu_OP,  // alu operation
     output logic ai_inv, bi_inv,// invert ai or bi inputs
     output logic Pci, ci,       // carry in = ci || (Pci & p[0])
     output logic setV, setC,    // update p C or V bits with alu result
@@ -37,7 +37,7 @@ module decode (
     assign mem_write = dst == REG_DATA;
     assign reg_write = !mem_write && (dst != REG_Z);
 
-    logic [8:0] alu_ctl;
+    logic [9:0] alu_ctl;
     assign {alu_OP, Pci, ci, ai_inv, bi_inv, setV, setC} = alu_ctl;
     assign alu_en = alu_OP != ALU_NOP;
 
@@ -53,7 +53,7 @@ module decode (
             8'b010_000_00:  initial_state = T2_RTI;             // RTI
             8'b011_000_00:  initial_state = T2_RTS;             // RTS
             8'b???_000_?1:  initial_state = T2_XIND;            // X,ind
-            8'b1??_000_?0:  initial_state = T0_FETCH;           // LD/CP imm
+            8'b1??_000_?0:  initial_state = T0_EXEC;           // LD/CP imm
 
             // op_b == 1
             8'b???_001_??:  initial_state = T2_ZPG;             // zpg
@@ -61,7 +61,7 @@ module decode (
             // op_b == 2
             8'b0?0_010_00:  initial_state = T2_PUSH;           // php,pha
             8'b0?1_010_00:  initial_state = T2_POP;           // plp,pha
-            8'b???_010_??:  initial_state = T0_FETCH;           // imm or impl
+            8'b???_010_??:  initial_state = T0_EXEC;           // imm or impl
 
             // op_b == 3
             8'b010_011_00:  initial_state = T2_JUMP;            // jmp abs
@@ -69,14 +69,14 @@ module decode (
             8'b???_011_??:  initial_state = T2_ABS;             // abs
 
             // op_b == 4
-            8'b???_100_00:  initial_state = take_branch ? T2_BRANCH : T0_FETCH; // conditional branch
+            8'b???_100_00:  initial_state = take_branch ? T2_BRANCH : T0_EXEC; // conditional branch
             8'b???_100_?1:  initial_state = T2_INDY;            // alu ind,Y ops
 
             // op_b == 5
             8'b???_101_??:  initial_state = T2_ZPGXY;           // zpg X/Y
 
             // op_b == 6
-            8'b???_110_?0:  initial_state = T0_FETCH;           // impl
+            8'b???_110_?0:  initial_state = T0_EXEC;           // impl
             8'b???_110_?1:  initial_state = T2_ABSXY;           // abs, Y
 
             // op_b == 7
@@ -108,7 +108,7 @@ module decode (
     assign idx_XY = (opcode ==? 8'b???_1?0_?1 || opcode ==? 8'b10?_1?1_1?) ? IDX_Y : IDX_X;
 
     // set and clear masks
-    always @(posedge clk_m2 ) begin
+    always @(posedge clk ) begin
         if(rst) begin
             set_mask <= 8'h0;
             clear_mask <= 8'h0;
@@ -130,7 +130,7 @@ module decode (
 
     // decode opcode
     // https://www.masswerk.at/6502/6502_instruction_set.html#layout
-    always @(posedge clk_m2 ) begin
+    always @(posedge clk ) begin
         if(rst) begin
             bus_ctl <= {DB_Z, REG_Z, REG_Z};
             alu_ctl <= {ALU_NOP, 6'b000000};
@@ -175,7 +175,7 @@ module decode (
             // decode alu
             casez(opcode)
 
-                // ALU control: { alu_op[2:0], P_carry_in, carry_in, ai_inv, bi_inv, set_V, set_C }
+                // ALU control: { alu_op[3:0], P_carry_in, carry_in, ai_inv, bi_inv, set_V, set_C }
 
                 // explicit NOP
                 8'b111_010_10:  alu_ctl <= {ALU_NOP, 6'b000000};   // NOP

@@ -73,8 +73,8 @@ always @(posedge clk_m1 ) begin
         disp_inst <= new_inst;
 
         // pc_r <= pc;
-        // ip_op <= (state==T1_DECODE) ? ip_op : opcode;
-        // if (state==T1_DECODE) ip_op$fwrite( log_fd, " %s", op_name(opcode));
+        // ip_op <= (state==T2_DECODE) ? ip_op : opcode;
+        // if (state==T2_DECODE) ip_op$fwrite( log_fd, " %s", op_name(opcode));
         // if (inst_cnt>0 && pc != pc_r) begin
         //     $fwrite( log_fd, " %2h", i_data);
         //     arg_cnt = arg_cnt+1;
@@ -92,7 +92,7 @@ always @(posedge clk_m1 ) begin
             // arg_cnt = 0;
             // ip_cycle <= cpu_cycle+1;
 
-            $fwrite( log_fd, "%4h  %s        A:%2h X:%2h Y:%2h S:%2h P:%2h Cycle:%0d\n", ip, op_name(opcode), a,x,y,s,p&8'hdf, cpu_cycle);
+            $fwrite( log_fd, "%4h  %s        A:%2h X:%2h Y:%2h S:%2h P:%2h Cycle:%0d\n", ip, op_name(ir), a,x,y,s,p&8'hdf, cpu_cycle);
 
         end
     end
@@ -162,55 +162,56 @@ function string format_addr(input int _addr);
 endfunction
 
 function string state_name(input logic[5:0] x);
-    case(x)
-        T0_FETCH: state_name = "T0_FCH";
-        T1_DECODE: state_name = "T1_DCD";
-        T2_ZPG: state_name = "T2_ZPG";
-        T2_ZPGXY: state_name = "T2_ZXY";
-        T3_ZPGXY: state_name = "T3_ZXY";
-        T2_ABS: state_name = "T2_ABS";
-        T3_ABS: state_name = "T3_ABS";
-        T2_ABSXY: state_name = "T2_AXY";
-        T3_ABSXY: state_name = "T3_AXY";
-        T4_ABSXY: state_name = "T4_AXY";
-        T2_XIND: state_name = "T2_XIN";
-        T3_XIND: state_name = "T3_XIN";
-        T4_XIND: state_name = "T4_XIN";
-        T5_XIND: state_name = "T5_XIN";
-        T2_INDY: state_name = "T2_INY";
-        T3_INDY: state_name = "T3_INY";
-        T4_INDY: state_name = "T4_INY";
-        T5_INDY: state_name = "T5_INY";
-        T_RMW_EXEC: state_name = "T_RWE";
-        T_RMW_STORE: state_name = "T_RWS";
-        T_BOOT: state_name = "T_BOOT";
-        T_JAM: state_name = "T_JAM";
-        T2_JUMP: state_name = "T2_JMP";
-        T3_JUMP: state_name = "T3_JMP";
-        T2_BRANCH: state_name = "T2_BRA";
-        T3_BRANCH: state_name = "T3_BRA";
-        T4_BRANCH: state_name = "T4_BRA";
-        T2_PUSH: state_name = "T2_PSH";
-        T2_POP: state_name = "T2_POP";
-        T3_POP: state_name = "T3_POP";
-        T2_BRK: state_name = "T2_BRK";
-        T3_BRK: state_name = "T3_BRK";
-        T4_BRK: state_name = "T4_BRK";
-        T5_BRK: state_name = "T5_BRK";
-        T2_RTI: state_name = "T2_RTI";
-        T3_RTI: state_name = "T3_RTI";
-        T4_RTI: state_name = "T4_RTI";
-        T5_RTI: state_name = "T5_RTI";
-        T2_RTS: state_name = "T2_RTS";
-        T3_RTS: state_name = "T3_RTS";
-        T4_RTS: state_name = "T4_RTS";
-        T5_RTS: state_name = "T5_RTS";
-        T2_JSR: state_name = "T2_JSR";
-        T3_JSR: state_name = "T3_JSR";
-        T4_JSR: state_name = "T4_JSR";
-        T5_JSR: state_name = "T5_JSR";
-        default: state_name = "UNDEF";
-    endcase
+    state_name = "err";
+    // case(x)
+    //     T1_FETCH: state_name = "T1_FCH";
+    //     T2_DECODE: state_name = "T2_DCD";
+    //     T3_ZPG: state_name = "T3_ZPG";
+    //     T3_ZPGXY: state_name = "T3_ZXY";
+    //     T4_ZPGXY: state_name = "T4_ZXY";
+    //     T3_ABS: state_name = "T3_ABS";
+    //     T4_ABS: state_name = "T4_ABS";
+    //     T3_ABSXY: state_name = "T3_AXY";
+    //     T4_ABSXY: state_name = "T4_AXY";
+    //     T5_ABSXY: state_name = "T5_AXY";
+    //     T3_XIND: state_name = "T3_XIN";
+    //     T4_XIND: state_name = "T4_XIN";
+    //     T5_XIND: state_name = "T5_XIN";
+    //     T6_XIND: state_name = "T6_XIN";
+    //     T3_INDY: state_name = "T3_INY";
+    //     T4_INDY: state_name = "T4_INY";
+    //     T5_INDY: state_name = "T5_INY";
+    //     T6_INDY: state_name = "T6_INY";
+    //     T_RMW_EXEC: state_name = "T_RWE";
+    //     T_RMW_STORE: state_name = "T_RWS";
+    //     T_BOOT: state_name = "T_BOOT";
+    //     T_JAM: state_name = "T_JAM";
+    //     T3_JUMP: state_name = "T3_JMP";
+    //     T4_JUMP: state_name = "T4_JMP";
+    //     T3_BRANCH: state_name = "T3_BRA";
+    //     T4_BRANCH: state_name = "T4_BRA";
+    //     T5_BRANCH: state_name = "T5_BRA";
+    //     T3_PUSH: state_name = "T3_PSH";
+    //     T3_POP: state_name = "T3_POP";
+    //     T4_POP: state_name = "T4_POP";
+    //     T3_BRK: state_name = "T3_BRK";
+    //     T4_BRK: state_name = "T4_BRK";
+    //     T5_BRK: state_name = "T5_BRK";
+    //     T6_BRK: state_name = "T6_BRK";
+    //     T3_RTI: state_name = "T3_RTI";
+    //     T4_RTI: state_name = "T4_RTI";
+    //     T5_RTI: state_name = "T5_RTI";
+    //     T6_RTI: state_name = "T6_RTI";
+    //     T3_RTS: state_name = "T3_RTS";
+    //     T4_RTS: state_name = "T4_RTS";
+    //     T5_RTS: state_name = "T5_RTS";
+    //     T6_RTS: state_name = "T6_RTS";
+    //     T3_JSR: state_name = "T3_JSR";
+    //     T4_JSR: state_name = "T4_JSR";
+    //     T5_JSR: state_name = "T5_JSR";
+    //     T6_JSR: state_name = "T6_JSR";
+    //     default: state_name = "UNDEF";
+    // endcase
 endfunction
 
 function string reg_name(input logic [2:0] x);
@@ -249,7 +250,6 @@ function string addr_name(input logic [2:0] x);
         ADDR_RES: addr_name = "RES";
         ADDR_ADD: addr_name = "ADD";
         ADDR_Z: addr_name = "Z  ";
-        ADDR_HOLD: addr_name = "HLD"; 
         ADDR_INT: addr_name = "INT"; 
         ADDR_STACK: addr_name = "STK"; 
         default: addr_name = "UNDEF";
@@ -272,7 +272,7 @@ endfunction
 
 
 function string op_name(input logic [7:0] op);
-    case(opcode)
+    case(op)
         8'h00: op_name = "BRK";
         8'h01: op_name = "ORA";
         8'h02: op_name = "*KIL";
