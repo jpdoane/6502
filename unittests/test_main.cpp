@@ -24,21 +24,21 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         // clock falling edge
         context->timeInc(1);
         top->clk_m1 = 0;
-        top->clk_m2 = ~top->clk_m1;
+        top->clk_m2 = 1;
         top->eval();
         if (tfp) tfp->dump(Verilated::time());
+
+        // clock rising edge
+        context->timeInc(1);
+        top->clk_m1 = 1;
+        top->clk_m2 = 0;
+        top->eval();
 
         //register bus
         auto busaddr = top->addr;
         auto rw = top->RW || disable_write;
         auto dread = ram[busaddr];
         auto dwrite = top->dor;
-
-        // clock rising edge
-        context->timeInc(1);
-        top->clk_m1 = 1;
-        top->clk_m2 = ~top->clk_m1;
-        top->eval();
 
         // sim ram
         if( rw )
