@@ -486,7 +486,7 @@ module core_6502 #(
                         {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
                         next_state = T0;
                     end
-                    OP_ZXY, OP_XIN: begin
+                    OP_ZXY, OP_XIN, OP_INY: begin
                         {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
                     end
                     OP_ABS, OP_AXY: begin
@@ -506,6 +506,10 @@ module core_6502 #(
                     end
                     OP_XIN: begin
                         alu_ctl = {r_idx, REG_D, 1'b0};
+                        {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
+                    end
+                    OP_INY: begin
+                        alu_ctl = {REG_Z, REG_D, 1'b1};
                         {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
                     end
                     OP_ABS: begin
@@ -543,6 +547,11 @@ module core_6502 #(
                         alu_ctl = {REG_Z, R_ALU, 1'b1};
                         {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
                     end
+                    OP_INY: begin
+                        alu_ctl = {r_idx, REG_D, 1'b0};
+                        {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
+                        next_state = (!mem_wr & !aluC) ? T0 : T5;
+                    end
                     default:
                         next_state = T_JAM; //not implemented yet
                 endcase
@@ -562,6 +571,11 @@ module core_6502 #(
                     end
                     OP_XIN: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
+                        next_state = T0;
+                    end
+                    OP_INY: begin
+                        alu_ctl = {REG_Z, REG_D, aluC_reg};
+                        {adh_src, adl_src} = {ADDR_ALU, ADDR_HOLD};
                         next_state = T0;
                     end
                     default:
