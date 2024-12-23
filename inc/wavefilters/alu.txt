@@ -1,9 +1,8 @@
-#
-# states
-0 ADD
-1 AND
-2 OR
-3 XOR
-4 SR
-5 SL
-6 BIT
+0 NOP
+1 ADD
+2 AND
+3 OR
+4 XOR
+5 SR
+6 SL
+7 BIT

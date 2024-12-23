@@ -69,15 +69,19 @@ VERILATOR_INPUT = -f $(VERILATE_INCL) $(HDL_SOURCE) $(VERILATE_TOP)
 # # Input file from Verilator
 # VERILATOR_COV_FLAGS += $(LOG_PATH)/coverage.dat
 
+TARGET=$(BUILD_PATH)/V$(TOP)
+
 ######################################################################
 default: run
 
-run: prebuild
+$(TARGET): $(VERILATE_INCL) $(HDL_SOURCE) $(VERILATE_TOP)
+	make prebuild
 	$(VERILATOR) --version
 	$(VERILATOR) $(VERILATOR_FLAGS) $(VERILATOR_INPUT)
-	@rm -rf $(LOG_PATH)
 	@mkdir -p $(LOG_PATH)
-	$(BUILD_PATH)/V$(TOP) $(VERILATE_ARGS)
+
+run: $(TARGET)
+	$(TARGET) $(VERILATE_ARGS)
 
 view: 
 	@gtkwave $(WAVEFILE) -a $(WAVESAVEFILE) > /dev/null 2>&1 &

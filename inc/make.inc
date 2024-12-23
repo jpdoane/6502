@@ -1,3 +1,5 @@
+SHELL=bash
+
 SCRIPTS = $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 PROJ_ROOT = $(abspath $(SCRIPTS)/..)
 

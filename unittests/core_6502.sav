@@ -1,32 +1,37 @@
 [*]
 [*] GTKWave Analyzer v3.3.116 (w)1999-2023 BSI
-[*] Wed Dec 18 04:44:37 2024
+[*] Fri Dec 20 22:24:01 2024
 [*]
 [dumpfile] "/home/jpdoane/6502/unittests/build/logs/core_6502.fst"
-[dumpfile_mtime] "Wed Dec 18 04:33:47 2024"
-[dumpfile_size] 28227
+[dumpfile_mtime] "Fri Dec 20 22:22:56 2024"
+[dumpfile_size] 3207
 [savefile] "/home/jpdoane/6502/unittests/core_6502.sav"
-[timestart] 14
-[size] 942 972
-[pos] 1932 8
-*-3.048910 25 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[timestart] 28
+[size] 1128 976
+[pos] -1 -1
+*-2.048910 37 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] core_6502.
 [treeopen] core_6502.core_6502.
 [sst_width] 276
-[signals_width] 213
+[signals_width] 231
 [sst_expanded] 1
-[sst_vpaned_height] 270
+[sst_vpaned_height] 271
 @22
 core_6502.core_6502.clk_m1
 core_6502.core_6502.clk_m2
 @24
 core_6502.core_6502.cycle
 @22
+[color] 1
 core_6502.core_6502.reg_set_en
+@28
+core_6502.core_6502.sync
 @2022
 ^1 /home/jpdoane/6502/inc/wavefilters/states.txt
-core_6502.core_6502.state[5:0]
-@800200
+core_6502.core_6502.state[7:0]
+^2 /home/jpdoane/6502/inc/wavefilters/opcodes.txt
+core_6502.core_6502.ir[7:0]
+@c00200
 -addr bus
 @22
 core_6502.RW
@@ -54,18 +59,148 @@ core_6502.core_6502.addr[15:0]
 @22
 core_6502.core_6502.pc[15:0]
 core_6502.core_6502.pcinc[15:0]
+core_6502.core_6502.data_i[7:0]
 core_6502.core_6502.data[7:0]
-@1000200
+core_6502.core_6502.dor[7:0]
+@28
+core_6502.core_6502.RW
+@1401200
 -addr bus
-@800200
+@c00200
 -reg
+@28
+core_6502.core_6502.save
 @22
 core_6502.core_6502.a[7:0]
 core_6502.core_6502.s[7:0]
 core_6502.core_6502.x[7:0]
 core_6502.core_6502.y[7:0]
+@c00022
 core_6502.core_6502.p[7:0]
-@1000200
+@28
+(0)core_6502.core_6502.p[7:0]
+(1)core_6502.core_6502.p[7:0]
+(2)core_6502.core_6502.p[7:0]
+(3)core_6502.core_6502.p[7:0]
+(4)core_6502.core_6502.p[7:0]
+(5)core_6502.core_6502.p[7:0]
+(6)core_6502.core_6502.p[7:0]
+(7)core_6502.core_6502.p[7:0]
+@1401200
+-group_end
+@22
+core_6502.core_6502.clear_mask[7:0]
+core_6502.core_6502.set_mask[7:0]
+@1401200
 -reg
+@c00200
+-interna_busses
+@22
+core_6502.core_6502.db[7:0]
+core_6502.core_6502.sb[7:0]
+@28
+core_6502.core_6502.db_src[2:0]
+core_6502.core_6502.sb_src[2:0]
+core_6502.core_6502.reg_write
+core_6502.core_6502.mem_write
+@22
+core_6502.core_6502.u_decode.opcode[7:0]
+@c00022
+core_6502.core_6502.u_decode.bus_ctl[8:0]
+@28
+(0)core_6502.core_6502.u_decode.bus_ctl[8:0]
+(1)core_6502.core_6502.u_decode.bus_ctl[8:0]
+(2)core_6502.core_6502.u_decode.bus_ctl[8:0]
+(3)core_6502.core_6502.u_decode.bus_ctl[8:0]
+(4)core_6502.core_6502.u_decode.bus_ctl[8:0]
+(5)core_6502.core_6502.u_decode.bus_ctl[8:0]
+(6)core_6502.core_6502.u_decode.bus_ctl[8:0]
+(7)core_6502.core_6502.u_decode.bus_ctl[8:0]
+(8)core_6502.core_6502.u_decode.bus_ctl[8:0]
+@1401200
+-group_end
+-interna_busses
+@c00200
+-op
+@22
+core_6502.core_6502.ir[7:0]
+@2022
+^3 /home/jpdoane/6502/inc/wavefilters/optypes.txt
+core_6502.core_6502.op_type[4:0]
+@28
+core_6502.core_6502.single_byte
+core_6502.core_6502.exec
+core_6502.core_6502.load
+@1401200
+-op
+@c00200
+-alu
+@28
+core_6502.core_6502.alu_en
+@2022
+^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
+core_6502.core_6502.u_alu.op[3:0]
+@c00022
+core_6502.core_6502.op_alu_ctl[11:0]
+@28
+(0)core_6502.core_6502.op_alu_ctl[11:0]
+(1)core_6502.core_6502.op_alu_ctl[11:0]
+(2)core_6502.core_6502.op_alu_ctl[11:0]
+(3)core_6502.core_6502.op_alu_ctl[11:0]
+(4)core_6502.core_6502.op_alu_ctl[11:0]
+(5)core_6502.core_6502.op_alu_ctl[11:0]
+(6)core_6502.core_6502.op_alu_ctl[11:0]
+(7)core_6502.core_6502.op_alu_ctl[11:0]
+(8)core_6502.core_6502.op_alu_ctl[11:0]
+(9)core_6502.core_6502.op_alu_ctl[11:0]
+(10)core_6502.core_6502.op_alu_ctl[11:0]
+(11)core_6502.core_6502.op_alu_ctl[11:0]
+@1401200
+-group_end
+@c00022
+core_6502.core_6502.u_alu.ctl[11:0]
+@28
+(0)core_6502.core_6502.u_alu.ctl[11:0]
+(1)core_6502.core_6502.u_alu.ctl[11:0]
+(2)core_6502.core_6502.u_alu.ctl[11:0]
+(3)core_6502.core_6502.u_alu.ctl[11:0]
+(4)core_6502.core_6502.u_alu.ctl[11:0]
+(5)core_6502.core_6502.u_alu.ctl[11:0]
+(6)core_6502.core_6502.u_alu.ctl[11:0]
+(7)core_6502.core_6502.u_alu.ctl[11:0]
+(8)core_6502.core_6502.u_alu.ctl[11:0]
+(9)core_6502.core_6502.u_alu.ctl[11:0]
+(10)core_6502.core_6502.u_alu.ctl[11:0]
+(11)core_6502.core_6502.u_alu.ctl[11:0]
+@1401200
+-group_end
+@22
+core_6502.core_6502.u_alu.ai[7:0]
+core_6502.core_6502.u_alu.bi[7:0]
+core_6502.core_6502.u_alu.a[7:0]
+core_6502.core_6502.u_alu.b[7:0]
+@28
+core_6502.core_6502.u_alu.c
+@22
+core_6502.core_6502.u_alu.out[7:0]
+@28
+core_6502.core_6502.u_alu.N
+core_6502.core_6502.u_alu.V
+core_6502.core_6502.u_alu.Z
+core_6502.core_6502.u_alu.C
+@c00200
+-signed decimal
+@420
+[color] 3
+core_6502.core_6502.u_alu.a[7:0]
+[color] 3
+core_6502.core_6502.u_alu.b[7:0]
+[color] 3
+core_6502.core_6502.u_alu.c
+[color] 3
+core_6502.core_6502.u_alu.out[7:0]
+@1401200
+-signed decimal
+-alu
 [pattern_trace] 1
 [pattern_trace] 0

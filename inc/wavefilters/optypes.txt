@@ -1,0 +1,20 @@
+#
+# states
+00  BRK    
+01  JSR    
+02  RTI    
+03  RTS    
+04  IMPL   
+05  IMM    
+06  ZPG    
+07  ZPGXY  
+08  XIND   
+09  INDY   
+0a  ABS    
+0b  ABSXY  
+0c  PUSH   
+0d  POP    
+0e  JUMP   
+0f  JUMPIND
+10  BR     
+1f  JAM    

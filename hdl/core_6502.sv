@@ -70,56 +70,28 @@ module core_6502 #(
     // ready signal
     wire rdy = READY | ~RW; //ignore not ready when writing
 
-
     // registers
     logic [7:0] ir, add;
     logic [7:0] a, s, x, y, p /*verilator public_flat*/;
 
       // state
-    logic [5:0] state, initial_state;
-
-    //alu
-    logic [3:0] alu_OP;
-    logic [7:0] ai, bi;
-    logic [7:0] alu_out;
-    logic ci, aluN, aluV, aluZ, aluC;
-    logic ai_inv, bi_inv, adl_bi;
-
-    // decode 
-    logic single_byte, two_cycle;
-    logic idx_XY;           // select index X(1) or Y(0) for abs,X/Y and zpg,X/Y ops
-    logic mem_read, mem_write, reg_write;
-    logic alu_en;
-    logic [3:0] op_alu_OP;
-    logic op_ai_inv;   // alu ai src
-    logic op_bi_inv;   // alu bi src
-    logic op_Pci, op_ci;       // carry in = ci || (Pci & p[0])
-    logic [2:0] op_db_src,op_sb_src,op_dst;
-    logic setV, setC;    // update p C or V bits with alu result
+    logic [7:0] state, next_state;
 
    // control signals
-    logic [2:0] db_src,sb_src,dst;
     logic [2:0] adl_src,adh_src;
     logic update_addrl,update_addrh;
-    logic store, load, rmw;
+    // logic store, load, rmw;
     logic ipc;
     logic inc_pc;
     logic push, pop, rpop;
     logic skip;
     logic exec, rexec;
-    logic save;
+    logic write_reg, write_mem;
     logic jump, handle_int;
     logic holdalu;
-    logic db_write;
-    logic sb_a;
-    logic sb_x;
-    logic sb_y;
-    logic sb_s;
-    logic db_p;
-    logic[7:0] set_mask, clear_mask;
     logic ipage_up, bpage_up, bpage_down;
 
-    // incoming data register
+    // i/o data registers
     logic [7:0] data;
     always_ff @(posedge clk_m1) begin
         if (rst) begin
@@ -130,103 +102,49 @@ module core_6502 #(
             // if(rdy) data <= data_i;
         end
     end
-
-    // busses
-    // db: data bus: typically memory read, but can be addr_lo or zero
-    // sb: secondry bus: read from registers (a,x,y,s, zero)
-    logic [7:0] db, sb;
-
-    always @(*) begin
-        case(sb_src)
-            REG_A: sb = a;
-            REG_X: sb = x;
-            REG_Y: sb = y;
-            REG_S: sb = s;
-            REG_ADD: sb = add;
-            REG_DATA: sb = data;
-            default: sb = 8'h0;
-        endcase
-        case(db_src)
-            DB_DATA:    db = data;
-            DB_PCL:     db = pc[7:0];
-            DB_PCH:     db = pc[15:8];
-            DB_S:       db = s;
-            DB_P:       db = irq_event ? p : p | FL_BU; // set break flags unless irq 
-            DB_A:       db = a;
-            DB_SB:      db = sb;
-            default:    db = 8'h0;
-        endcase
-
-        RW = !(save && op_dst == REG_DATA) || rst_event;
-        dor = RW ? 0 : result;
+    always_comb begin
+        RW = !( (exec & mem_wr) | force_write );
+        dor = (exec & mem_wr) ? result : data;
     end
-
 
     // ADDRESS BUS
     // external address bus updated on m1
+    logic force_write;
     always @(posedge clk_m1 ) begin
         if (rst) begin
             addr <= 0;
         end else begin
             if (update_addrh) addr[15:8] <= adh;
             if (update_addrl) addr[7:0] <= adl;
-
             if(reg_set_en) addr <= pc_set;
-
         end
     end
     // assign addr = {adh, adl};
     logic [7:0] adl,adh;
     always @(*) begin
         case(adl_src)
-            ADDR_DATA: adl = data;
-            ADDR_ADD: adl = add;
+            ADDR_DATA: adl = data_i;
+            ADDR_ALU: adl = add;
             ADDR_Z: adl = 8'b0;
             ADDR_INT: adl = rst_event ? RST_VECTOR[7:0] :
                             nmi_event ? NMI_VECTOR[7:0] :
                             IRQ_VECTOR[7:0];
             ADDR_STACK: adl = s;
+            ADDR_HOLD: adl = addr[7:0];
             default: adl = pcl; //ADDR_PC
         endcase
         case(adh_src)
-            ADDR_DATA: adh = data;
-            ADDR_ADD: adh = add;
+            ADDR_DATA: adh = data_i;
+            ADDR_ALU: adh = add;
             ADDR_Z: adh = 8'b0;
             ADDR_INT: adh = rst_event ? RST_VECTOR[15:8] :
                             nmi_event ? NMI_VECTOR[15:8] :
                             IRQ_VECTOR[15:8];
             ADDR_STACK: adh = STACKPAGE;
+            ADDR_HOLD: adh = addr[15:8];
             default: adh = pch; //ADDR_PC
         endcase
     end
-
-    // always @(posedge clk_m2 ) begin
-    //     if (rst) begin
-    //         adl <= 0;
-    //         adh <= 0;
-    //     end else begin
-    //         case(adl_src)
-    //             ADDR_DATA: adl <= data;
-    //             ADDR_ADD: adl <= add;
-    //             ADDR_Z: adl <= 8'b0;
-    //             ADDR_INT: adl <= rst_event ? RST_VECTOR[7:0] :
-    //                             nmi_event ? NMI_VECTOR[7:0] :
-    //                             IRQ_VECTOR[7:0];
-    //             ADDR_STACK: adl <= s;
-    //             default: adl <= pcl; //ADDR_PC
-    //         endcase
-    //         case(adh_src)
-    //             ADDR_DATA: adh <= data;
-    //             ADDR_ADD: adh <= add;
-    //             ADDR_Z: adh <= 8'b0;
-    //             ADDR_INT: adh <= rst_event ? RST_VECTOR[15:8] :
-    //                             nmi_event ? NMI_VECTOR[15:8] :
-    //                             IRQ_VECTOR[15:8];
-    //             ADDR_STACK: adh <= STACKPAGE;
-    //             default: adh <= pch; //ADDR_PC
-    //         endcase
-    //     end
-    // end
 
     // PC (updated on m1)
     logic [7:0] pcl, pch;   // low and high byte of *incremented* pc
@@ -263,7 +181,6 @@ module core_6502 #(
         else if (sync && rdy) ip <= addr;
     end
 
-
     logic nmi_event, nmi_handled, irq_event, rst_event;
     logic fetch_intr;
     wire IRQ_masked = IRQ && !p[2];
@@ -275,6 +192,8 @@ module core_6502 #(
             nmi_handled <= 0;
             fetch_intr <= 0;
         end else begin
+
+            rst_event <= 0;
 
             nmi_event <= NMI && !nmi_handled;
             if (IRQ_masked)
@@ -297,61 +216,122 @@ module core_6502 #(
     // opcode fetch and interrupt injection
     always @(posedge clk_m1 ) begin
         if (rst) ir <= 0;  //break from RESET_VECTOR
-        // else if (sync && rdy)  ir <= fetch_intr ? 0 : data;
-        else if (sync && rdy)  ir <= data_i;
+        else if (sync && rdy) ir <= data_i;
+
+        `ifdef DEBUG_REG
+            if (reg_set_en) ir <= 8'hea; // set ir to nop while we load debug state
+        `endif         
     end
 
-
-    // decode instruction
-    decode u_decode(
-        .clk        (clk_m1         ),
-        .rst           (rst         ),
-        .rdy           (rdy),
-        .opcode        (ir        ),
-        .pstatus       (p             ),
-        .initial_state (initial_state ),
-        .single_byte   (   ),
-        .idx_XY        (idx_XY   ),
-        .mem_read       (mem_read),
-        .mem_write      (mem_write),
-        .reg_write      (reg_write),
-        .sb_src        (op_sb_src        ),
-        .db_src        (op_db_src        ),
-        .dst       (op_dst       ),
-        .alu_en        (alu_en        ),
-        .alu_OP        (op_alu_OP        ),
-        .ai_inv        (op_ai_inv        ),
-        .bi_inv        (op_bi_inv        ),
-        .Pci            (op_Pci      ),
-        .ci             (op_ci      ),
-        .setV             (setV      ),
-        .setC             (setC      ),
-        .set_mask      (set_mask      ),
-        .clear_mask    (clear_mask    )
-    );
-    assign rmw = mem_read && mem_write;        //ALU OP, read/save to/from mem
-    assign store = !alu_en && mem_write;       //ALU NOP, save to mem (includes push)
-    assign load = !alu_en && reg_write;        //ALU NOP, save to reg (includes pull, transfer)
-
-    // predecode signals
+    // predecode flag for two-cycle ops
+    logic two_cycle;
     assign two_cycle =  (data_i ==? 8'b1??_000_?0) ||     // LD/CP imm
                         (data_i ==? 8'b???_010_??) ||     // imm or impl
                         (data_i ==? 8'b???_110_?0);       // impl
-    assign single_byte = (data_i == 8'h0) || (data_i ==? 8'b???_?10_?0);
 
-    //registers
-    logic [7:0] result;
+    // decode instruction
+    logic [4:0] op_type;
+    logic [3:0] op_dst;
+    logic [3:0] a_src, b_src, a_src_exec, b_src_exec;
+    logic alu_en;
+    logic upNZ, upV, upC, bit_op;
+    logic mem_rd, mem_wr, single_byte, idx_XY;
+    logic [7:0] set_mask, clear_mask;
+    decode u_decode(
+        .opcode         (ir),
+        .pstatus        (p),
+        .op_type        (op_type ),
+        .dst            (op_dst),
+        .a_src          (a_src_exec),
+        .b_src          (b_src_exec),
+        .alu_op         (alu_op_exec),
+        .alu_en         (alu_en),
+        .alu_cin        (alu_cin_exec),
+        .upNZ           (upNZ),
+        .upV            (upV),
+        .upC            (upC),
+        .bit_op         (bit_op),
+        .mem_rd         (mem_rd),
+        .mem_wr         (mem_wr),
+        .single_byte    (single_byte),
+        .idx_XY         (idx_XY),
+        .set_mask       (set_mask),
+        .clear_mask     (clear_mask)
+    );
+
+    // internal buses
+    logic [7:0] sb, db;
     always @(*) begin
-        case(op_sb_src)
-            REG_A: result = a;
-            REG_X: result = x;
-            REG_Y: result = y;
-            REG_S: result = s;
-            REG_ADD: result = add;
-            REG_DATA: result = data;
-            default: result = 8'h0;
+        case(a_src) //sb bus (registers)
+            REG_A:   sb = a;
+            REG_X:   sb = x;
+            REG_Y:   sb = y;
+            REG_S:   sb = s;
+            R_ADL:   sb = adl;
+            R_ADH:   sb = adh;
+            RE_NZ:   sb = 8'hff;
+            default: sb = 8'h0;
         endcase
-        if (alu_en) result = add;
+        case(b_src) //db bus (data)
+            REG_D:   db = data;
+            RE_ND:   db = ~data;
+            REG_P:   db = irq_event ? p : p | FL_BU; // set break flags unless irq 
+            R_PCL:   db = pcl;
+            R_PCH:   db = pch;
+            R_ALU:   db = add;
+            RE_NZ:   db = 8'hff;
+            default: db = 8'h0;
+        endcase
+    end
+
+    //alu
+    logic [2:0] alu_op, alu_op_exec;
+    logic alu_cin, alu_cin_exec;
+    logic [7:0] alu_out;
+    logic aluV, aluC;
+    alu u_alu(
+        .op     (alu_op  ),
+        .ai     (sb  ),
+        .bi     (db  ),
+        .ci    (alu_cin),
+        .out    (alu_out),
+        .aluV   (aluV),
+        .aluC   (aluC)
+    );
+
+    always @(posedge clk_m2 ) begin
+        if (rst) begin
+            add <= 0;
+            // aluC_reg <= 0;
+        end
+        else if (!holdalu) begin
+            add <= alu_out;
+            // aluC_reg <= aluC;
+        end
+    end
+    // TODO: fix this...
+    logic aluC_reg;
+    always @(posedge clk_m1 ) begin
+        if (rst) begin
+            aluC_reg <= 0;
+        end
+        else begin
+            aluC_reg <= aluC;
+        end
+    end
+
+
+    // result
+    logic [7:0] result;
+    logic resultZ, resultN;
+    always @(*) begin
+        if      (alu_en) result = alu_out;
+        else if (a_src == REG_Z) result = db;
+        else    result = sb;
+        resultZ = ~|result;
+        resultN = bit_op ? db[7] : result[7];
+
+        // RW = !write_mem || rst_event;
     end
 
     always @(posedge clk_m1 ) begin
@@ -370,52 +350,44 @@ module core_6502 #(
             
         end else if(rdy) begin
             rpop <= pop;
-            rexec <= exec;
-
-            // set / clear flags
-            p <= ~clear_mask & (set_mask  | p);
+            // rexec <= exec;
 
             // TODO: do this differently...
             if(push) s <= s-1;
             if(pop) s <= s+1;
 
-            //save result to registers
-            if (save) begin
+            //write result to registers
+            if (exec) begin
                 case (op_dst)
                     REG_A:      a <= result;
                     REG_X:      x <= result;
                     REG_Y:      y <= result;
                     REG_S:      s <= result;
-                    REG_P:      p <= (db & ~FL_BU);
+                    REG_P:      p <= db;
                     default:    begin end
                 endcase    
                 // db_src = (db_write && (op_db_src != DB_P)) ? DB_SB : op_db_src;
+
+                // update status flags
+                p <= ~clear_mask & (set_mask  | p);
+                if (upC) p[0] <= aluC;
+                if (upV) p[6] <= aluV;
+                if (bit_op) p[6] <= db[6];
+                if (upNZ) begin
+                    p[1] <= resultZ;
+                    p[7] <= resultN;
+                end
             end
 
-
-            //update status flags for non-ALU register load/transfers
-            if (load && (sb_a || sb_x || sb_y)) begin
-                p[1] <= ~|sb;
-                p[7] <= sb[7];
-            end
-
-            //update status flags for ALU ops
-            if (exec) begin
-                p[1] <= aluZ;               //set Z flag
-                p[7] <= aluN;               //set N flag
-                p[6] <= setV ? aluV : p[6]; //set V flag
-                p[0] <= setC ? aluC : p[0]; //set C flag
-            end
 
             // index math is unsigned, so we cross a page boundary if carry bit is set
             ipage_up <= aluC;
 
             // branch math: bi [unsigned base addr]  +  ai [signed offset], 
-            bpage_up <= bi[7] & !ai[7] & !aluN; // crossed to next page if base>127, offset>0, and result <= 127
-            bpage_down <= !bi[7] & ai[7] & aluN; // crossed to prev page if base<=127, offset<0, and result > 127
+            bpage_up <= db[7] & !sb[7] & !alu_out[7]; // crossed to next page if base>127, offset>0, and result <= 127
+            bpage_down <= !db[7] & sb[7] & alu_out[7]; // crossed to prev page if base<=127, offset<0, and result > 127
 
-            if (handle_int && (irq_event | nmi_event)) p[2] <= 1; // set interrupt bit
-            p[5] <= p[5];                       //never change bit 5
+            if (handle_int && (irq_event | nmi_event)) p[2] <= 1;   // set interrupt bit
         end
 
         `ifdef DEBUG_REG
@@ -427,173 +399,56 @@ module core_6502 #(
                 p <= p_set;     
             end
         `endif
-    end
 
-    always @(posedge clk_m2 ) begin
-        if (rst) add <= 0;
-        else if (!holdalu) add <= alu_out;
+        p[4] <= 0;                                              //bit 4 doesnt exist but always reports low
+        p[5] <= 1;                                              //bit 5 doesnt exist but always reports high
     end
-
-    //alu
-    logic [1:0] ai_src, bi_src;
-    always_comb begin
-        case(ai_src)
-            ADD_BUS:    ai = sb;
-            ADD_INVBUS: ai = ~sb;
-            ADD_Z:  ai = 0;
-            ADD_N:  ai = 8'hff;
-        endcase
-        case(bi_src)
-            ADD_BUS:    bi = adl_bi ? adl : db;
-            ADD_INVBUS: bi = ~db;
-            ADD_Z:  bi = 0;
-            ADD_N:  bi = 8'hff;
-        endcase
-    end
-
-    alu u_alu(
-        .ai  (ai  ),
-        .bi  (bi  ),
-        .ci  (ci  ),
-        .op  (alu_OP),
-        .out (alu_out),
-        .N   (aluN),
-        .V   (aluV),
-        .Z   (aluZ),
-        .C   (aluC)
-    );
 
     //state machine
     logic Tlast;
     always @(posedge clk_m1 ) begin
         if (rst) begin
-            // state <= T2_DECODE;
             state <= T1;
         end
         else if (rdy) begin
-            case(state)
-
-                T0:       state <= T1;
-                T1:       state <= T2;
-                T2:       state <= T3;
-                T3:       state <= T4;
-                T4:       state <= T5;
-                T5:       state <= T6;
-                T6:       state <= T_JAM;
-
-            // T0_EXEC:       state <= T1_FETCH;
-            // T1_FETCH:       state <= two_cycle ? T0_EXEC : initial_state;
-            // // T2_DECODE:      state <= two_cycle ? T1_FETCH : initial_state;
-            // T2_ZPG:         state <= rmw ? T_RMW_EXEC : T0_EXEC;
-            // T2_ZPGXY:       state <= T3_ZPGXY;
-            // T3_ZPGXY:       state <= rmw ? T_RMW_EXEC : T0_EXEC;
-            // T2_ABS:         state <= T3_ABS;
-            // T3_ABS:         state <= rmw ? T_RMW_EXEC : T0_EXEC;
-            // T2_ABSXY:       state <= T3_ABSXY;
-            // T3_ABSXY:       state <= !skip ? T4_ABSXY : T0_EXEC;
-            // T4_ABSXY:       state <= rmw ? T_RMW_EXEC : T0_EXEC;
-            // T2_XIND:        state <= T3_XIND;
-            // T3_XIND:        state <= T4_XIND;
-            // T4_XIND:        state <= T5_XIND;
-            // T5_XIND:        state <= rmw ? T_RMW_EXEC : T0_EXEC;
-            // T2_INDY:        state <= T3_INDY;
-            // T3_INDY:        state <= T4_INDY;
-            // T4_INDY:        state <= !skip ? T5_INDY : rmw ? T_RMW_EXEC : T0_EXEC;
-            // T5_INDY:        state <= rmw ? T_RMW_EXEC : T0_EXEC;
-            // T_RMW_EXEC:     state <= T_RMW_STORE;
-            // T_RMW_STORE:    state <= T0_EXEC;
-            // T2_JUMP:        state <= T3_JUMP;
-            // T3_JUMP:        state <= T1_FETCH;
-            // T2_JUMPIND:     state <= T3_JUMPIND;
-            // T3_JUMPIND:     state <= T4_JUMPIND;
-            // T4_JUMPIND:     state <= T5_JUMPIND;
-            // T5_JUMPIND:     state <= T1_FETCH;
-            // T2_BRANCH:      state <= T3_BRANCH;
-            // T3_BRANCH:      state <= skip ? T1_FETCH : T4_BRANCH;
-            // T4_BRANCH:      state <= T1_FETCH;
-            // T2_PUSH:        state <= T0_EXEC;
-            // T2_POP:         state <= T3_POP;
-            // T3_POP:         state <= T0_EXEC;
-            // T2_BRK:         state <= T3_BRK;
-            // T3_BRK:         state <= T4_BRK;
-            // T4_BRK:         state <= T5_BRK;
-            // T5_BRK:         state <= T2_JUMP;
-            // T2_RTI:         state <= T3_RTI;
-            // T3_RTI:         state <= T4_RTI;
-            // T4_RTI:         state <= T5_RTI;
-            // T5_RTI:         state <= T3_JUMP;
-            // T2_RTS:         state <= T3_RTS;
-            // T3_RTS:         state <= T4_RTS;
-            // T4_RTS:         state <= T5_RTS;
-            // T5_RTS:         state <= T0_EXEC;
-            // T2_JSR:         state <= T3_JSR;
-            // T3_JSR:         state <= T4_JSR;
-            // T4_JSR:         state <= T5_JSR;
-            // T5_JSR:         state <= T3_JUMP;
-
-            default:        state <= T_JAM;
-            endcase
-
-            if (Tlast) state <= T0;
-            if (jam) state <= T_JAM;
-
-
+            state <= next_state;
             `ifdef DEBUG_REG
-                if(reg_set_en) begin
-                    state <= T1_DEBUG;
-                end
+                if(reg_set_en) state <= T1;
             `endif
-
         end
-
     end
 
     //TODO:
-    wire op_jsr = initial_state == T3_JSR;
+    wire op_jsr = op_type == OP_JSR;
 
-    logic inc_addr, dec_addr;
-    logic inc_bi, dec_bi, inc_ai, dec_ai;
+    logic inc_addr, dec_addr, sum_addr, add_idx;
     // control
+
+    // control of alu during non-exec cycles
+    logic [8:0] alu_ctl;  // {a_src, b_src, cin}
+
+    logic rmw;
+    logic [3:0] r_idx;
     always @(*) begin
         adl_src     = ADDR_PC;
         adh_src     = ADDR_PC;
-        inc_pc      = 1;
+        inc_pc      = 0;
         holdalu     = 0;
         push        = 0;
         pop         = 0;
         skip        = 0;
         exec        = 0;
-        save        = 0;
         jump        = 0;
-        jam         = 0;
         sync        = 0;
         handle_int  = 0;
         update_addrl = 1;
         update_addrh = 1;
+        force_write = 0;
+        rmw = mem_rd & mem_wr;
 
-        inc_addr = 0;
-        dec_addr = 0;
-        inc_bi = 0;
-        dec_bi = 0;
-        inc_ai = 0;
-        dec_ai = 0;
+        alu_ctl = {REG_Z, REG_D, 1'b0}; // default behavior: store data in add
+        r_idx = idx_XY ? REG_X : REG_Y;
 
-        //default bus config
-        db_src  = DB_DATA;
-        sb_src  = idx_XY ? REG_X : REG_Y;
-
-        adl_bi=0;
-
-        // default ALU config
-        alu_OP = ALU_ADD;
-        ai_inv = 0;
-        bi_inv = 0;
-        ci = 0;
-        ai_src = ADD_BUS;
-        bi_src = ADD_BUS;
-
-        Tlast=0;
-        jam = 0;
         // From: https://www.nesdev.org/wiki/Visual6502wiki/6502_Timing_States
         // The convention for presenting time states for instruction execution here
         // is a a little different from that supplied in the usual programming literature in two ways:
@@ -608,69 +463,143 @@ module core_6502 #(
         
         case (state)
             T0: begin
-                // fetch data
+                exec = mem_wr;
+                inc_pc = 1;
+                next_state = T1;
                 end
             T1: begin
-                // fetch opcode
+                // execute prev op
+                exec = !mem_wr;
+                // fetch next op
                 sync = 1;
-                exec = 1; // configure alu
-                save = 1; // register result
-                Tlast = two_cycle;
+                inc_pc = 1;
+                next_state = two_cycle ? T0T2 : T2;
                 end
-            T1_DEBUG: begin
-                sync = 1;
-                Tlast = two_cycle;
+            T0T2: begin
+                inc_pc = !single_byte;
+                next_state = T1;
                 end
-            T_JAM: begin
-                inc_pc = 0;
-                // $display("6502 jammed at pc=0x%4h", pc);
-            end
+            T2: begin
+                next_state = T3;
+                case(op_type)
+                    OP_ZPG: begin
+                        {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
+                        next_state = T0;
+                    end
+                    OP_ZXY, OP_XIN: begin
+                        {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
+                    end
+                    OP_ABS, OP_AXY: begin
+                        inc_pc = 1;
+                    end
+                    default:
+                        next_state = T_JAM; //not implemented yet
+                endcase
+                end
+            T3: begin
+                next_state = T4;
+                case(op_type)
+                    OP_ZXY: begin
+                        alu_ctl = {r_idx, REG_D, 1'b0};
+                        {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
+                        if(!rmw) next_state = T0;
+                    end
+                    OP_XIN: begin
+                        alu_ctl = {r_idx, REG_D, 1'b0};
+                        {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
+                    end
+                    OP_ABS: begin
+                        {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
+                        if(!rmw) next_state = T0;
+                    end
+                    OP_AXY: begin
+                        alu_ctl = {r_idx, REG_D, 1'b0};
+                        {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
+                        next_state = (!mem_wr & !aluC) ? T0 : T4;
+                    end
+                    default:
+                        next_state = T_JAM; //not implemented yet
+                endcase
+                end
+            T4: begin
+                next_state = T5;
+                case(op_type)
+                    OP_ZXY:
+                    begin
+                        update_addrl = 0;
+                        update_addrh = 0;
+                    end
+                    OP_ABS:
+                    begin // rmw fetch
+                        update_addrl = 0;
+                        update_addrh = 0;
+                    end
+                    OP_AXY: begin
+                        {adh_src, adl_src} = {ADDR_ALU, ADDR_HOLD};
+                        alu_ctl = {REG_Z, REG_D, aluC_reg};
+                        if(!rmw) next_state = T0;
+                    end
+                    OP_XIN: begin
+                        alu_ctl = {REG_Z, R_ALU, 1'b1};
+                        {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
+                    end
+                    default:
+                        next_state = T_JAM; //not implemented yet
+                endcase
+                end
+            T5: begin
+                case(op_type)
+                    OP_ZXY, OP_ABS: begin
+                        update_addrl = 0;
+                        update_addrh = 0;
+                        next_state = T0;
+                        force_write = 1;
+                    end
+                    OP_AXY: begin
+                        update_addrl = 0;
+                        update_addrh = 0;
+                        next_state = T6;
+                    end
+                    OP_XIN: begin
+                        {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
+                        next_state = T0;
+                    end
+                    default:
+                        next_state = T_JAM; //not implemented yet
+                endcase
+                end                
+            T6: begin
+                case(op_type)
+                    OP_AXY: begin
+                        update_addrl = 0;
+                        update_addrh = 0;
+                        next_state = T0;
+                        force_write = 1;
+                    end
+                    default:
+                        next_state = T_JAM; //not implemented yet
+                endcase
+                end      
+
             default: begin
-                jam = 1;
-                inc_pc = 0;
+                next_state = T_JAM;
+                // $display("6502 jammed at pc=0x%4h", pc);
             end                
         endcase
 
-        // case(state)
 
-        //     T0_EXEC:    begin
-        //                 exec = 1;
-        //                 inc_pc = 1;
-        //                 end
+        if (exec) begin
+            a_src = a_src_exec;
+            b_src = b_src_exec;
+            alu_op = alu_op_exec;
+            alu_cin = alu_cin_exec;
+        end
+        else begin
+            {a_src, b_src, alu_cin} = alu_ctl;
+            alu_op = ALU_ADD;
+        end
 
-        //     T1_FETCH:   begin
-        //                 sync = 1;               // signal new instruction (also increments pc)
-        //                 inc_pc = 1;
-        //                 save = !rmw;  // save alu result
-        //                 end
 
-        //     // T2_DECODE:  begin
-
-        //     //             inc_pc = !single_byte;  // increment pc unless this is single byte opcode
-        //     //             exec = two_cycle;
-
-        //     //                 if(op_jsr) begin
-        //     //                     adl_src = ADDR_STACK;
-        //     //                     adh_src = ADDR_STACK;
-        //     //                 end
-        //     //             end
-
-        //     T2_ZPG:     begin
-        //                 adl_src = ADDR_DATA;    // data address at {00, low }
-        //                 adh_src = ADDR_Z;
-        //                 save = store;           // write data on store ops
-        //                 end
-
-        //     T2_ZPGXY:   begin
-        //                 update_addrl = 0;        // hold addr while computing low addr from base + index
-        //                 update_addrh = 0;
-        //                 end
-
-        //     T3_ZPGXY:   begin
-        //                 adl_src = ADDR_ADD;     // data address at {00, base + index}
-        //                 adh_src = ADDR_Z;
-        //                 save = store;           // write data on store ops
-        //                 end
 
         //     T2_JUMP,
         //     T2_JUMPIND,
@@ -680,9 +609,9 @@ module core_6502 #(
         //                 end
 
         //     T3_ABS:     begin
-        //                 adl_src = ADDR_ADD;     // data address at {high,low}
+        //                 adl_src = ADDR_ALU;     // data address at {high,low}
         //                 adh_src = ADDR_DATA;
-        //                 save = store;           // write data on store ops
+        //                 write_reg = store;           // write_mem data on store ops
         //                 end
 
         //     T_BOOT,
@@ -693,10 +622,10 @@ module core_6502 #(
 
         //     T3_ABSXY,
         //     T4_INDY:    begin
-        //                 adl_src = ADDR_ADD;     // data address at {high,low} (assumes no carry)
+        //                 adl_src = ADDR_ALU;     // data address at {high,low} (assumes no carry)
         //                 adh_src = ADDR_DATA;
         //                 if (ipage_up || store || rmw) begin
-        //                     sb_src = REG_Z;     // save base address in alu, adding zero (with carry if overflow)
+        //                     sb_src = REG_Z;     // write_reg base address in alu, adding zero (with carry if overflow)
         //                     ci = ipage_up;      // low = base + index overflowed, need to increment page
         //                 end else begin
         //                     skip = 1;           // no carry, we can skip next state
@@ -707,7 +636,7 @@ module core_6502 #(
         //     T5_INDY:    begin
         //                 update_addrl = 0;        // data address at {high,low} (now with incremented page)
         //                 update_addrh = 0;
-        //                 save = store;           // write data on store ops
+        //                 write_reg = store;           // write_mem data on store ops
         //                 end
 
         //     T2_XIND:    begin
@@ -715,7 +644,7 @@ module core_6502 #(
         //                 adh_src = ADDR_Z;
         //                 end                
         //     T3_XIND:    begin
-        //                 adl_src = ADDR_ADD;     // fetch low address = base+index 
+        //                 adl_src = ADDR_ALU;     // fetch low address = base+index 
         //                 adh_src = ADDR_Z;
         //                 sb_src = REG_ADD;       // increment base+index+1 for high address location
         //                 ci = 1;
@@ -723,13 +652,13 @@ module core_6502 #(
         //                 end
         //     T4_XIND:    begin
         //                 sb_src = REG_Z;         // read low address and hold in alu by computing (low+0)
-        //                 adl_src = ADDR_ADD;     // fetch high address at base+index+1
+        //                 adl_src = ADDR_ALU;     // fetch high address at base+index+1
         //                 adh_src = ADDR_Z;
         //                 end
         //     T5_XIND:    begin
-        //                 adl_src = ADDR_ADD;     // data address at {high,low}
+        //                 adl_src = ADDR_ALU;     // data address at {high,low}
         //                 adh_src = ADDR_DATA;
-        //                 save = store;           // write data on store ops
+        //                 write_reg = store;           // write_mem data on store ops
         //                 end
 
         //     T2_INDY:    begin
@@ -741,7 +670,7 @@ module core_6502 #(
 
         //     T3_INDY:    begin
         //                                         // read low base address and compute low addr = base + index
-        //                 adl_src = ADDR_ADD;     // fetch high base address 
+        //                 adl_src = ADDR_ALU;     // fetch high base address 
         //                 adh_src = ADDR_Z;
         //                 end
 
@@ -756,7 +685,7 @@ module core_6502 #(
         //     T_RMW_STORE:begin
         //                 update_addrl = 0;        // hold onto address 
         //                 update_addrh = 0;
-        //                 save = 1;               // store rmw result in same location
+        //                 write_reg = 1;               // store rmw result in same location
         //                 end
 
         //     T3_BRANCH:  begin
@@ -765,7 +694,7 @@ module core_6502 #(
         //                 end
 
         //     // T3_BRANCH:  begin
-        //     //             adl_src = ADDR_ADD;     // new pc assuming we haven't crossed a page
+        //     //             adl_src = ADDR_ALU;     // new pc assuming we haven't crossed a page
         //     //             update_addrh = 0;    
         //     //             jump = 1;               // load pc from address (i.e. jump)
         //     //             if (bpage_up) begin
@@ -785,39 +714,39 @@ module core_6502 #(
 
         //     T4_BRANCH:  begin
         //                 update_addrl = 0;       // now we are on the currect page, jump to new pc
-        //                 adh_src = ADDR_ADD;
+        //                 adh_src = ADDR_ALU;
         //                 jump = 1;
         //                 sync = 1;               // this cycle becomes T1_FETCH
         //                 end
 
         //     T3_JUMP:    begin
-        //                 adl_src = ADDR_ADD;     // load new pc
+        //                 adl_src = ADDR_ALU;     // load new pc
         //                 adh_src = ADDR_DATA;    
         //                 jump = 1;               // update pc from address
         //                 sync = 1;               // this is fetch stage.
         //                 end
 
         //     T3_JUMPIND: begin
-        //                 adl_src = ADDR_ADD;     // fetch low pc
+        //                 adl_src = ADDR_ALU;     // fetch low pc
         //                 adh_src = ADDR_DATA;
         //                 adl_bi = 1;             // load the current low address into the alu
         //                 sb_src = REG_Z;         // 
         //                 ci = 1;
         //                 end
         //     T4_JUMPIND: begin
-        //                 adl_src = ADDR_ADD;     // fetch high pc
+        //                 adl_src = ADDR_ALU;     // fetch high pc
         //                 update_addrh = 0;    
         //                 sb_src = REG_Z;         // compute (LL+0) to hold low pc in alu 
         //                 end
         //     T5_JUMPIND: begin
-        //                 adl_src = ADDR_ADD;     // jump to new pc
+        //                 adl_src = ADDR_ALU;     // jump to new pc
         //                 adh_src = ADDR_DATA;    
         //                 jump = 1;               // update pc from address
         //                 sync = 1;               // this is fetch stage.
         //                 end
 
         //     T2_PUSH:    begin
-        //                 save = 1;               // save data to stack
+        //                 write_reg = 1;               // write_reg data to stack
         //                 push = 1;               // update stack pointer
         //                 end
 
@@ -863,7 +792,7 @@ module core_6502 #(
         //     T5_RTI:     sb_src = REG_Z;         // store pcl in alu, fetch pch
 
         //     T5_RTS:    begin
-        //                 adl_src = ADDR_ADD;     // fetch new pc
+        //                 adl_src = ADDR_ALU;     // fetch new pc
         //                 adh_src = ADDR_DATA;    
         //                 jump = 1;               // update pc from address
         //                 end
@@ -915,13 +844,13 @@ module core_6502 #(
 
         //     // T4_JSR:     begin
         //     //             //alu -> adl
-        //     //             //write pch (push)
+        //     //             //write_mem pch (push)
         //     //             //set up decrement adl on alu (push)
         //     //             end
 
         //     // T5_JSR:    begin
         //     //             //alu -> adl
-        //     //             //write pcl (push)
+        //     //             //write_mem pcl (push)
         //     //     holdalu = 1;            // continue to hold new pcl in alu
         //     //             db_src = DB_PCL;        // push old pcl
         //     //             db_write=1;                        
@@ -963,57 +892,21 @@ module core_6502 #(
         //     adh_src = ADDR_STACK;
         // end
 
-        if (exec) begin
-            //configure the alu and bus for this instruction
-            alu_OP = op_alu_OP;
-            ai_inv = op_ai_inv;
-            bi_inv = op_bi_inv;
-            ci = (op_Pci && p[0]) || op_ci;
-            sb_src = op_sb_src;
-            db_src = op_db_src;
-        end
-
-
-        if (inc_addr) begin
-            adl_bi = 1;
-            inc_bi = 1;
-            adl_src = ADDR_ADD;
-        end
-        if (dec_addr) begin
-            adl_bi = 1;
-            dec_bi = 1;
-            adl_src = ADDR_ADD;
-        end
-
-        // program alu for inc/dec ops
-        if (inc_bi) begin
-            ai_src = ADD_Z;
-            bi_src = ADD_BUS;
-            ci = 1;
-            alu_OP = ALU_ADD;
-        end else if (dec_bi) begin
-            ai_src = ADD_N;
-            bi_src = ADD_BUS;
-            ci = 0;
-            alu_OP = ALU_ADD;
-        end else if (inc_ai) begin
-            bi_src = ADD_Z;
-            ai_src = ADD_BUS;
-            ci = 1;
-            alu_OP = ALU_ADD;
-        end else if (dec_ai) begin
-            bi_src = ADD_N;
-            ai_src = ADD_BUS;
-            ci = 0;
-            alu_OP = ALU_ADD;
-        end
-
+        `ifdef DEBUG_REG
+            // if (reg_set_en) begin
+            //     sync = 0;
+            // end
+            if (reg_set_en || debug_T1) begin
+                exec = 0;
+            end
+        `endif 
     end
 
 
     `ifdef DEBUG_CPU
         `include "debug/debug.sv"
     `endif 
+    logic debug_T1;
     `ifdef DEBUG_REG
         always_comb begin
             pc_dbg = pc;
@@ -1024,7 +917,12 @@ module core_6502 #(
             p_dbg = p;
         end
         int cycle;
-        always_ff @(posedge clk_m1) cycle <= reg_set_en ? 0 : cycle+1;    
+        always_ff @(posedge clk_m1) begin
+            debug_T1 <= reg_set_en;
+            cycle <= reg_set_en ? 0 : cycle+1;
+        end
+    `elsif
+        assign debug_T1=0;
     `endif 
 
 

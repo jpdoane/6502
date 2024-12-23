@@ -2,208 +2,158 @@
 `include "6502_defs.vh"
 
 module decode (
-    input logic clk, rst, rdy,
     input  logic [7:0] opcode,
     input  logic [7:0] pstatus,
-
-    output logic [5:0] initial_state,
-
-    output logic    single_byte,  //single byte opcode
-                    idx_XY, // index on X vs Y
-
-    // memory access pattern
-    output logic mem_read, mem_write, reg_write,
-
-    // bus ctl
-    output logic [2:0] sb_src,  // sb bus source (registers)
-    output logic [2:0] db_src,  // db bus source (data/addr)
-    output logic [2:0] dst,     // location to store result
-
-    // alu ctl
-    output logic alu_en,        // enable alu for this opcode
-    output logic [3:0] alu_OP,  // alu operation
-    output logic ai_inv, bi_inv,// invert ai or bi inputs
-    output logic Pci, ci,       // carry in = ci || (Pci & p[0])
-    output logic setV, setC,    // update p C or V bits with alu result
-
-    output logic [7:0] set_mask, clear_mask // set or clear flags
+    output logic [4:0] op_type,
+    output logic [3:0] dst, a_src, b_src,
+    output logic [2:0] alu_op,
+    output logic alu_en, alu_cin, upNZ, upV, upC, bit_op,   // alu ctl
+    output logic mem_rd, mem_wr,                    // mem access patterns
+    output logic single_byte,                       // single byte opcode
+    output logic idx_XY,                            // index on X vs Y
+    output logic [7:0] set_mask, clear_mask         // set/clear flags
     );
 
-/* verilator lint_off CASEOVERLAP */
-
-    logic [8:0] bus_ctl;
-    assign {db_src, sb_src, dst} = bus_ctl;
-    assign mem_read = db_src == DB_DATA;
-    assign mem_write = dst == REG_DATA;
-    assign reg_write = !mem_write && (dst != REG_Z);
-
-    logic [9:0] alu_ctl;
-    assign {alu_OP, Pci, ci, ai_inv, bi_inv, setV, setC} = alu_ctl;
-    assign alu_en = alu_OP != ALU_NOP;
-
-
-    // decode initial state
-    // https://www.masswerk.at/6502/6502_instruction_set.html#layout
-    always @(*) begin
-        casez(opcode)
-
-            // op_b == 0
-            8'b000_000_00:  initial_state = T2_BRK;             // BRK
-            8'b001_000_00:  initial_state = T2_JSR;             // JSR
-            8'b010_000_00:  initial_state = T2_RTI;             // RTI
-            8'b011_000_00:  initial_state = T2_RTS;             // RTS
-            8'b???_000_?1:  initial_state = T2_XIND;            // X,ind
-            8'b1??_000_?0:  initial_state = T0_EXEC;           // LD/CP imm
-
-            // op_b == 1
-            8'b???_001_??:  initial_state = T2_ZPG;             // zpg
-
-            // op_b == 2
-            8'b0?0_010_00:  initial_state = T2_PUSH;           // php,pha
-            8'b0?1_010_00:  initial_state = T2_POP;           // plp,pha
-            8'b???_010_??:  initial_state = T0_EXEC;           // imm or impl
-
-            // op_b == 3
-            8'b010_011_00:  initial_state = T2_JUMP;            // jmp abs
-            8'b011_011_00:  initial_state = T2_JUMPIND;         // jmp ind
-            8'b???_011_??:  initial_state = T2_ABS;             // abs
-
-            // op_b == 4
-            8'b???_100_00:  initial_state = take_branch ? T2_BRANCH : T0_EXEC; // conditional branch
-            8'b???_100_?1:  initial_state = T2_INDY;            // alu ind,Y ops
-
-            // op_b == 5
-            8'b???_101_??:  initial_state = T2_ZPGXY;           // zpg X/Y
-
-            // op_b == 6
-            8'b???_110_?0:  initial_state = T0_EXEC;           // impl
-            8'b???_110_?1:  initial_state = T2_ABSXY;           // abs, Y
-
-            // op_b == 7
-            8'b???_111_??:  initial_state = T2_ABSXY;           // abs,X/Y
-
-            default: initial_state = T_JAM;
-        endcase
-    end
-
-    // branch logic
+    logic [14:0] ctl_flags;
+    assign {dst, a_src, b_src, alu_op} = ctl_flags;
     logic take_branch;
-    always @(*) begin
-        case(opcode[7:5]) //op_a
-            3'h0:   take_branch = !pstatus[7]; // BPL
-            3'h1:   take_branch = pstatus[7];  // BMI
-            3'h2:   take_branch = !pstatus[6]; // BVC
-            3'h3:   take_branch = pstatus[6];  // BVS
-            3'h4:   take_branch = !pstatus[0]; // BCC
-            3'h5:   take_branch = pstatus[0];  // BCS
-            3'h6:   take_branch = !pstatus[1]; // BNE
-            3'h7:   take_branch = pstatus[1];  // BEQ
+
+    // special case flags
+    logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op;
+    
+    // decode datapath and alu opcode
+     /* verilator lint_off CASEOVERLAP */
+    always_comb begin
+        casez(opcode)     //ctl_flags = {dst,   a_src, b_src, alu_op}
+            8'b0??_000_00:  ctl_flags = {REG_Z, REG_Z, REG_Z, ALU_NOP};       // control flow and special ops
+            8'b000_010_00:  ctl_flags = {REG_D, REG_Z, REG_P, ALU_NOP};       // PHP 
+            8'b010_010_00:  ctl_flags = {REG_D, REG_A, REG_Z, ALU_NOP};       // PHA
+            8'b001_010_00:  ctl_flags = {REG_P, REG_Z, REG_D, ALU_NOP};       // PLP
+            8'b011_010_00:  ctl_flags = {REG_A, REG_Z, REG_D, ALU_NOP};       // PLA
+            8'b101_010_00:  ctl_flags = {REG_Y, REG_A, REG_Z, ALU_NOP};       // TAY
+            8'b111_010_00:  ctl_flags = {REG_X, REG_X, REG_Z, ALU_ADD};       // INX
+            8'b110_010_00:  ctl_flags = {REG_Y, REG_Y, REG_Z, ALU_ADD};       // INY
+            8'b110_010_10:  ctl_flags = {REG_X, REG_X, RE_NZ, ALU_ADD};       // DEX
+            8'b100_010_00:  ctl_flags = {REG_Y, REG_Y, RE_NZ, ALU_ADD};       // DEY
+            8'b001_0?1_00:  ctl_flags = {REG_Z, REG_A, REG_D, ALU_AND};       // BIT
+            8'b100_110_00:  ctl_flags = {REG_A, REG_Y, REG_Z, ALU_NOP};       // TYA
+            8'b100_010_10:  ctl_flags = {REG_A, REG_X, REG_Z, ALU_NOP};       // TXA
+            8'b100_110_10:  ctl_flags = {REG_S, REG_X, REG_Z, ALU_NOP};       // TXS
+            8'b101_010_10:  ctl_flags = {REG_X, REG_A, REG_Z, ALU_NOP};       // TAX
+            8'b101_110_10:  ctl_flags = {REG_X, REG_S, REG_Z, ALU_NOP};       // TSX
+            8'b???_1?0_00:  ctl_flags = {REG_Z, REG_Z, REG_Z, ALU_NOP};       // branch & mask ops
+            8'b100_??1_00:  ctl_flags = {REG_D, REG_Y, REG_Z, ALU_NOP};       // STY
+            8'b100_??1_10:  ctl_flags = {REG_D, REG_X, REG_Z, ALU_NOP};       // STX
+            8'b101_???_00:  ctl_flags = {REG_Y, REG_Z, REG_D, ALU_NOP};       // LDY
+            8'b100_???_?1:  ctl_flags = {REG_D, REG_A, REG_Z, ALU_NOP};       // STA
+            8'b101_???_?1:  ctl_flags = {REG_A, REG_Z, REG_D, ALU_NOP};       // LDA
+            8'b101_???_10:  ctl_flags = {REG_X, REG_Z, REG_D, ALU_NOP};       // LDX
+            8'b110_0??_00:  ctl_flags = {REG_Z, REG_Y, RE_ND, ALU_ADD};       // CPY
+            8'b111_0??_00:  ctl_flags = {REG_Z, REG_X, RE_ND, ALU_ADD};       // CPX
+            8'b110_???_?1:  ctl_flags = {REG_Z, REG_A, RE_ND, ALU_ADD};       // CMP
+            8'b111_010_10:  ctl_flags = {REG_Z, REG_Z, REG_Z, ALU_NOP};       // NOP
+            8'b000_???_?1:  ctl_flags = {REG_A, REG_A, REG_D, ALU_OR };       // ORA
+            8'b001_???_?1:  ctl_flags = {REG_A, REG_A, REG_D, ALU_AND};       // AND
+            8'b010_???_?1:  ctl_flags = {REG_A, REG_A, REG_D, ALU_XOR};       // EOR
+            8'b011_???_?1:  ctl_flags = {REG_A, REG_A, REG_D, ALU_ADD};       // ADC
+            8'b111_???_?1:  ctl_flags = {REG_A, REG_A, RE_ND, ALU_ADD};       // SBC
+            8'b000_010_10:  ctl_flags = {REG_A, REG_A, REG_Z, ALU_SL };       // ASL, A  
+            8'b001_010_10:  ctl_flags = {REG_A, REG_A, REG_Z, ALU_SL };       // ROL, A  
+            8'b010_010_10:  ctl_flags = {REG_A, REG_A, REG_Z, ALU_SR };       // LSR, A  
+            8'b011_010_10:  ctl_flags = {REG_A, REG_A, REG_Z, ALU_SR };       // ROR, A  
+            8'b110_???_10:  ctl_flags = {REG_D, RE_NZ, REG_D, ALU_ADD};       // DEC rmw
+            8'b111_???_10:  ctl_flags = {REG_D, REG_Z, REG_D, ALU_ADD};       // INC rmw
+            8'b000_???_10:  ctl_flags = {REG_D, REG_Z, REG_D, ALU_SL };       // ASL rmw
+            8'b001_???_10:  ctl_flags = {REG_D, REG_Z, REG_D, ALU_SL };       // ROL rmw
+            8'b010_???_10:  ctl_flags = {REG_D, REG_Z, REG_D, ALU_SR };       // LSR rmw
+            8'b011_???_10:  ctl_flags = {REG_D, REG_Z, REG_D, ALU_SR };       // ROR rmw
+            default:        ctl_flags = {REG_Z, REG_Z, REG_Z, ALU_NOP};       // nop
         endcase
+
+        mem_rd = (b_src == REG_D) || (b_src == RE_ND);
+        mem_wr = dst == REG_D;
+
+        alu_en = (alu_op != ALU_NOP);
+        adc_sbc_op = opcode ==? 8'b?11_???_?1;
+        cmp_op = opcode ==? 8'b11?_0??_00 || opcode ==? 8'b110_???_?1;
+        rot_op = opcode ==? 8'b0?1_???_10;
+        shift_op = opcode ==? 8'b0?0_???_10;
+        bit_op = opcode ==? 8'b001_0?1_00;
+        inc_op = opcode ==? 8'b11?_010_00 || opcode ==? 8'b111_???_10;
+
+        // update status flags (BIT opcodes are special case handled elsewhere...)
+        // update N&Z bits on any write to a,x,y regs and all alu ops
+        case(dst)
+            REG_A:      upNZ=1;
+            REG_X:      upNZ=1;
+            REG_Y:      upNZ=1;
+            default:    upNZ=alu_en;
+        endcase
+        // set v flag on ADC and SBC
+        upV = adc_sbc_op;
+        // set c flag on ADC,SBC, and rotate/shift ops
+        upC = adc_sbc_op | cmp_op | shift_op | rot_op;
+
+        // set carry bit on cmp & inc ops, and set to p[0] on ADC,SBC, and rotate ops
+        alu_cin = inc_op | cmp_op | ((adc_sbc_op | rot_op) & pstatus[0]);
+
+        // set and clear masks
+        clear_mask = 0;
+        set_mask = 0;
+        casez(opcode)
+            8'b000_110_00: clear_mask = FL_C; // CLC
+            8'b010_110_00: clear_mask = FL_I; // CLI
+            8'b101_110_00: clear_mask = FL_V; // CLV
+            8'b110_110_00: clear_mask = FL_D; // CLD
+            8'b001_110_00: set_mask = FL_C;   // SEC
+            8'b011_110_00: set_mask = FL_I;   // SEI
+            8'b111_110_00: set_mask = FL_D;   // SED
+            default:    begin end
+        endcase
+
+        // single byte opcodes: b = 2 or 6 && c = 0 or 2
+        single_byte = (opcode == 8'h0) || (opcode ==? 8'b???_?10_?0);
+
+        // X vs Y indexing
+        idx_XY = (opcode ==? 8'b???_1?0_?1 || opcode ==? 8'b10?_1?1_1?) ? IDX_Y : IDX_X;
+
+        // branch logic
+        case(opcode[7:6])
+            2'h0:   take_branch = pstatus[7] ^ !opcode[5]; // BPL, BMI
+            2'h1:   take_branch = pstatus[6] ^ !opcode[5]; // BVC, BVS
+            2'h2:   take_branch = pstatus[0] ^ !opcode[5]; // BCC, BCS
+            2'h3:   take_branch = pstatus[1] ^ !opcode[5]; // BNE, BEQ
+        endcase
+
+        // decode control flow and memory access pattern types
+        // https://www.masswerk.at/6502/6502_instruction_set.html#layout
+        casez(opcode)
+            8'b000_000_00:  op_type = OP_BRK;          
+            8'b001_000_00:  op_type = OP_JSR;          
+            8'b010_000_00:  op_type = OP_RTI;          
+            8'b011_000_00:  op_type = OP_RTS;          
+            8'b???_000_?1:  op_type = OP_XIN;         
+            8'b1??_000_?0,
+            8'b???_010_?1:  op_type = OP_IMM;          
+            8'b???_001_??:  op_type = OP_ZPG;          
+            8'b0?0_010_00:  op_type = OP_PUS;         
+            8'b0?1_010_00:  op_type = OP_POP;          
+            8'b???_?10_?0:  op_type = OP_IMP;         
+            8'b010_011_00:  op_type = OP_JUM;         
+            8'b011_011_00:  op_type = OP_JIN;
+            8'b???_011_??:  op_type = OP_ABS;          
+            8'b???_100_00:  op_type = take_branch ? OP_BRA : OP_IMP;           
+            8'b???_100_?1:  op_type = OP_INY;         
+            8'b???_101_??:  op_type = OP_ZXY;        
+            8'b???_110_?1,
+            8'b???_111_??:  op_type = OP_AXY;        
+            default:        op_type = OP_JAM;
+        endcase
+
+
+
     end
+    /* verilator lint_on CASEOVERLAP */
 
-    // single byte opcodes: b = 2 or 6 && c = 0 or 2
-    assign single_byte = (opcode == 8'h0) || (opcode ==? 8'b???_?10_?0);
-
-    // X vs Y indexing
-    assign idx_XY = (opcode ==? 8'b???_1?0_?1 || opcode ==? 8'b10?_1?1_1?) ? IDX_Y : IDX_X;
-
-    // set and clear masks
-    always @(posedge clk ) begin
-        if(rst) begin
-            set_mask <= 8'h0;
-            clear_mask <= 8'h0;
-        end else if(rdy) begin
-            set_mask <= 8'h0;
-            clear_mask <= 8'h0;
-            casez(opcode)
-                8'b000_110_00: clear_mask <= FL_C; // CLC
-                8'b010_110_00: clear_mask <= FL_I; // CLI
-                8'b101_110_00: clear_mask <= FL_V; // CLV
-                8'b110_110_00: clear_mask <= FL_D; // CLD
-                8'b001_110_00: set_mask <= FL_C;   // SEC
-                8'b011_110_00: set_mask <= FL_I;   // SEI
-                8'b111_110_00: set_mask <= FL_D;   // SED
-                default:    begin end
-            endcase
-        end
-    end
-
-    // decode opcode
-    // https://www.masswerk.at/6502/6502_instruction_set.html#layout
-    always @(posedge clk ) begin
-        if(rst) begin
-            bus_ctl <= {DB_Z, REG_Z, REG_Z};
-            alu_ctl <= {ALU_NOP, 6'b000000};
-        end else if(rdy) begin
-
-            // decode bus routing
-            casez(opcode)
-                //op_c==0
-                8'b0??_000_00:  bus_ctl <= {DB_Z, REG_Z, REG_Z};        // control flow and special ops
-                8'b000_010_00:  bus_ctl <= {DB_P, REG_Z, REG_DATA};     // PHP 
-                8'b010_010_00:  bus_ctl <= {DB_Z, REG_A, REG_DATA};     // PHA
-                8'b001_010_00:  bus_ctl <= {DB_DATA, REG_Z, REG_P};     // PLP
-                8'b011_010_00:  bus_ctl <= {DB_DATA, REG_DATA, REG_A};  // PLA
-                8'b101_010_00:  bus_ctl <= {DB_Z, REG_A, REG_Y};        // TAY
-                8'b111_010_00:  bus_ctl <= {DB_Z, REG_X, REG_X};        // INX
-                8'b1?0_010_00:  bus_ctl <= {DB_Z, REG_Y, REG_Y};        // DEY, INY
-                8'b001_0?1_00:  bus_ctl <= {DB_DATA, REG_A, REG_Z};     // BIT
-                8'b100_110_00:  bus_ctl <= {DB_Z, REG_Y, REG_A};        // TYA
-                8'b???_1?0_00:  bus_ctl <= {DB_Z, REG_Z, REG_Z};        // branch & mask ops (no bus)
-                8'b100_??1_00:  bus_ctl <= {DB_Z, REG_Y, REG_DATA};     // STY
-                8'b101_???_00:  bus_ctl <= {DB_DATA, REG_DATA, REG_Y};  // LDY
-                8'b110_0??_00:  bus_ctl <= {DB_DATA, REG_Y, REG_Z};     // CPY
-                8'b111_0??_00:  bus_ctl <= {DB_DATA, REG_X, REG_Z};     // CPX
-                8'b100_???_?1:  bus_ctl <= {DB_Z, REG_A, REG_DATA};     // STA
-                8'b101_???_?1:  bus_ctl <= {DB_DATA, REG_DATA, REG_A};  // LDA
-                8'b110_???_?1:  bus_ctl <= {DB_DATA, REG_A, REG_Z};     // CMP
-                8'b???_???_?1:  bus_ctl <= {DB_DATA, REG_A, REG_A};     // other ALU
-                8'b100_??1_10:  bus_ctl <= {DB_Z, REG_X, REG_DATA};     // STX
-                8'b100_010_10:  bus_ctl <= {DB_Z, REG_X, REG_A};        // TXA
-                8'b100_110_10:  bus_ctl <= {DB_Z, REG_X, REG_S};        // TXS
-                8'b101_010_10:  bus_ctl <= {DB_Z, REG_A, REG_X};        // TAX
-                8'b101_110_10:  bus_ctl <= {DB_Z, REG_S, REG_X};        // TSX
-                8'b101_???_10:  bus_ctl <= {DB_DATA, REG_DATA, REG_X};  // LDX
-                8'b110_010_10:  bus_ctl <= {DB_Z, REG_X, REG_X};        // DEX
-                8'b111_010_10:  bus_ctl <= {DB_Z, REG_Z, REG_Z};        // NOP
-                8'b???_010_10:  bus_ctl <= {DB_Z, REG_A, REG_A};        // accumulator op
-                8'b???_???_10:  bus_ctl <= {DB_DATA, REG_Z, REG_DATA};  // rmw
-
-                default:        bus_ctl <= {DB_Z, REG_Z, REG_Z};
-            endcase
-
-            // decode alu
-            casez(opcode)
-
-                // ALU control: { alu_op[3:0], P_carry_in, carry_in, ai_inv, bi_inv, set_V, set_C }
-
-                // explicit NOP
-                8'b111_010_10:  alu_ctl <= {ALU_NOP, 6'b000000};   // NOP
-                8'b001_0?1_00:  alu_ctl <= {ALU_BIT, 6'b000010};   // BIT
-                8'b100_010_00:  alu_ctl <= {ALU_ADD, 6'b000100};   // DEY
-                8'b110_010_10:  alu_ctl <= {ALU_ADD, 6'b000100};   // DEX
-                8'b11?_010_00:  alu_ctl <= {ALU_ADD, 6'b010000};   // INY, INX
-                8'b110_???_10:  alu_ctl <= {ALU_ADD, 6'b001000};   // DEC
-                8'b111_???_10:  alu_ctl <= {ALU_ADD, 6'b010000};   // INC
-                8'b11?_0??_00,
-                8'b110_???_?1:  alu_ctl <= {ALU_ADD, 6'b010101};   // CMP, CPX, CPY
-                8'b000_???_?1:  alu_ctl <= {ALU_OR,  6'b000000};   // ORA
-                8'b001_???_?1:  alu_ctl <= {ALU_AND, 6'b000000};   // AND
-                8'b010_???_?1:  alu_ctl <= {ALU_XOR, 6'b000000};   // EOR
-                8'b011_???_?1:  alu_ctl <= {ALU_ADD, 6'b100011};   // ADC
-                8'b111_???_?1:  alu_ctl <= {ALU_ADD, 6'b100111};   // SBC
-                8'b000_???_10:  alu_ctl <= {ALU_SL,  6'b000001};   // ASL
-                8'b001_???_10:  alu_ctl <= {ALU_SL,  6'b100001};   // ROL
-                8'b010_???_10:  alu_ctl <= {ALU_SR,  6'b000001};   // LSR
-                8'b011_???_10:  alu_ctl <= {ALU_SR,  6'b100001};   // ROR
-                
-                // other alu nops: push/pull/load/store/control flow/etc
-                default:        alu_ctl <= {ALU_NOP, 6'b000000};   
-
-            endcase
-        end
-    end
-
-/* verilator lint_on CASEOVERLAP */
 
 endmodule
