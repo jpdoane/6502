@@ -223,11 +223,11 @@ module core_6502 #(
         `endif         
     end
 
-    // predecode flag for two-cycle ops
+    // predecode flag for two-cycle ops (LD/CP, imm, impl)
     logic two_cycle;
-    assign two_cycle =  (data_i ==? 8'b1??_000_?0) ||     // LD/CP imm
-                        (data_i ==? 8'b???_010_??) ||     // imm or impl
-                        (data_i ==? 8'b???_110_?0);       // impl
+    assign two_cycle =  (data_i ==? 8'b1??_000_?0) ||                            
+                        (data_i ==? 8'b???_010_?? && data_i !=? 8'b1??_010_00) ||
+                        (data_i ==? 8'b???_110_?0);
 
     // decode instruction
     logic [4:0] op_type;
@@ -236,6 +236,7 @@ module core_6502 #(
     logic alu_en;
     logic upNZ, upV, upC, bit_op;
     logic mem_rd, mem_wr, single_byte, idx_XY;
+    logic take_branch;
     logic [7:0] set_mask, clear_mask;
     decode u_decode(
         .opcode         (ir),
@@ -253,6 +254,7 @@ module core_6502 #(
         .bit_op         (bit_op),
         .mem_rd         (mem_rd),
         .mem_wr         (mem_wr),
+        .take_branch    (take_branch),
         .single_byte    (single_byte),
         .idx_XY         (idx_XY),
         .set_mask       (set_mask),
@@ -263,12 +265,17 @@ module core_6502 #(
     logic [7:0] sb, db;
     always @(*) begin
         case(a_src) //sb bus (registers)
+            REG_D:   sb = data;
+            RE_ND:   sb = ~data;
             REG_A:   sb = a;
             REG_X:   sb = x;
             REG_Y:   sb = y;
             REG_S:   sb = s;
+            R_PCL:   sb = pcl;
+            R_PCH:   sb = pch;
             R_ADL:   sb = adl;
             R_ADH:   sb = adh;
+            R_ALU:   sb = add;
             RE_NZ:   sb = 8'hff;
             default: sb = 8'h0;
         endcase
@@ -276,6 +283,12 @@ module core_6502 #(
             REG_D:   db = data;
             RE_ND:   db = ~data;
             REG_P:   db = irq_event ? p : p | FL_BU; // set break flags unless irq 
+            REG_A:   db = a;
+            REG_X:   db = x;
+            REG_Y:   db = y;
+            REG_S:   db = s;
+            R_ADL:   db = adl;
+            R_ADH:   db = adh;
             R_PCL:   db = pcl;
             R_PCH:   db = pch;
             R_ALU:   db = add;
@@ -309,17 +322,6 @@ module core_6502 #(
             // aluC_reg <= aluC;
         end
     end
-    // TODO: fix this...
-    logic aluC_reg;
-    always @(posedge clk_m1 ) begin
-        if (rst) begin
-            aluC_reg <= 0;
-        end
-        else begin
-            aluC_reg <= aluC;
-        end
-    end
-
 
     // result
     logic [7:0] result;
@@ -345,8 +347,8 @@ module core_6502 #(
             rexec <= 0;
             // add <= 8'b0;
             ipage_up <= 0;
-            bpage_up <= 0;
-            bpage_down <= 0;
+            // bpage_up <= 0;
+            // bpage_down <= 0;
             
         end else if(rdy) begin
             rpop <= pop;
@@ -383,9 +385,6 @@ module core_6502 #(
             // index math is unsigned, so we cross a page boundary if carry bit is set
             ipage_up <= aluC;
 
-            // branch math: bi [unsigned base addr]  +  ai [signed offset], 
-            bpage_up <= db[7] & !sb[7] & !alu_out[7]; // crossed to next page if base>127, offset>0, and result <= 127
-            bpage_down <= !db[7] & sb[7] & alu_out[7]; // crossed to prev page if base<=127, offset<0, and result > 127
 
             if (handle_int && (irq_event | nmi_event)) p[2] <= 1;   // set interrupt bit
         end
@@ -427,6 +426,12 @@ module core_6502 #(
     // control of alu during non-exec cycles
     logic [8:0] alu_ctl;  // {a_src, b_src, cin}
 
+    logic aluC_reg, aluN_reg;
+    always @(posedge clk_m1 ) begin
+        aluN_reg <= alu_out[7];
+        aluC_reg <= aluC;
+    end
+
     logic rmw;
     logic [3:0] r_idx;
     always @(*) begin
@@ -449,6 +454,10 @@ module core_6502 #(
         alu_ctl = {REG_Z, REG_D, 1'b0}; // default behavior: store data in add
         r_idx = idx_XY ? REG_X : REG_Y;
 
+        bpage_up = pcl[7] & !data[7] & !alu_out[7]; // crossed to next page if base>127, offset>0, and result <= 127
+        bpage_down = !pcl[7] & data[7] & alu_out[7]; // crossed to prev page if base<=127, offset<0, and result > 127
+
+
         // From: https://www.nesdev.org/wiki/Visual6502wiki/6502_Timing_States
         // The convention for presenting time states for instruction execution here
         // is a a little different from that supplied in the usual programming literature in two ways:
@@ -464,7 +473,7 @@ module core_6502 #(
         case (state)
             T0: begin
                 exec = mem_wr;
-                inc_pc = 1;
+                inc_pc = !single_byte;
                 next_state = T1;
                 end
             T1: begin
@@ -489,8 +498,22 @@ module core_6502 #(
                     OP_ZXY, OP_XIN, OP_INY: begin
                         {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
                     end
-                    OP_ABS, OP_AXY: begin
+                    OP_ABS, OP_AXY, OP_JUM, OP_JIN: begin
                         inc_pc = 1;
+                    end
+                    OP_BRA: begin
+                        inc_pc = 1;
+                        next_state = take_branch ? T3 : T1;
+                    end
+                    OP_PUS: begin
+                        push = 1;
+                        {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
+                        next_state = T0;
+                    end
+                    OP_POP: begin
+                        pop = 1;
+                        {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
+                        next_state = T3;
                     end
                     default:
                         next_state = T_JAM; //not implemented yet
@@ -520,6 +543,29 @@ module core_6502 #(
                         alu_ctl = {r_idx, REG_D, 1'b0};
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         next_state = (!mem_wr & !aluC) ? T0 : T4;
+                    end
+                    OP_BRA: begin
+                        // next_state = T1;
+                        alu_ctl = {R_PCL, REG_D, 1'b0}; // add branch offset
+                        {adh_src, adl_src} = {ADDR_PC, ADDR_ALU};
+                        if(bpage_up | bpage_down) begin
+                            next_state = T4; //carry adh
+                        end else begin
+                            next_state = T1;
+                        end
+                        jump = 1;
+                    end
+                    OP_JUM: begin
+                        {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
+                        jump = 1;
+                        next_state = T1;
+                    end
+                    OP_JIN: begin
+                        {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
+                    end
+                    OP_POP: begin
+                        {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
+                        next_state = T0;
                     end
                     default:
                         next_state = T_JAM; //not implemented yet
@@ -552,6 +598,16 @@ module core_6502 #(
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         next_state = (!mem_wr & !aluC) ? T0 : T5;
                     end
+                    OP_BRA: begin
+                        alu_ctl = aluN_reg ? {R_PCH, RE_NZ, 1'b0} : {R_PCH, REG_Z, 1'b1};
+                        {adh_src, adl_src} = {ADDR_ALU, ADDR_PC};
+                        jump = 1;
+                        next_state = T1;
+                    end
+                    OP_JIN: begin
+                        alu_ctl = {REG_Z, R_ALU, 1'b1};
+                        {adh_src, adl_src} = {ADDR_HOLD, ADDR_ALU};
+                    end
                     default:
                         next_state = T_JAM; //not implemented yet
                 endcase
@@ -578,6 +634,11 @@ module core_6502 #(
                         {adh_src, adl_src} = {ADDR_ALU, ADDR_HOLD};
                         next_state = T0;
                     end
+                    OP_JIN: begin
+                        {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
+                        jump = 1;
+                        next_state = T1;
+                    end
                     default:
                         next_state = T_JAM; //not implemented yet
                 endcase
@@ -601,7 +662,6 @@ module core_6502 #(
             end                
         endcase
 
-
         if (exec) begin
             a_src = a_src_exec;
             b_src = b_src_exec;
@@ -613,7 +673,7 @@ module core_6502 #(
             alu_op = ALU_ADD;
         end
 
-
+        // if(push | pop) {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
 
         //     T2_JUMP,
         //     T2_JUMPIND,

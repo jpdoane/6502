@@ -36,65 +36,6 @@ parameter OP_JIN      = 5'h0f;   // jmp ind
 parameter OP_BRA      = 5'h10;   // conditional branch
 parameter OP_JAM      = 5'h1f;
 
-// parameter T0_EXEC      =6'h33;
-// parameter T1_DEBUG      =6'h3f;
-// parameter T1_FETCH      =6'h0;
-
-// parameter T2_DECODE     =6'h1;
-
-// parameter T2_ZPG        =6'h2;
-// parameter T2_ZPGXY      =6'h3;
-// parameter T2_ABSXY      =6'h7;
-// parameter T2_ABS        =6'h5;
-// parameter T2_XIND       =6'hb;
-// parameter T2_INDY       =6'hf;
-// parameter T2_JUMP        =6'h17;
-// parameter T2_BRANCH     =6'h19;
-// parameter T2_PUSH       =6'h1c;
-// parameter T2_POP        =6'h1d;
-// parameter T2_BRK        =6'h1f;
-// parameter T2_RTI        =6'h23;
-// parameter T2_RTS        =6'h27;
-// parameter T2_JSR        =6'h2b;
-// parameter T2_JUMPIND    =6'h2f;
-
-// parameter T3_ZPGXY      =6'h4;
-// parameter T3_ABS        =6'h6;
-// parameter T3_ABSXY      =6'h8;
-// parameter T3_XIND       =6'hc;
-// parameter T3_INDY       =6'h10;
-// parameter T3_JUMP        =6'h18;
-// parameter T3_BRANCH     =6'h1a;
-// parameter T3_POP        =6'h1e;
-// parameter T3_BRK        =6'h20;
-// parameter T3_RTI        =6'h24;
-// parameter T3_RTS        =6'h28;
-// parameter T3_JSR        =6'h2c;
-// parameter T3_JUMPIND    =6'h30;
-
-// parameter T4_ABSXY      =6'h9;
-// parameter T4_XIND       =6'hd;
-// parameter T4_INDY       =6'h11;
-// parameter T4_BRANCH     =6'h1b;
-// parameter T4_BRK        =6'h21;
-// parameter T4_RTI        =6'h25;
-// parameter T4_RTS        =6'h29;
-// parameter T4_JSR        =6'h2d;
-// parameter T4_JUMPIND    =6'h31;
-
-// parameter T5_XIND       =6'he;
-// parameter T5_INDY       =6'h12;
-// parameter T5_BRK        =6'h22;
-// parameter T5_RTI        =6'h26;
-// parameter T5_RTS        =6'h2a;
-// parameter T5_JSR        =6'h2e;
-// parameter T5_JUMPIND    =6'h32;
-
-// parameter T_RMW_EXEC    =6'h13;
-// parameter T_RMW_STORE   =6'h14;
-// parameter T_BOOT        =6'h15;
-
-
 parameter REG_Z = 4'h0;  // 0
 parameter RE_NZ = 4'h1;  // -1
 parameter REG_D = 4'h2;  // data bus

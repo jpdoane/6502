@@ -9,6 +9,7 @@ module decode (
     output logic [2:0] alu_op,
     output logic alu_en, alu_cin, upNZ, upV, upC, bit_op,   // alu ctl
     output logic mem_rd, mem_wr,                    // mem access patterns
+    output logic take_branch,
     output logic single_byte,                       // single byte opcode
     output logic idx_XY,                            // index on X vs Y
     output logic [7:0] set_mask, clear_mask         // set/clear flags
@@ -16,7 +17,6 @@ module decode (
 
     logic [14:0] ctl_flags;
     assign {dst, a_src, b_src, alu_op} = ctl_flags;
-    logic take_branch;
 
     // special case flags
     logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op;
@@ -142,7 +142,7 @@ module decode (
             8'b010_011_00:  op_type = OP_JUM;         
             8'b011_011_00:  op_type = OP_JIN;
             8'b???_011_??:  op_type = OP_ABS;          
-            8'b???_100_00:  op_type = take_branch ? OP_BRA : OP_IMP;           
+            8'b???_100_00:  op_type = OP_BRA;           
             8'b???_100_?1:  op_type = OP_INY;         
             8'b???_101_??:  op_type = OP_ZXY;        
             8'b???_110_?1,

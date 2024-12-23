@@ -39,12 +39,13 @@ abs: 2c 8c ac cc ec 0d 2d 4d 6d 8d cd ed 0e 2e 4e 6e 8e ae ce ee
 abs_xy: bc 1d 3d 5d 7d 9d bd dd fd 1e 3e 5e 7e be de fe 19 39 59 79 99 b9 d9 f9
 ind_x: 01 21 41 61 81 a1 c1 e1
 ind_y: 11 31 51 71 91 b1 d1 f1
+stack: 08 28 48 68
 br: 10 30 50 70 90 b0 d0 f0
 jmp: 4c 6c
 sub: 20 40 60 00
 
-passing: imm_impl zp zp_xy abs abs_xy ind_x ind_y
+passing: imm_impl zp zp_xy abs abs_xy ind_x ind_y br jmp
 
-wip: br
+wip: stack
 
 .DEFAULT_GOAL = wip
