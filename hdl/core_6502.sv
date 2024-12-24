@@ -83,13 +83,12 @@ module core_6502 #(
     // logic store, load, rmw;
     logic ipc;
     logic inc_pc;
-    logic push, pop, rpop;
     logic skip;
     logic exec, rexec;
     logic write_reg, write_mem;
     logic jump, handle_int;
     logic holdalu;
-    logic ipage_up, bpage_up, bpage_down;
+    // logic ipage_up, bpage_up, bpage_down;
 
     // i/o data registers
     logic [7:0] data;
@@ -226,7 +225,7 @@ module core_6502 #(
     // predecode flag for two-cycle ops (LD/CP, imm, impl)
     logic two_cycle;
     assign two_cycle =  (data_i ==? 8'b1??_000_?0) ||                            
-                        (data_i ==? 8'b???_010_?? && data_i !=? 8'b1??_010_00) ||
+                        (data_i ==? 8'b???_010_?? && data_i !=? 8'b0??_010_00) ||
                         (data_i ==? 8'b???_110_?0);
 
     // decode instruction
@@ -336,6 +335,7 @@ module core_6502 #(
         // RW = !write_mem || rst_event;
     end
 
+    //update registers
     always @(posedge clk_m1 ) begin
         if (rst) begin
             a <= 0;
@@ -343,32 +343,8 @@ module core_6502 #(
             y <= 0;
             s <= INITIAL_STACK;
             p <= INITIAL_STATUS;              //disable IRQ on reset
-            rpop <= 0;
-            rexec <= 0;
-            // add <= 8'b0;
-            ipage_up <= 0;
-            // bpage_up <= 0;
-            // bpage_down <= 0;
-            
         end else if(rdy) begin
-            rpop <= pop;
-            // rexec <= exec;
-
-            // TODO: do this differently...
-            if(push) s <= s-1;
-            if(pop) s <= s+1;
-
-            //write result to registers
             if (exec) begin
-                case (op_dst)
-                    REG_A:      a <= result;
-                    REG_X:      x <= result;
-                    REG_Y:      y <= result;
-                    REG_S:      s <= result;
-                    REG_P:      p <= db;
-                    default:    begin end
-                endcase    
-                // db_src = (db_write && (op_db_src != DB_P)) ? DB_SB : op_db_src;
 
                 // update status flags
                 p <= ~clear_mask & (set_mask  | p);
@@ -379,13 +355,18 @@ module core_6502 #(
                     p[1] <= resultZ;
                     p[7] <= resultN;
                 end
+
+                case (op_dst)
+                    REG_A:      a <= result;
+                    REG_X:      x <= result;
+                    REG_Y:      y <= result;
+                    REG_S:      s <= result;
+                    REG_P:      p <= result;
+                    default:    begin end
+                endcase    
             end
 
-
-            // index math is unsigned, so we cross a page boundary if carry bit is set
-            ipage_up <= aluC;
-
-
+            if (push | pull) s <= alu_out;
             if (handle_int && (irq_event | nmi_event)) p[2] <= 1;   // set interrupt bit
         end
 
@@ -427,6 +408,8 @@ module core_6502 #(
     logic [8:0] alu_ctl;  // {a_src, b_src, cin}
 
     logic aluC_reg, aluN_reg;
+    logic push, pull;
+    logic bpage_up, bpage_down;
     always @(posedge clk_m1 ) begin
         aluN_reg <= alu_out[7];
         aluC_reg <= aluC;
@@ -440,7 +423,7 @@ module core_6502 #(
         inc_pc      = 0;
         holdalu     = 0;
         push        = 0;
-        pop         = 0;
+        pull         = 0;
         skip        = 0;
         exec        = 0;
         jump        = 0;
@@ -507,12 +490,10 @@ module core_6502 #(
                     end
                     OP_PUS: begin
                         push = 1;
-                        {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
                         next_state = T0;
                     end
                     OP_POP: begin
-                        pop = 1;
-                        {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
+                        pull = 1;
                         next_state = T3;
                     end
                     default:
@@ -662,6 +643,15 @@ module core_6502 #(
             end                
         endcase
 
+        if (push) begin
+            {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
+            alu_ctl = {RE_NZ, R_ADL, 1'b0}; // decrement adl
+        end
+        else if (pull)  begin
+            {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
+            alu_ctl = {REG_Z, R_ADL, 1'b1}; // increment adl
+        end
+
         if (exec) begin
             a_src = a_src_exec;
             b_src = b_src_exec;
@@ -673,7 +663,7 @@ module core_6502 #(
             alu_op = ALU_ADD;
         end
 
-        // if(push | pop) {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
+        // if(push | pull) {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
 
         //     T2_JUMP,
         //     T2_JUMPIND,
@@ -824,8 +814,8 @@ module core_6502 #(
         //                 push = 1;               // update stack pointer
         //                 end
 
-        //     T2_POP:     pop = 1;                // update stack pointer
-        //     T3_POP:     begin end               // load data from stack (handled automatically from pop signal)
+        //     T2_POP:     pull = 1;                // update stack pointer
+        //     T3_POP:     begin end               // load data from stack (handled automatically from pull signal)
 
         //     T2_BRK:     begin
         //                 db_src = DB_PCH;        // push pch to stack
@@ -852,15 +842,15 @@ module core_6502 #(
 
         //     // for rts/rti, initial states are popping things off the stack
         //     // pops take 3 cycles to complete, so initial states are common...
-        //     T2_RTS,                             // T3_RTS: pop pcl
-        //     T3_RTS,                             // T4_RTS: fetch pcl, pop pch
-        //     T2_RTI,                             // T3_RTI: pop p
-        //     T3_RTI:                             // T4_RTI: fetch p, pop pcl
-        //                 pop = 1;
+        //     T2_RTS,                             // T3_RTS: pull pcl
+        //     T3_RTS,                             // T4_RTS: fetch pcl, pull pch
+        //     T2_RTI,                             // T3_RTI: pull p
+        //     T3_RTI:                             // T4_RTI: fetch p, pull pcl
+        //                 pull = 1;
 
         //     T4_RTI:     begin
-        //                 db_p = 1;               //store p, fetch pcl, pop pch
-        //                 pop = 1;
+        //                 db_p = 1;               //store p, fetch pcl, pull pch
+        //                 pull = 1;
         //                 end
         //     T4_RTS,
         //     T5_RTI:     sb_src = REG_Z;         // store pcl in alu, fetch pch
