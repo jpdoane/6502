@@ -137,7 +137,7 @@ module decode (
             8'b???_010_?1:  op_type = OP_IMM;          
             8'b???_001_??:  op_type = OP_ZPG;          
             8'b0?0_010_00:  op_type = OP_PUS;         
-            8'b0?1_010_00:  op_type = OP_POP;          
+            8'b0?1_010_00:  op_type = OP_PUL;          
             8'b???_?10_?0:  op_type = OP_IMP;         
             8'b010_011_00:  op_type = OP_JUM;         
             8'b011_011_00:  op_type = OP_JIN;
