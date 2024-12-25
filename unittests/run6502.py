@@ -98,7 +98,7 @@ def runtest(testfile, testnum=0):
 parser = argparse.ArgumentParser()
 parser.add_argument("testnum", type=int, help="number to run",default=0)
 parser.add_argument("testop", help="operation to test (in hex)",default="69")
-parser.add_argument("testpath", help="path to tests", default="./65x02/nes6502/")
+parser.add_argument("testpath", help="path to tests", default="./65x02/nes6502/v1")
 args = parser.parse_args()
 
 runtest(os.path.join(args.testpath, args.testop+".json"), args.testnum)

@@ -13,6 +13,7 @@ parameter T3      =8'b00010000;
 parameter T4      =8'b00001000;
 parameter T5      =8'b00000100;
 parameter T6      =8'b00000010;
+parameter T7      =8'b00000001;
 parameter T0T2    =8'b10100000;
 parameter T_JAM   =8'b00000000;
 

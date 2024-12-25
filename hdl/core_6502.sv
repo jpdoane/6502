@@ -380,8 +380,9 @@ module core_6502 #(
             end
 
             if (push | pull) s <= alu_out;
-            if (read_p) p <= irq_event ? p : p | FL_BU; // set break flags unless irq
-            if (handle_int && (irq_event | nmi_event)) p[2] <= 1;   // set interrupt bit
+            if (read_p) p <= irq_event ? p : p | FL_B; // set break flags unless irq
+            // if (handle_int && (irq_event | nmi_event)) p[2] <= 1;   // set interrupt bit
+            if (handle_int) p[2] <= 1;   // set interrupt bit
         end
 
         `ifdef DEBUG_REG
@@ -666,7 +667,7 @@ module core_6502 #(
                 endcase
                 end                
             T6: begin
-                next_state = T_JAM;
+                next_state = T7;
                 case(op_type)
                     OP_AXY: begin
                         update_addrl = 0;
@@ -675,24 +676,36 @@ module core_6502 #(
                         write_back = 1;
                     end
                     OP_BRK: begin
-                        // {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
-                        // jump = 1;
+                        jump = 1;
                         inc_pc = 1;
-                        next_state = T0;
+                        next_state = T7;
                     end
                     default:
                         next_state = T_JAM; //not implemented yet
                 endcase
                 end      
-
-            default: begin
+                T7: begin
+                    next_state = T_JAM;
+                    case(op_type)
+                        OP_BRK: begin
+                            {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
+                            jump = 1;
+                            handle_int = 1; // TODO: ?
+                            next_state = T1;
+                        end
+                        default:
+                            next_state = T_JAM; //not implemented yet
+                    endcase
+                    end      
+    
+                default: begin
                 next_state = T_JAM;
                 // $display("6502 jammed at pc=0x%4h", pc);
             end                
         endcase
 
        
-        if (push) begin
+        if (push) begin // TODO: set db_src?
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
             {a_src, b_src, alu_cin} = {RE_NZ, R_ADL, 1'b0};
         end
@@ -711,32 +724,6 @@ module core_6502 #(
 
         write_mem = write_pcl | write_pch | write_p | write_back | (exec & mem_wr);
 
-
-
-
-        // if(push | pull) {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
-
-        //     T2_BRK:     begin
-        //                 db_src = DB_PCH;        // push pch to stack
-        //                 // db_write = 1;
-        //                 push = 1;
-        //                 end
-        //     T3_BRK:     begin
-        //                 db_src = DB_PCL;        // push pcl to stack
-        //                 // db_write = 1;
-        //                 push = 1;
-        //                 end
-        //     T4_BRK:     begin
-        //                 db_src = DB_P;          // push status register to stack
-        //                 // db_write = 1;
-        //                 push = 1;
-        //                 end
-        //     T5_BRK:     begin
-        //                 adl_src = ADDR_INT;     // jump to interrupt register
-        //                 adh_src = ADDR_INT;
-        //                 jump = 1;
-        //                 handle_int = 1;
-        //                 end
 
 
         //     // for rts/rti, initial states are popping things off the stack

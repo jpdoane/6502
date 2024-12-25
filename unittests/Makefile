@@ -42,7 +42,7 @@ ind_y: 11 31 51 71 91 b1 d1 f1
 stack: 08 48 28 68
 br: 10 30 50 70 90 b0 d0 f0
 jmp: 4c 6c
-call_break: 20 40 60 00
+call_break: 00 20 40 60
 
 passing: imm_impl zp zp_xy abs abs_xy ind_x ind_y br jmp stack
 wip: call_break
