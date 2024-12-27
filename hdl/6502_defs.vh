@@ -37,20 +37,40 @@ parameter OP_JIN      = 5'h0f;   // jmp ind
 parameter OP_BRA      = 5'h10;   // conditional branch
 parameter OP_JAM      = 5'h1f;
 
-parameter REG_Z = 4'h0;  // 0
-parameter RE_NZ = 4'h1;  // -1
-parameter REG_D = 4'h2;  // data bus
-parameter RE_ND = 4'h3;  // data bus (inverted)
-parameter REG_P = 4'h4;  // P status
-parameter REG_A = 4'h5;  // accumulator
-parameter REG_X = 4'h6;  // X
-parameter REG_Y = 4'h7;  // Y
-parameter REG_S = 4'h8;  // stack ptr
-parameter R_ALU = 4'h9;  // alu register
-parameter R_PCL = 4'ha;  // low pc
-parameter R_PCH = 4'hb;  // high pc
-parameter R_ADL = 4'hc;  // low address
-parameter R_ADH = 4'hd;  // high address
+
+// // db bus
+// parameter REG_Z = 4'h0;  // 0
+// parameter REG_M = 4'h1;  // memory
+// parameter REG_P = 4'h2;  // P status
+// parameter R_PCL = 4'h3;  // low pc
+// parameter R_PCH = 4'h4;  // high pc
+// // parameter R_BUS = 4'h5;  // sb<=db, db<=sb
+// // sb bus
+// // parameter REG_Z = 4'h0;  // 0
+// parameter REG_A = 4'h5;  // accumulator
+// parameter REG_X = 4'h6;  // X
+// parameter REG_Y = 4'h7;  // Y
+// parameter REG_S = 4'h8;  // stack ptr
+// parameter R_ALU = 4'h9;  // alu register
+// parameter R_ADH = 4'ha;  // high address
+// parameter R_BUS = 4'hb;  // sb<=db, db<=sb
+
+parameter DB_Z =    6'b000000;
+parameter DB_M =    6'b100000;  // memory
+parameter DB_P =    6'b010000;  // P status
+parameter DB_PCL =  6'b001000;  // low pc
+parameter DB_PCH =  6'b000100;  // high pc
+parameter DB_A =    6'b000010;  // accumulator
+parameter DB_SB =   6'b000001;  // db<=sb
+
+parameter SB_Z =    7'b0000000;
+parameter SB_A =    7'b1000000;  // accumulator
+parameter SB_X =    7'b0100000;  // X
+parameter SB_Y =    7'b0010000;  // Y
+parameter SB_S =    7'b0001000;  // stack ptr
+parameter SB_ADD =  7'b0000100;  // alu register
+parameter SB_ADH =  7'b0000010;  // high address
+parameter SB_DB =   7'b0000001;  // sb<=db
 
 parameter ADDR_PC   = 3'h0;
 parameter ADDR_DATA   = 3'h1;
@@ -62,14 +82,34 @@ parameter ADDR_STACK = 3'h6;
 parameter ADDR_HOLD = 3'h7;
 
 
-parameter ALU_NOP   =3'h0;
-parameter ALU_ADD   =3'h1;
-parameter ALU_AND   =3'h2;
-parameter ALU_OR    =3'h3;
-parameter ALU_XOR   =3'h4;
-parameter ALU_SR    =3'h5;
-parameter ALU_SL    =3'h6;
-parameter ALU_BIT   =3'h7;
+parameter ALU_NOP   = 6'b000000;
+parameter ALU_AND   = 6'b000001;
+parameter ALU_ORA   = 6'b000010;
+parameter ALU_SR    = 6'b000100;
+parameter ALU_SUM   = 6'b001000;
+parameter ALU_CIP   = 6'b010000; // use carry in from p[0], else carry in zero
+parameter ALU_OPB   = 6'b100000; // swtich active port to b for unary ops (inc/dec/sr/sl)
+
+parameter ALU_ALT   = 6'b000001;        // alt flag for xor, sub, & left sifts
+parameter ALU_XOR   = ALU_ORA | ALU_ALT;
+parameter ALU_SUB   = ALU_SUM | ALU_ALT; // invert port b to perform subtraction
+
+// build shift/rot ops
+parameter ALU_LSR   = ALU_SR;
+parameter ALU_ROR   = ALU_LSR | ALU_CIP;
+parameter ALU_ASL   = ALU_LSR | ALU_ALT;
+parameter ALU_ROL   = ALU_ROR | ALU_ALT;
+
+// sum-specific flags
+parameter ALU_ADZ   = 6'b001010;    // set port b to zero (or -1 with inv)
+parameter ALU_CI1   = 6'b001100;    // force carry in=1
+parameter ALU_ADC   = ALU_SUM | ALU_CIP; // sum + carry in p[0]
+parameter ALU_SBC   = ALU_SUB | ALU_CIP; // sub + carry in p[0]
+parameter ALU_CMP   = ALU_SUB | ALU_CI1; // sub + carry in 1
+parameter ALU_INC   = ALU_SUM | ALU_ADZ | ALU_CI1; // sum + zero b + carry in 1
+parameter ALU_DEC   = ALU_SUB | ALU_ADZ; // sub w/ inv zero
+parameter ALU_INB   = ALU_INC | ALU_OPB; // increment db
+
 
 parameter IDX_X     =1'b1;
 parameter IDX_Y     =1'b0;
