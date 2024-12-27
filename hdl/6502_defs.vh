@@ -16,6 +16,7 @@ parameter T6      =8'b00000010;
 parameter T7      =8'b00000001;
 parameter T0T2    =8'b10100000;
 parameter T_JAM   =8'b00000000;
+parameter T_DEBUG =8'b11111111;
 
 
 parameter OP_BRK      = 5'h00;   // BRK

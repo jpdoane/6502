@@ -84,7 +84,7 @@ module core_6502 #(
     logic ipc;
     logic inc_pc;
     logic skip;
-    logic exec, rexec;
+    logic exec, result_valid;
     logic write_reg, write_mem;
     logic jump, handle_int;
     logic holdalu;
@@ -96,16 +96,14 @@ module core_6502 #(
         if (rst) begin
             data <= 0;
         end else begin
-            data <= data_i;
             // TODO: when to we need this?
             // if(rdy) data <= data_i;
+            data <= data_i;
         end
     end
 
-    always_comb begin
-        RW = !write_mem;
-        dor = write_mem ? result : 0;
-    end
+    assign dor = write_mem ? result : data;
+    assign RW = !write_mem;
 
     // ADDRESS BUS
     // external address bus updated on m1
@@ -341,8 +339,8 @@ module core_6502 #(
         else if (write_pcl)      result = pcl;
         else if (write_pch)      result = pch;
         else if (write_back)     result = data;
-        else if (alu_en)         result = alu_out;
-        else if (|db_src)        result = db;
+        else if (alu_en)         result = add;
+        else if (|db_src)        result = data; // this will break php & rmw...
         else                     result = sb;
 
         resultZ = ~|result;
@@ -390,6 +388,7 @@ module core_6502 #(
             if (read_p) p <= irq_event ? data_i : data_i | FL_B; // set break flags unless irq
             // if (handle_int && (irq_event | nmi_event)) p[2] <= 1;   // set interrupt bit
             if (handle_int) p[2] <= 1;   // set interrupt bit
+
         end
 
         `ifdef DEBUG_REG
@@ -415,7 +414,8 @@ module core_6502 #(
         else if (rdy) begin
             state <= next_state;
             `ifdef DEBUG_REG
-                if(reg_set_en) state <= T1;
+                if(reg_set_en) state <= T_DEBUG;
+                if(state == T_DEBUG) state <= T1;
             `endif
         end
     end
@@ -444,6 +444,8 @@ module core_6502 #(
         holdalu     = 0;
         skip        = 0;
         exec        = 0;
+        result_valid = 0;
+        write_mem = 0;
         jump        = 0;
         sync        = 0;
         handle_int  = 0;
@@ -486,8 +488,8 @@ module core_6502 #(
         
         case (state)
             T0: begin
-                exec = mem_wr;
                 inc_pc = !single_byte;
+                exec = mem_wr;
                 next_state = T1;
                 end
             T1: begin
@@ -673,6 +675,7 @@ module core_6502 #(
                     OP_ZXY, OP_ABS: begin
                         update_addrl = 0;
                         update_addrh = 0;
+                        // exec = 1;
                         next_state = T0;
                         write_back = 1;
                     end
@@ -757,7 +760,8 @@ module core_6502 #(
             end                
         endcase
 
-       
+        if (write_pcl | write_pch | write_p | write_back) write_mem=1;
+
         if (push) begin // TODO: set db_src?
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
             alu_op = ALU_DEC | ALU_OPB;
@@ -774,11 +778,21 @@ module core_6502 #(
             alu_op = alu_op_exec;
             db_src = db_src_exec;
             sb_src = sb_src_exec;
+            write_mem = mem_wr;
         end
+        
+        // if (write_back) begin
+        //     sb_src = SB_Z;
+        //     db_src = DB_M;
+        //     write_mem = 1;
+        // end else if (write_mem & alu_en) begin
+        //     // rmw writeback
+        //     sb_src = SB_ADD;
+        //     db_src = DB_SB;
+        // end
 
-        write_mem = write_pcl | write_pch | write_p | write_back | (exec & mem_wr);
-
-
+        // write_mem = write_pcl | write_pch | write_p | write_back | (mem_rd & exec & mem_wr);
+        
 
         //     // for rts/rti, initial states are popping things off the stack
         //     // pops take 3 cycles to complete, so initial states are common...
@@ -902,6 +916,7 @@ module core_6502 #(
             // end
             if (reg_set_en || debug_T1) begin
                 exec = 0;
+                write_mem = 0;
             end
         `endif 
     end

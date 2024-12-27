@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
-[*] Fri Dec 27 15:42:09 2024
+[*] Fri Dec 27 16:21:55 2024
 [*]
 [dumpfile] "/home/jpdoane/dev/6502/unittests/build/logs/core_6502.fst"
-[dumpfile_mtime] "Fri Dec 27 15:40:41 2024"
-[dumpfile_size] 3448
+[dumpfile_mtime] "Fri Dec 27 16:18:56 2024"
+[dumpfile_size] 3846
 [savefile] "/home/jpdoane/dev/6502/unittests/core_6502.sav"
-[timestart] 26
+[timestart] 43
 [size] 960 1015
 [pos] -1 -1
-*-2.048910 33 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-2.048910 47 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] core_6502.
 [treeopen] core_6502.core_6502.
 [sst_width] 211
@@ -66,40 +66,91 @@ core_6502.core_6502.dor[7:0]
 core_6502.RW
 @1000200
 -addr bus
-@800201
+@800200
 -reg
-@23
+@22
 core_6502.core_6502.a[7:0]
 core_6502.core_6502.x[7:0]
 core_6502.core_6502.y[7:0]
 core_6502.core_6502.s[7:0]
 core_6502.core_6502.p[7:0]
-@1000201
+@1000200
 -reg
-@c00200
+@800200
 -busses
 @22
 core_6502.core_6502.db[7:0]
 core_6502.core_6502.sb[7:0]
+core_6502.core_6502.result[7:0]
+@28
+core_6502.core_6502.exec
+@22
 core_6502.core_6502.db_dst[5:0]
 core_6502.core_6502.db_src[5:0]
 core_6502.core_6502.sb_dst[6:0]
 core_6502.core_6502.sb_src[6:0]
-@1401200
+@1000200
 -busses
 @800200
 -alu
+@29
+core_6502.core_6502.alu_en
+@c00022
+core_6502.core_6502.u_alu.op[5:0]
 @28
-core_6502.core_6502.exec
-@22
+(0)core_6502.core_6502.u_alu.op[5:0]
+(1)core_6502.core_6502.u_alu.op[5:0]
+(2)core_6502.core_6502.u_alu.op[5:0]
+(3)core_6502.core_6502.u_alu.op[5:0]
+(4)core_6502.core_6502.u_alu.op[5:0]
+(5)core_6502.core_6502.u_alu.op[5:0]
+@1401200
+-group_end
+@c00022
 core_6502.core_6502.alu_ai[7:0]
+@28
+(0)core_6502.core_6502.alu_ai[7:0]
+(1)core_6502.core_6502.alu_ai[7:0]
+(2)core_6502.core_6502.alu_ai[7:0]
+(3)core_6502.core_6502.alu_ai[7:0]
+(4)core_6502.core_6502.alu_ai[7:0]
+(5)core_6502.core_6502.alu_ai[7:0]
+(6)core_6502.core_6502.alu_ai[7:0]
+(7)core_6502.core_6502.alu_ai[7:0]
+@1401200
+-group_end
+@22
 core_6502.core_6502.alu_bi[7:0]
+@c00022
 core_6502.core_6502.u_alu.a[7:0]
+@28
+(0)core_6502.core_6502.u_alu.a[7:0]
+(1)core_6502.core_6502.u_alu.a[7:0]
+(2)core_6502.core_6502.u_alu.a[7:0]
+(3)core_6502.core_6502.u_alu.a[7:0]
+(4)core_6502.core_6502.u_alu.a[7:0]
+(5)core_6502.core_6502.u_alu.a[7:0]
+(6)core_6502.core_6502.u_alu.a[7:0]
+(7)core_6502.core_6502.u_alu.a[7:0]
+@1401200
+-group_end
+@22
 core_6502.core_6502.u_alu.b[7:0]
 @28
 core_6502.core_6502.u_alu.c
-@22
+@c00022
 core_6502.core_6502.alu_out[7:0]
+@28
+(0)core_6502.core_6502.alu_out[7:0]
+(1)core_6502.core_6502.alu_out[7:0]
+(2)core_6502.core_6502.alu_out[7:0]
+(3)core_6502.core_6502.alu_out[7:0]
+(4)core_6502.core_6502.alu_out[7:0]
+(5)core_6502.core_6502.alu_out[7:0]
+(6)core_6502.core_6502.alu_out[7:0]
+(7)core_6502.core_6502.alu_out[7:0]
+@1401200
+-group_end
 @28
 core_6502.core_6502.u_alu.aluC
 core_6502.core_6502.u_alu.aluV

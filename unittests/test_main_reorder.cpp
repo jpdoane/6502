@@ -54,19 +54,16 @@ void dump_regs(const std::unique_ptr<Vcore_6502> &top,
     //             " BUS: " << (top->RW ? "Read: [" : "Write: [" ) << (int) top->addr << "] = " << (int) ram[top->addr] << std::endl;
 }
 
-void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
+void cpu_clk_re(const std::unique_ptr<VerilatedContext> &context,
                 const std::unique_ptr<Vcore_6502> &top,
                 std::vector<uint8_t> &ram,
                 int verbose = 0,
                 VerilatedFstC* tfp = nullptr,
                 int disable_write=0)
 {
+        top->eval(); // apply C++ combinatorics
 
-        // update any combinatorial changes from C++ code
-        top->eval();
-
-
-        // record m1 cycle...
+        // record first half of cycle...
         if(verbose) dump_regs(top, ram);
         if (tfp) tfp->dump(Verilated::time());
 
@@ -77,13 +74,25 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         top->eval();
 
 
+}
+
+void cpu_clk_fe(const std::unique_ptr<VerilatedContext> &context,
+                const std::unique_ptr<Vcore_6502> &top,
+                std::vector<uint8_t> &ram,
+                int verbose = 0,
+                VerilatedFstC* tfp = nullptr,
+                int disable_write=0)
+{
+        top->eval(); // apply C++ combinatorics
+
         // capture addr bus state
         auto busaddr = top->addr;
-        // auto rw = top->RW || disable_write;
-        // auto dread = ram[busaddr];
-        // auto dwrite = top->dor;
+        auto rw = top->RW || disable_write;
+        auto dread = ram[busaddr];
+        auto dwrite = top->dor;
 
-        // record m2 cycle...
+        // record second half of cycle...
+        top->eval();
         if(verbose) dump_regs(top, ram);
         if (tfp) tfp->dump(Verilated::time());
 
@@ -91,27 +100,33 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         context->timeInc(1);
         top->clk_m1 = 0;
         top->clk_m2 = 1;
-        top->eval();
-
-        // update address bus
-        if( top->RW || disable_write )
+        
+        // apply memory bus
+        if( rw )
         {
-            top->data_i = ram[busaddr];
+            top->data_i = dread;
             // std::cout << "reading [" << busaddr << "] -> " << (int) dread << std::endl;
         }
         else
         {
-            ram[busaddr] = top->dor;
+            ram[busaddr] = dwrite;
             // std::cout << "writing [" << busaddr << "] <- " << (int) dwrite << std::endl;
         }
 
         top->eval();
-
-
-
-
-        // verilator combinatorics....
 }
+
+void cpu_clk(const std::unique_ptr<VerilatedContext> &context,
+                const std::unique_ptr<Vcore_6502> &top,
+                std::vector<uint8_t> &ram,
+                int verbose = 0,
+                VerilatedFstC* tfp = nullptr,
+                int disable_write=0)
+{
+    cpu_clk_re(context, top, ram, verbose, tfp, disable_write);
+    cpu_clk_fe(context, top, ram, verbose, tfp, disable_write);
+}
+
 
 int check_cycle(const std::unique_ptr<Vcore_6502> &top,
                     const std::vector<uint8_t> &ram,
@@ -194,6 +209,7 @@ int run_test(const std::unique_ptr<VerilatedContext> &context,
     
 
     // initialize registers
+    cpu_clk_re(context, top, ram, 0, tfp);
     top->pc_set = test.init.pc;
     top->s_set = test.init.s;
     top->a_set = test.init.a;
@@ -201,6 +217,8 @@ int run_test(const std::unique_ptr<VerilatedContext> &context,
     top->y_set = test.init.y;
     top->p_set = test.init.p;
     top->reg_set_en = 1;
+    cpu_clk_fe(context, top, ram, 0, tfp);
+    top->reg_set_en = 0;
 
     // initialize ram
     for (int i=0; i<test.init.ram.size(); i++)
@@ -209,22 +227,21 @@ int run_test(const std::unique_ptr<VerilatedContext> &context,
         if(verbose) std::cout << "initializing ram[" << test.init.ram[i].addr << "] <- " << (int) test.init.ram[i].data << std::endl;
     }
 
-    clock_cpu(context, top, ram, 0, tfp);
-    top->reg_set_en = 0;
-    clock_cpu(context, top, ram, 0, tfp);
+    top->eval(); // update combinatorial changes from C++ code
+        
 
     int rv=0;
     for (int i=0; i<test.cycles.size(); i++) {
         auto cycle = test.cycles[i];
         
         rv += check_cycle(top, ram, cycle, i);
-        clock_cpu(context, top, ram, verbose, tfp);
+        cpu_clk(context, top, ram, 0, tfp);
     }
 
     auto pc = top->pc_dbg;
-    clock_cpu(context, top, ram, verbose, tfp);
+    cpu_clk(context, top, ram, 0, tfp);
     rv += check_state(test.fin, pc, top, ram);
-    clock_cpu(context, top, ram, verbose, tfp);
+    cpu_clk(context, top, ram, 0, tfp);
 
     if(rv){
         if(verbose)
@@ -277,11 +294,13 @@ int main(int argc, char** argv, char** env) {
     std::vector<uint8_t> ram(65536);
 
     // Assert reset for a few clocks
-    top->rst = 1;  
-    for (int i=0; i<3; i++) clock_cpu(context, top, ram, 0);
+    top->rst = 1;
+    top->eval(); // update combinatorial changes from C++ code
+    for (int i=0; i<3; i++) cpu_clk(context, top, ram, 0);
     // Clear reset for a few clocks (CPU will boot to reset vector)
     top->rst = 0;  
-    for (int i=0; i<5; i++) clock_cpu(context, top, ram, 0);
+    top->eval(); // update combinatorial changes from C++ code
+    for (int i=0; i<5; i++) cpu_clk(context, top, ram, 0);
 
     
     Verilated::traceEverOn(true);
@@ -303,8 +322,8 @@ int main(int argc, char** argv, char** env) {
             break;
         }
 
-    // clock_cpu(context, top, ram);
-    // clock_cpu(context, top, ram);
+    // cpu_clk(context, top, ram);
+    // cpu_clk(context, top, ram);
 
     tfp->close();
     top->final();
