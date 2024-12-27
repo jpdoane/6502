@@ -48,7 +48,7 @@ module alu (
                 ALU_XOR[2:0]: out = ai ^ bi;
                 ALU_LSR[2:0]: {out, aluC} = {c, a};
                 ALU_ASL[2:0]: {aluC, out} = {a, c};
-                default:    out = '0;
+                default:    out = a;
             endcase    
         end
     end

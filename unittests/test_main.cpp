@@ -65,11 +65,6 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         // update any combinatorial changes from C++ code
         top->eval();
 
-
-        // record m1 cycle...
-        if(verbose) dump_regs(top, ram);
-        if (tfp) tfp->dump(Verilated::time());
-
         // clock rising edge
         context->timeInc(1);
         top->clk_m1 = 1;
@@ -79,9 +74,19 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
 
         // capture addr bus state
         auto busaddr = top->addr;
+        auto rw = top->RW;
         // auto rw = top->RW || disable_write;
         // auto dread = ram[busaddr];
         // auto dwrite = top->dor;
+
+        // mem as immediate
+        if(rw)
+            top->data_i = ram[busaddr];
+        else {
+            ram[busaddr] = top->dor;
+            top->data_i = top->dor;
+        }
+        top->eval();
 
         // record m2 cycle...
         if(verbose) dump_regs(top, ram);
@@ -93,24 +98,20 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         top->clk_m2 = 1;
         top->eval();
 
-        // update address bus
-        if( top->RW || disable_write )
-        {
+        // mem as immediate
+        if(rw)
             top->data_i = ram[busaddr];
-            // std::cout << "reading [" << busaddr << "] -> " << (int) dread << std::endl;
-        }
-        else
-        {
+        else {
             ram[busaddr] = top->dor;
-            // std::cout << "writing [" << busaddr << "] <- " << (int) dwrite << std::endl;
+            top->data_i = top->dor;
         }
-
         top->eval();
 
+        // record first half of cycle...
+        if(verbose) dump_regs(top, ram);
+        if (tfp) tfp->dump(Verilated::time());
 
-
-
-        // verilator combinatorics....
+        // to verilator combinatorics....
 }
 
 int check_cycle(const std::unique_ptr<Vcore_6502> &top,

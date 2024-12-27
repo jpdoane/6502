@@ -335,12 +335,14 @@ module core_6502 #(
     logic [7:0] result;
     logic resultZ, resultN;
     always @(*) begin
+        // TODO: ugh do this differently...
         if      (write_p)        result = p | FL_B;
         else if (write_pcl)      result = pcl;
         else if (write_pch)      result = pch;
         else if (write_back)     result = data;
         else if (alu_en)         result = add;
-        else if (|db_src)        result = data; // this will break php & rmw...
+        else if (db_src[5])      result = data;
+        else if (db[4])          result = p;
         else                     result = sb;
 
         resultZ = ~|result;
@@ -628,7 +630,7 @@ module core_6502 #(
                     end
                     OP_AXY: begin
                         {adh_src, adl_src} = {ADDR_ALU, ADDR_HOLD};
-                        alu_op = aluC_reg ? ALU_INB : ALU_NOP;
+                        alu_op = aluC_reg ? ALU_INB : ALU_ORA;
                         if(!rmw) next_state = T0;
                     end
                     OP_XIN: begin
@@ -688,8 +690,8 @@ module core_6502 #(
                         next_state = T0;
                     end
                     OP_INY: begin
-                        // alu_ctl = {REG_Z, REG_M, aluC_reg};
                         {adh_src, adl_src} = {ADDR_ALU, ADDR_HOLD};
+                        alu_op = aluC_reg ? ALU_INB : ALU_ORA;
                         next_state = T0;
                     end
                     OP_JIN: begin
@@ -938,7 +940,7 @@ module core_6502 #(
         int cycle;
         always_ff @(posedge clk_m1) begin
             debug_T1 <= reg_set_en;
-            cycle <= reg_set_en ? 0 : cycle+1;
+            cycle <= debug_T1 ? 0 : cycle+1;
         end
     `elsif
         assign debug_T1=0;

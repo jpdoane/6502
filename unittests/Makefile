@@ -44,7 +44,7 @@ br: 10 30 50 70 90 b0 d0 f0
 jmp: 4c 6c
 call_break: 00 20 40 60
 
-passing: imm_impl zp zp_xy abs abs_xy ind_x ind_y br jmp stack
+passing: imm_impl zp zp_xy abs abs_xy ind_x ind_y stack br jmp 
 wip: call_break
 
 .DEFAULT_GOAL = wip
