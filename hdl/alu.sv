@@ -39,15 +39,15 @@ module alu (
             // verilator lint_on WIDTH
 
             //https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-            aluV = (ai[7] ^ out[7]) && (bi[7] ^ out[7]);
+            aluV = (a[7] ^ out[7]) && (b[7] ^ out[7]);
 
         end else begin
             case(op[2:0])
                 ALU_AND[2:0]: out = ai & bi;
                 ALU_ORA[2:0]:  out = ai | bi;
                 ALU_XOR[2:0]: out = ai ^ bi;
-                ALU_ASL[2:0]: {out, aluC} = {c, a};
-                ALU_LSR[2:0]: {aluC, out} = {a, c};
+                ALU_LSR[2:0]: {out, aluC} = {c, a};
+                ALU_ASL[2:0]: {aluC, out} = {a, c};
                 default:    out = '0;
             endcase    
         end
