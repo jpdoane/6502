@@ -28,9 +28,9 @@ module decode (
         casez(opcode)     //ctl_flags = {db_dst, sb_dst, db_src, sb_src, alu_op}
             8'b0??_000_00:  ctl_flags = {DB_Z, SB_Z, DB_Z, SB_Z, ALU_NOP};       // control flow and special ops
             8'b000_010_00:  ctl_flags = {DB_M, SB_Z, DB_P, SB_Z, ALU_NOP};       // PHP 
-            8'b010_010_00:  ctl_flags = {DB_M, SB_Z, DB_Z, SB_A, ALU_NOP};       // PHA
+            8'b010_010_00:  ctl_flags = {DB_M, SB_DB, DB_Z, SB_A, ALU_NOP};       // PHA
             8'b001_010_00:  ctl_flags = {DB_P, SB_Z, DB_M, SB_Z, ALU_NOP};       // PLP
-            8'b011_010_00:  ctl_flags = {DB_Z, SB_A, DB_M, SB_Z, ALU_NOP};       // PLA
+            8'b011_010_00:  ctl_flags = {DB_Z, SB_A, DB_M, SB_DB, ALU_NOP};       // PLA
             8'b101_010_00:  ctl_flags = {DB_Z, SB_Y, DB_Z, SB_A, ALU_NOP};       // TAY
             8'b111_010_00:  ctl_flags = {DB_Z, SB_X, DB_Z, SB_X, ALU_INC};       // INX
             8'b110_010_00:  ctl_flags = {DB_Z, SB_Y, DB_Z, SB_Y, ALU_INC};       // INY
@@ -43,12 +43,12 @@ module decode (
             8'b101_010_10:  ctl_flags = {DB_Z, SB_X, DB_Z, SB_A, ALU_NOP};       // TAX
             8'b101_110_10:  ctl_flags = {DB_Z, SB_X, DB_Z, SB_S, ALU_NOP};       // TSX
             8'b???_1?0_00:  ctl_flags = {DB_Z, SB_Z, DB_Z, SB_Z, ALU_NOP};       // branch & mask ops
-            8'b100_??1_00:  ctl_flags = {DB_M, SB_Z, DB_Z, SB_Y, ALU_NOP};       // STY
-            8'b100_??1_10:  ctl_flags = {DB_M, SB_Z, DB_Z, SB_X, ALU_NOP};       // STX
-            8'b101_???_00:  ctl_flags = {DB_Z, SB_Y, DB_M, SB_Z, ALU_NOP};       // LDY
-            8'b100_???_?1:  ctl_flags = {DB_M, SB_Z, DB_Z, SB_A,  ALU_NOP};       // STA
-            8'b101_???_?1:  ctl_flags = {DB_Z, SB_A, DB_M, SB_Z, ALU_NOP};       // LDA
-            8'b101_???_10:  ctl_flags = {DB_Z, SB_X, DB_M, SB_Z, ALU_NOP};       // LDX
+            8'b100_??1_00:  ctl_flags = {DB_M, SB_DB, DB_Z, SB_Y, ALU_NOP};       // STY
+            8'b100_??1_10:  ctl_flags = {DB_M, SB_DB, DB_Z, SB_X, ALU_NOP};       // STX
+            8'b101_???_00:  ctl_flags = {DB_Z, SB_Y, DB_M, SB_DB, ALU_NOP};       // LDY
+            8'b100_???_?1:  ctl_flags = {DB_M, SB_DB, DB_Z, SB_A,  ALU_NOP};       // STA
+            8'b101_???_?1:  ctl_flags = {DB_Z, SB_A, DB_M, SB_DB, ALU_NOP};       // LDA
+            8'b101_???_10:  ctl_flags = {DB_Z, SB_X, DB_M, SB_DB, ALU_NOP};       // LDX
             8'b110_0??_00:  ctl_flags = {DB_Z, SB_Z, DB_M, SB_Y, ALU_CMP};       // CPY
             8'b111_0??_00:  ctl_flags = {DB_Z, SB_Z, DB_M, SB_X, ALU_CMP};       // CPX
             8'b110_???_?1:  ctl_flags = {DB_Z, SB_Z, DB_M, SB_A, ALU_CMP};       // CMP
@@ -62,13 +62,13 @@ module decode (
             8'b001_010_10:  ctl_flags = {DB_Z, SB_A, DB_Z, SB_A, ALU_ROL};       // ROL, A  
             8'b010_010_10:  ctl_flags = {DB_Z, SB_A, DB_Z, SB_A, ALU_LSR};       // LSR, A  
             8'b011_010_10:  ctl_flags = {DB_Z, SB_A, DB_Z, SB_A, ALU_ROR};       // ROR, A  
-            8'b110_???_10:  ctl_flags = {DB_M, SB_Z, DB_M, SB_Z, ALU_DEC | ALU_OPB };       // DEC rmw
-            8'b111_???_10:  ctl_flags = {DB_M, SB_Z, DB_M, SB_Z, ALU_INC | ALU_OPB };       // INC rmw
-            8'b000_???_10:  ctl_flags = {DB_M, SB_Z, DB_M, SB_Z, ALU_ASL | ALU_OPB };       // ASL rmw
-            8'b001_???_10:  ctl_flags = {DB_M, SB_Z, DB_M, SB_Z, ALU_ROL | ALU_OPB };       // ROL rmw
-            8'b010_???_10:  ctl_flags = {DB_M, SB_Z, DB_M, SB_Z, ALU_LSR | ALU_OPB };       // LSR rmw
-            8'b011_???_10:  ctl_flags = {DB_M, SB_Z, DB_M, SB_Z, ALU_ROR | ALU_OPB };       // ROR rmw
-            default:        ctl_flags = {DB_Z, SB_Z, DB_Z, SB_Z, ALU_NOP};       // nop
+            8'b110_???_10:  ctl_flags = {DB_M, SB_DB, DB_M, SB_Z, ALU_DEC | ALU_OPB };       // DEC rmw
+            8'b111_???_10:  ctl_flags = {DB_M, SB_DB, DB_M, SB_Z, ALU_INC | ALU_OPB };       // INC rmw
+            8'b000_???_10:  ctl_flags = {DB_M, SB_DB, DB_M, SB_Z, ALU_ASL | ALU_OPB };       // ASL rmw
+            8'b001_???_10:  ctl_flags = {DB_M, SB_DB, DB_M, SB_Z, ALU_ROL | ALU_OPB };       // ROL rmw
+            8'b010_???_10:  ctl_flags = {DB_M, SB_DB, DB_M, SB_Z, ALU_LSR | ALU_OPB };       // LSR rmw
+            8'b011_???_10:  ctl_flags = {DB_M, SB_DB, DB_M, SB_Z, ALU_ROR | ALU_OPB };       // ROR rmw
+            default:        ctl_flags = {DB_Z, SB_DB, DB_Z, SB_Z, ALU_NOP};       // nop
         endcase
 
         mem_rd = db_src[5];

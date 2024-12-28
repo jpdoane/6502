@@ -84,11 +84,11 @@ module core_6502 #(
     logic ipc;
     logic inc_pc;
     logic skip;
-    logic exec, result_valid;
-    logic write_reg, write_mem;
+    logic exec, write_mem;
     logic jump, handle_int;
     logic holdalu;
     // logic ipage_up, bpage_up, bpage_down;
+
 
     // i/o data registers
     logic [7:0] data;
@@ -102,7 +102,7 @@ module core_6502 #(
         end
     end
 
-    assign dor = write_mem ? result : data;
+    assign dor = db;
     assign RW = !write_mem;
 
     // ADDRESS BUS
@@ -269,7 +269,11 @@ module core_6502 #(
     );
 
     // internal buses
-    logic [7:0] sb, db, sb_r, db_r;
+    // the real 6502 updates bus states on subcycles using out of phase clocks m1,m2)
+    // e.g. when executing an alu operation on the first subcycle the sb bus carries an operand
+    // and on the second subcycle the sb bus carries the result.
+    // in order to represent the same timing with a single clock, we implement two sets of busses
+    logic [7:0] sb, sb_result, db, sb_r, db_r;
     always @(posedge clk_m1 ) begin
         sb_r <= sb;
         db_r <= db;
@@ -294,6 +298,26 @@ module core_6502 #(
             SB_DB :  sb = db_r;
             default: sb = 0;
         endcase
+        case(sb_src)
+            SB_A :   sb = a;
+            SB_X :   sb = x;
+            SB_Y :   sb = y;
+            SB_S :   sb = s;
+            SB_ADD : sb = add;
+            SB_ADH : sb = adh;
+            SB_DB :  sb = db_r;
+            default: sb = 0;
+        endcase
+
+        sb_result = alu_en ? add : sb;
+        if(write_mem) begin
+            if      (write_p)        db = p | FL_B;
+            else if (write_pcl)      db = pcl;
+            else if (write_pch)      db = pch;
+            else if (write_back)     db = data;
+            else if (sb_dst == SB_DB) db = sb_result;
+            // else                     db = db;
+        end
     end
 
     //alu
@@ -334,20 +358,26 @@ module core_6502 #(
     // result
     logic [7:0] result;
     logic resultZ, resultN;
+    assign resultZ = ~|sb_result;
+    assign resultN = bit_op ? alu_bi[7] : sb_result[7];
+
+    logic [7:0] alu_reg;
+    always @(posedge clk_m1) alu_reg <= alu_out;
+
     always @(*) begin
         // TODO: ugh do this differently...
         if      (write_p)        result = p | FL_B;
         else if (write_pcl)      result = pcl;
         else if (write_pch)      result = pch;
         else if (write_back)     result = data;
-        else if (alu_en)         result = add;
+        else if (rmw)            result = alu_reg; //TODO: ugh!!
+        else if (alu_en)         result = add; //TODO: ugh!!
         else if (db_src[5])      result = data;
         else if (db[4])          result = p;
         else                     result = sb;
 
-        resultZ = ~|result;
-        resultN = bit_op ? alu_bi[7] : result[7];
     end
+
 
     //update registers
     always @(posedge clk_m1 ) begin
@@ -371,15 +401,15 @@ module core_6502 #(
                 end
 
                 case (sb_dst)
-                    SB_A:      a <= result;
-                    SB_X:      x <= result;
-                    SB_Y:      y <= result;
-                    SB_S:      s <= result;
+                    SB_A:      a <= sb_result;
+                    SB_X:      x <= sb_result;
+                    SB_Y:      y <= sb_result;
+                    SB_S:      s <= sb_result;
                     default:    begin end
                 endcase    
 
                 case (db_dst)
-                    DB_P:      p <= result;
+                    DB_P:      p <= db;
                     default:    begin end
                 endcase    
 
@@ -446,7 +476,6 @@ module core_6502 #(
         holdalu     = 0;
         skip        = 0;
         exec        = 0;
-        result_valid = 0;
         write_mem = 0;
         jump        = 0;
         sync        = 0;
@@ -490,8 +519,10 @@ module core_6502 #(
         
         case (state)
             T0: begin
+                holdalu = 1;
                 inc_pc = !single_byte;
-                exec = mem_wr;
+                exec = mem_wr & !alu_en;
+                write_mem = mem_wr;
                 next_state = T1;
                 end
             T1: begin
@@ -677,7 +708,7 @@ module core_6502 #(
                     OP_ZXY, OP_ABS: begin
                         update_addrl = 0;
                         update_addrh = 0;
-                        // exec = 1;
+                        exec = 1;
                         next_state = T0;
                         write_back = 1;
                     end
@@ -722,6 +753,7 @@ module core_6502 #(
                         update_addrl = 0;
                         update_addrh = 0;
                         next_state = T0;
+                        exec = 1;
                         write_back = 1;
                     end
                     OP_BRK: begin
@@ -780,7 +812,7 @@ module core_6502 #(
             alu_op = alu_op_exec;
             db_src = db_src_exec;
             sb_src = sb_src_exec;
-            write_mem = mem_wr;
+            // write_mem = mem_wr & !alu_en;
         end
         
         // if (write_back) begin

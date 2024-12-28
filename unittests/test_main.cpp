@@ -79,12 +79,13 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         // auto dread = ram[busaddr];
         // auto dwrite = top->dor;
 
-        // mem as immediate
-        if(rw)
-            top->data_i = ram[busaddr];
-        else {
+        top->data_i = 0xff;
+
+        if(rw) {
+            // top->data_i = ram[busaddr];
+        } else {
             ram[busaddr] = top->dor;
-            top->data_i = top->dor;
+            // top->data_i = top->dor;
         }
         top->eval();
 
@@ -102,7 +103,7 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         if(rw)
             top->data_i = ram[busaddr];
         else {
-            ram[busaddr] = top->dor;
+            // ram[busaddr] = top->dor;
             top->data_i = top->dor;
         }
         top->eval();
