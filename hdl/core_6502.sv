@@ -91,14 +91,20 @@ module core_6502 #(
 
 
     // i/o data registers
-    logic [7:0] data;
+    logic [7:0] data, push_data;
     always_ff @(posedge clk_m1) begin
         if (rst) begin
             data <= 0;
+            dor <= 0;
         end else begin
             // TODO: when to we need this?
             // if(rdy) data <= data_i;
             data <= data_i;
+
+            if(store)           dor <= sb_result;
+            else if(push)       dor <= push_data;
+            else if(alu_en)     dor <= alu_out;  
+    
         end
     end
 
@@ -238,7 +244,7 @@ module core_6502 #(
 
     // decode instruction
     logic [4:0] op_type;
-    logic [5:0] db_src, db_src_exec, db_dst;
+    logic [6:0] db_src, db_src_exec, db_dst;
     logic [6:0] sb_src, sb_src_exec, sb_dst;
     logic alu_en;
     logic upNZ, upV, upC, bit_op;
@@ -264,6 +270,8 @@ module core_6502 #(
         .take_branch    (take_branch),
         .single_byte    (single_byte),
         .idx_XY         (idx_XY),
+        .stack          (stack),
+        .stack_ap       (stack_ap),
         .set_mask       (set_mask),
         .clear_mask     (clear_mask)
     );
@@ -279,15 +287,7 @@ module core_6502 #(
         db_r <= db;
     end
     always_comb begin
-        case(db_src)
-            DB_M:    db = data_i;
-            DB_P:    db = irq_event ? p : p | FL_BU; // set break flags unless irq
-            DB_PCL:  db = pcl;
-            DB_PCH:  db = pch;
-            DB_A:    db = a;
-            DB_SB:   db = sb_r;
-            default: db = 0;
-        endcase
+        
         case(sb_src)
             SB_A :   sb = a;
             SB_X :   sb = x;
@@ -298,26 +298,24 @@ module core_6502 #(
             SB_DB :  sb = db_r;
             default: sb = 0;
         endcase
-        case(sb_src)
-            SB_A :   sb = a;
-            SB_X :   sb = x;
-            SB_Y :   sb = y;
-            SB_S :   sb = s;
-            SB_ADD : sb = add;
-            SB_ADH : sb = adh;
-            SB_DB :  sb = db_r;
-            default: sb = 0;
+        sb_result = alu_en ? add : sb;
+        
+        db = data_i;
+        case(stack_addr)
+            STACK_A:    push_data = a;
+            STACK_P:    push_data = irq_event ? p : p | FL_BU; // set break flags unless irq
+            STACK_PCH:  push_data = pch;
+            STACK_PCL:  push_data = pcl;
         endcase
 
-        sb_result = alu_en ? add : sb;
-        if(write_mem) begin
-            if      (write_p)        db = p | FL_B;
-            else if (write_pcl)      db = pcl;
-            else if (write_pch)      db = pch;
-            else if (write_back)     db = data;
-            else if (sb_dst == SB_DB) db = sb_result;
-            // else                     db = db;
-        end
+        // if(write_mem) begin
+        //     if      (write_p)        db = p | FL_B;
+        //     else if (write_pcl)      db = pcl;
+        //     else if (write_pch)      db = pch;
+        //     else if (write_back)     db = data;
+        //     else if (sb_dst == SB_DB) db = sb_result;
+        //     // else                     db = db;
+        // end
     end
 
     //alu
@@ -364,19 +362,19 @@ module core_6502 #(
     logic [7:0] alu_reg;
     always @(posedge clk_m1) alu_reg <= alu_out;
 
-    always @(*) begin
-        // TODO: ugh do this differently...
-        if      (write_p)        result = p | FL_B;
-        else if (write_pcl)      result = pcl;
-        else if (write_pch)      result = pch;
-        else if (write_back)     result = data;
-        else if (rmw)            result = alu_reg; //TODO: ugh!!
-        else if (alu_en)         result = add; //TODO: ugh!!
-        else if (db_src[5])      result = data;
-        else if (db[4])          result = p;
-        else                     result = sb;
+    // always @(*) begin
+    //     // TODO: ugh do this differently...
+    //     if      (write_p)        result = p | FL_B;
+    //     else if (write_pcl)      result = pcl;
+    //     else if (write_pch)      result = pch;
+    //     else if (write_back)     result = data;
+    //     else if (rmw)            result = alu_reg; //TODO: ugh!!
+    //     else if (alu_en)         result = add; //TODO: ugh!!
+    //     else if (db_src[0])      result = data;
+    //     else if (db_src[1])          result = p;
+    //     else                     result = sb;
 
-    end
+    // end
 
 
     //update registers
@@ -408,16 +406,15 @@ module core_6502 #(
                     default:    begin end
                 endcase    
 
-                case (db_dst)
-                    DB_P:      p <= db;
-                    default:    begin end
-                endcase    
+                // case (db_dst)
+                //     // DB_P:      p <= db;
+                //     DB_ST:     s <= sb_result;
+                //     default:    begin end
+                // endcase    
 
             end
 
-            if (push | pull) s <= alu_out;
-            if (up_s) s <= sb;
-            if (read_p) p <= irq_event ? data_i : data_i | FL_B; // set break flags unless irq
+            // if (read_p) p <= irq_event ? data_i : data_i | FL_B; // set break flags unless irq
             // if (handle_int && (irq_event | nmi_event)) p[2] <= 1;   // set interrupt bit
             if (handle_int) p[2] <= 1;   // set interrupt bit
 
@@ -469,6 +466,15 @@ module core_6502 #(
 
     logic rmw;
     logic [6:0] r_idx;
+
+    logic stack, stack_ap;
+    logic [1:0] stack_addr; //
+    parameter STACK_A   = 2'h0;
+    parameter STACK_P   = 2'h1;
+    parameter STACK_PCL = 2'h2;
+    parameter STACK_PCH = 2'h3;
+
+
     always @(*) begin
         adl_src     = ADDR_PC;
         adh_src     = ADDR_PC;
@@ -486,8 +492,6 @@ module core_6502 #(
         rmw = mem_rd & mem_wr;
         r_idx = idx_XY ? SB_X : SB_Y;
 
-        push = 0;
-        pull = 0;
         write_p = 0;
         write_pcl = 0;
         write_pch = 0;
@@ -497,6 +501,10 @@ module core_6502 #(
         read_pcl = 0;
         read_pch = 0;
         
+        stack_addr = stack_ap ? STACK_A : STACK_P;
+        push = 0;
+        pull = 0;
+
         // default alu behavior: store data in alu register
         alu_op = ALU_SUM;
         db_src = DB_M;
@@ -519,9 +527,9 @@ module core_6502 #(
         
         case (state)
             T0: begin
-                holdalu = 1;
+                holdalu = !stack; //whats this for??
                 inc_pc = !single_byte;
-                exec = mem_wr & !alu_en;
+                exec = mem_wr & (stack || !alu_en);
                 write_mem = mem_wr;
                 next_state = T1;
                 end
@@ -798,9 +806,9 @@ module core_6502 #(
 
         if (push) begin // TODO: set db_src?
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
-            alu_op = ALU_DEC | ALU_OPB;
-            adl_add = 1;
-            sb_src = SB_Z;
+            // alu_op = ALU_DEC | ALU_OPB;
+            // adl_add = 1;
+            // sb_src = SB_Z;
         end
         else if (pull)  begin
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};

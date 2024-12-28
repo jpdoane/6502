@@ -56,22 +56,27 @@ parameter OP_JAM      = 5'h1f;
 // parameter R_ADH = 4'ha;  // high address
 // parameter R_BUS = 4'hb;  // sb<=db, db<=sb
 
-parameter DB_Z =    6'b000000;
-parameter DB_M =    6'b100000;  // memory
-parameter DB_P =    6'b010000;  // P status
-parameter DB_PCL =  6'b001000;  // low pc
-parameter DB_PCH =  6'b000100;  // high pc
-parameter DB_A =    6'b000010;  // accumulator
-parameter DB_SB =   6'b000001;  // db<=sb
+//
+parameter DB_Z =    7'b0000000;
+parameter DB_M =    7'b0000001;  // memory
+parameter DB_SB =   7'b0100000;  // db<=sb
+parameter DB_ST =   7'b1000000;  // push/pull stack op
+
+// stack ops..
+parameter DB_P =    7'b0000010;  // P status
+parameter DB_PCL =  7'b0000100;  // low pc
+parameter DB_PCH =  7'b0001000;  // high pc
+parameter DB_A =    7'b0010000;  // accumulator
+
 
 parameter SB_Z =    7'b0000000;
-parameter SB_A =    7'b1000000;  // accumulator
-parameter SB_X =    7'b0100000;  // X
-parameter SB_Y =    7'b0010000;  // Y
+parameter SB_A =    7'b0000001;  // accumulator
+parameter SB_X =    7'b0000010;  // X
+parameter SB_Y =    7'b0000100;  // Y
 parameter SB_S =    7'b0001000;  // stack ptr
-parameter SB_ADD =  7'b0000100;  // alu register
-parameter SB_ADH =  7'b0000010;  // high address
-parameter SB_DB =   7'b0000001;  // sb<=db
+parameter SB_ADD =  7'b0010000;  // alu register
+parameter SB_ADH =  7'b0100000;  // high address
+parameter SB_DB =   7'b1000000;  // sb<=db
 
 parameter ADDR_PC   = 3'h0;
 parameter ADDR_DATA   = 3'h1;
