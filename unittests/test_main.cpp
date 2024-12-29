@@ -65,6 +65,10 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         // update any combinatorial changes from C++ code
         top->eval();
 
+        // record second half of cycle...
+        if(verbose) dump_regs(top, ram);
+        if (tfp) tfp->dump(Verilated::time());
+
         // clock rising edge
         context->timeInc(1);
         top->clk_m1 = 1;
@@ -89,7 +93,7 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         }
         top->eval();
 
-        // record m2 cycle...
+        // record first half of cycle...
         if(verbose) dump_regs(top, ram);
         if (tfp) tfp->dump(Verilated::time());
 
@@ -107,11 +111,6 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
             top->data_i = top->dor;
         }
         top->eval();
-
-        // record first half of cycle...
-        if(verbose) dump_regs(top, ram);
-        if (tfp) tfp->dump(Verilated::time());
-
         // to verilator combinatorics....
 }
 

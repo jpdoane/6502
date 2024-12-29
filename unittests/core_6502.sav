@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
-[*] Fri Dec 27 16:21:55 2024
+[*] Sun Dec 29 15:44:37 2024
 [*]
 [dumpfile] "/home/jpdoane/dev/6502/unittests/build/logs/core_6502.fst"
-[dumpfile_mtime] "Fri Dec 27 16:18:56 2024"
-[dumpfile_size] 3846
+[dumpfile_mtime] "Sun Dec 29 15:42:11 2024"
+[dumpfile_size] 4275
 [savefile] "/home/jpdoane/dev/6502/unittests/core_6502.sav"
-[timestart] 43
+[timestart] 33
 [size] 960 1015
 [pos] -1 -1
-*-2.048910 47 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-2.048910 33 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] core_6502.
 [treeopen] core_6502.core_6502.
 [sst_width] 211
@@ -30,10 +30,22 @@ core_6502.core_6502.sync
 @2022
 ^1 /home/jpdoane/dev/6502/inc/wavefilters/states.txt
 core_6502.core_6502.state[7:0]
+@22
+core_6502.core_6502.ir[7:0]
+@2022
 ^2 /home/jpdoane/dev/6502/inc/wavefilters/opcodes.txt
 core_6502.core_6502.ir[7:0]
+^3 /home/jpdoane/dev/6502/inc/wavefilters/optypes.txt
+core_6502.core_6502.u_decode.op_type[4:0]
 @1000200
 -cycle
+@28
+core_6502.core_6502.exec
+core_6502.core_6502.store
+core_6502.core_6502.push
+core_6502.core_6502.write_back
+core_6502.core_6502.adl_add
+core_6502.core_6502.alu_en
 @800200
 -addr bus
 @22
@@ -81,28 +93,32 @@ core_6502.core_6502.p[7:0]
 @22
 core_6502.core_6502.db[7:0]
 core_6502.core_6502.sb[7:0]
-core_6502.core_6502.result[7:0]
-@28
-core_6502.core_6502.exec
-@22
-core_6502.core_6502.db_dst[5:0]
-core_6502.core_6502.db_src[5:0]
+core_6502.core_6502.sb_result[7:0]
 core_6502.core_6502.sb_dst[6:0]
 core_6502.core_6502.sb_src[6:0]
+@23
+core_6502.core_6502.sb_src_exec[6:0]
 @1000200
 -busses
 @800200
 -alu
-@29
-core_6502.core_6502.alu_en
-@c00022
-core_6502.core_6502.u_alu.op[5:0]
 @28
+core_6502.core_6502.alu_en
+@c02028
+^4 /home/jpdoane/dev/6502/inc/wavefilters/alu.txt
+core_6502.core_6502.u_alu.op[5:0]
+@2028
+^4 /home/jpdoane/dev/6502/inc/wavefilters/alu.txt
 (0)core_6502.core_6502.u_alu.op[5:0]
+^4 /home/jpdoane/dev/6502/inc/wavefilters/alu.txt
 (1)core_6502.core_6502.u_alu.op[5:0]
+^4 /home/jpdoane/dev/6502/inc/wavefilters/alu.txt
 (2)core_6502.core_6502.u_alu.op[5:0]
+^4 /home/jpdoane/dev/6502/inc/wavefilters/alu.txt
 (3)core_6502.core_6502.u_alu.op[5:0]
+^4 /home/jpdoane/dev/6502/inc/wavefilters/alu.txt
 (4)core_6502.core_6502.u_alu.op[5:0]
+^4 /home/jpdoane/dev/6502/inc/wavefilters/alu.txt
 (5)core_6502.core_6502.u_alu.op[5:0]
 @1401200
 -group_end
