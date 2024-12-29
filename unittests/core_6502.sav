@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
-[*] Sun Dec 29 15:44:37 2024
+[*] Sun Dec 29 18:03:49 2024
 [*]
 [dumpfile] "/home/jpdoane/dev/6502/unittests/build/logs/core_6502.fst"
-[dumpfile_mtime] "Sun Dec 29 15:42:11 2024"
-[dumpfile_size] 4275
+[dumpfile_mtime] "Sun Dec 29 17:47:17 2024"
+[dumpfile_size] 4486
 [savefile] "/home/jpdoane/dev/6502/unittests/core_6502.sav"
-[timestart] 33
+[timestart] 58
 [size] 960 1015
 [pos] -1 -1
-*-2.048910 33 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-2.048910 62 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] core_6502.
 [treeopen] core_6502.core_6502.
 [sst_width] 211
@@ -43,11 +43,11 @@ core_6502.core_6502.u_decode.op_type[4:0]
 core_6502.core_6502.exec
 core_6502.core_6502.store
 core_6502.core_6502.push
-core_6502.core_6502.write_back
-core_6502.core_6502.adl_add
-core_6502.core_6502.alu_en
+core_6502.core_6502.pull
 @800200
 -addr bus
+@28
+core_6502.core_6502.jump
 @22
 core_6502.core_6502.pc[15:0]
 @c00022
@@ -75,6 +75,7 @@ core_6502.core_6502.addr[15:0]
 core_6502.core_6502.data_i[7:0]
 core_6502.core_6502.data[7:0]
 core_6502.core_6502.dor[7:0]
+core_6502.core_6502.db[7:0]
 core_6502.RW
 @1000200
 -addr bus
@@ -96,7 +97,6 @@ core_6502.core_6502.sb[7:0]
 core_6502.core_6502.sb_result[7:0]
 core_6502.core_6502.sb_dst[6:0]
 core_6502.core_6502.sb_src[6:0]
-@23
 core_6502.core_6502.sb_src_exec[6:0]
 @1000200
 -busses
@@ -181,9 +181,50 @@ core_6502.core_6502.alu_op[5:0]
 (5)core_6502.core_6502.alu_op[5:0]
 @1401200
 -group_end
-@22
+@c00022
 core_6502.core_6502.add[7:0]
+@28
+(0)core_6502.core_6502.add[7:0]
+(1)core_6502.core_6502.add[7:0]
+(2)core_6502.core_6502.add[7:0]
+(3)core_6502.core_6502.add[7:0]
+(4)core_6502.core_6502.add[7:0]
+(5)core_6502.core_6502.add[7:0]
+(6)core_6502.core_6502.add[7:0]
+(7)core_6502.core_6502.add[7:0]
+@1401200
+-group_end
 @1000200
 -alu
+@c00201
+-status_flags
+@c00022
+core_6502.core_6502.p[7:0]
+@28
+(0)core_6502.core_6502.p[7:0]
+(1)core_6502.core_6502.p[7:0]
+(2)core_6502.core_6502.p[7:0]
+(3)core_6502.core_6502.p[7:0]
+(4)core_6502.core_6502.p[7:0]
+(5)core_6502.core_6502.p[7:0]
+(6)core_6502.core_6502.p[7:0]
+(7)core_6502.core_6502.p[7:0]
+@1401200
+-group_end
+@28
+core_6502.core_6502.u_decode.upC
+core_6502.core_6502.u_decode.upNZ
+core_6502.core_6502.u_decode.upV
+@22
+core_6502.core_6502.u_decode.set_mask[7:0]
+core_6502.core_6502.u_decode.clear_mask[7:0]
+@28
+core_6502.core_6502.u_decode.bit_op
+core_6502.core_6502.aluC
+core_6502.core_6502.aluV
+core_6502.core_6502.resultN
+core_6502.core_6502.resultZ
+@1401201
+-status_flags
 [pattern_trace] 1
 [pattern_trace] 0

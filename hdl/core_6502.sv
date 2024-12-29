@@ -84,11 +84,10 @@ module core_6502 #(
     logic ipc;
     logic inc_pc;
     logic skip;
-    logic exec, write_mem;
+    logic exec, exec_write, write_mem;
     logic jump, handle_int;
     logic holdalu;
     // logic ipage_up, bpage_up, bpage_down;
-
 
     // i/o data registers
     logic [7:0] data, push_data;
@@ -96,19 +95,26 @@ module core_6502 #(
         if (rst) begin
             data <= 0;
             dor <= 0;
+            write_mem <= 0;
         end else begin
             // TODO: when to we need this?
             // if(rdy) data <= data_i;
             data <= data_i;
 
-            if(store)           dor <= sb_result;
-            else if(push)       dor <= push_data;
-            else if(alu_en)     dor <= alu_out;  
+
+            if(exec & mem_wr) dor <= rmw ? alu_out : sb_result;
+            else if(push) dor <= push_data;
+            else dor <= data_i;
+            write_mem <= write_back | push | (exec & mem_wr);
+
+            // if(store)           dor <= sb_result;
+                // else if(rmw)        dor <= alu_out;
+            // end
     
         end
     end
 
-    assign dor = db;
+    // assign dor = db;
     assign RW = !write_mem;
 
     // ADDRESS BUS
@@ -157,13 +163,12 @@ module core_6502 #(
         if (inc_pc)     pc_next = pc + 1;
         else            pc_next = pc;
 
-        if (read_pcl)   pc_next[7:0] = data_i;
-        if (read_pch)   pc_next[15:8] = data_i;
+        if (read_pcl)   pc_next[7:0] = db;
+        if (read_pch)   pc_next[15:8] = db;
 
         pcl = pc_next[7:0];
         pch = pc_next[15:8];
     end
-
 
     always @(posedge clk_m1 ) begin
         if (rst) begin
@@ -298,39 +303,97 @@ module core_6502 #(
             SB_DB :  sb = db_r;
             default: sb = 0;
         endcase
-        sb_result = alu_en ? add : sb;
+
+        if (alu_en) sb_result = add;
+        else begin
+            case(sb_src_exec)
+                SB_A :   sb_result = a;
+                SB_X :   sb_result = x;
+                SB_Y :   sb_result = y;
+                SB_S :   sb_result = s;
+                SB_ADD : sb_result = add;
+                SB_ADH : sb_result = adh;
+                SB_DB :  sb_result = data;
+                default: sb_result = 0;
+            endcase
+        end
         
         db = data_i;
+    end
+
+    // stack
+    logic push, pull, pull_r;
+    logic [1:0] stack_addr, stack_addr_r;
+    logic read_a, read_p, read_pcl, read_pch;
+    logic stack, stack_ap;
+    parameter STACK_A   = 2'h0;
+    parameter STACK_P   = 2'h1;
+    parameter STACK_PCL = 2'h2;
+    parameter STACK_PCH = 2'h3;
+
+    always @(posedge clk_m1 ) begin
+        if (rst) begin
+            pull_r <= 0;
+            stack_addr_r <= 0;
+            read_a <= 0;
+            read_p <= 0;
+            read_pcl <= 0;
+            read_pch <= 0;
+        end else begin
+            pull_r <= pull;
+            stack_addr_r <= stack_addr;
+            if (pull_r) begin
+                case(stack_addr_r)
+                    STACK_A:    read_a <= 1;
+                    STACK_P:    read_p <= 1;
+                    STACK_PCL:  read_pcl <= 1;
+                    STACK_PCH:  read_pch <= 1;
+                    default:    begin end
+                endcase
+            end else begin
+                read_a <= 0;
+                read_p <= 0;
+                read_pcl <= 0;
+                read_pch <= 0;
+            end
+
+        `ifdef DEBUG_REG
+            if (reg_set_en || debug_clear) begin
+                pull_r <= 0;
+                read_a <= 0;
+                read_p <= 0;
+                read_pcl <= 0;
+                read_pch <= 0;
+            end
+        `endif 
+
+        end
+    end
+
+    always_comb begin
         case(stack_addr)
             STACK_A:    push_data = a;
             STACK_P:    push_data = irq_event ? p : p | FL_BU; // set break flags unless irq
             STACK_PCH:  push_data = pch;
             STACK_PCL:  push_data = pcl;
         endcase
-
-        // if(write_mem) begin
-        //     if      (write_p)        db = p | FL_B;
-        //     else if (write_pcl)      db = pcl;
-        //     else if (write_pch)      db = pch;
-        //     else if (write_back)     db = data;
-        //     else if (sb_dst == SB_DB) db = sb_result;
-        //     // else                     db = db;
-        // end
     end
+
+
 
     //alu
     logic [5:0] alu_op, alu_op_exec;
     // logic alu_cin, alu_cin_exec;
     logic [7:0] alu_ai, alu_bi, alu_out;
     logic aluV, aluC;
-    logic adl_add;
-    assign  alu_ai = sb;
-    // assign  alu_bi = db;
+    logic adl_add, adh_add;
 
-    always @(posedge clk_m1 ) begin
-        if (rst) alu_bi <= 0;
-        else alu_bi <= adl_add ? adl : db;
-    end
+    // in real 6502, adl routed to alu_bi and adh is routed via sb, but this requires subcycle control...
+    // we are also cheating here a bit by using the registered addr than adl/adh bus, but this accomplishes the same effect
+    assign  alu_ai = adl_add ? addr[7:0] :
+                     adh_add ? addr[15:8] :
+                     sb;
+    assign alu_bi = data; 
 
     alu u_alu(
         .op     (alu_op  ),
@@ -406,15 +469,19 @@ module core_6502 #(
                     default:    begin end
                 endcase    
 
-                // case (db_dst)
-                //     // DB_P:      p <= db;
-                //     DB_ST:     s <= sb_result;
-                //     default:    begin end
-                // endcase    
-
             end
 
-            // if (read_p) p <= irq_event ? data_i : data_i | FL_B; // set break flags unless irq
+            if (push | pull) s <= add;
+            if (read_a) begin
+                a <= db;
+                p[1] <= ~|db;
+                p[7] <= db[7];
+            end
+            if (read_p) begin
+                p <= db;
+                p[4] <= p[4]; //ignore break flag
+            end
+
             // if (handle_int && (irq_event | nmi_event)) p[2] <= 1;   // set interrupt bit
             if (handle_int) p[2] <= 1;   // set interrupt bit
 
@@ -456,8 +523,7 @@ module core_6502 #(
     // control
 
     logic aluC_reg, aluN_reg;
-    logic push, write_pcl, write_pch, write_p, write_back;
-    logic pull, read_pcl, read_pch, read_p, up_s;
+    logic write_back;
     logic bpage_up, bpage_down;
     always @(posedge clk_m1 ) begin
         aluN_reg <= alu_out[7];
@@ -467,13 +533,9 @@ module core_6502 #(
     logic rmw;
     logic [6:0] r_idx;
 
-    logic stack, stack_ap;
-    logic [1:0] stack_addr; //
-    parameter STACK_A   = 2'h0;
-    parameter STACK_P   = 2'h1;
-    parameter STACK_PCL = 2'h2;
-    parameter STACK_PCH = 2'h3;
+    logic store;
 
+    wire rmw = mem_wr & alu_en;
 
     always @(*) begin
         adl_src     = ADDR_PC;
@@ -482,28 +544,23 @@ module core_6502 #(
         holdalu     = 0;
         skip        = 0;
         exec        = 0;
-        write_mem = 0;
+        // write_mem = 0;
         jump        = 0;
         sync        = 0;
         handle_int  = 0;
         update_addrl = 1;
         update_addrh = 1;
         adl_add = 0;
-        rmw = mem_rd & mem_wr;
+        adh_add = 0;
         r_idx = idx_XY ? SB_X : SB_Y;
 
-        write_p = 0;
-        write_pcl = 0;
-        write_pch = 0;
         write_back = 0;
-        read_p = 0;
-        up_s = 0;
-        read_pcl = 0;
-        read_pch = 0;
         
         stack_addr = stack_ap ? STACK_A : STACK_P;
         push = 0;
         pull = 0;
+
+        store = (sb_dst == SB_DB) & !alu_en;
 
         // default alu behavior: store data in alu register
         alu_op = ALU_SUM;
@@ -527,15 +584,15 @@ module core_6502 #(
         
         case (state)
             T0: begin
-                holdalu = !stack; //whats this for??
+                // holdalu = !stack; //whats this for??
                 inc_pc = !single_byte;
-                exec = mem_wr & (stack || !alu_en);
-                write_mem = mem_wr;
+                // exec = mem_wr & (stack || !alu_en);
+                // write_mem = mem_wr;
                 next_state = T1;
                 end
             T1: begin
                 // execute prev op
-                exec = !mem_wr;
+                exec = !mem_wr ;
                 // fetch next op
                 sync = 1;
                 inc_pc = 1;
@@ -550,6 +607,7 @@ module core_6502 #(
                 case(op_type)
                     OP_ZPG: begin
                         {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
+                        exec = store;
                         next_state = T0;
                     end
                     OP_ZXY, OP_XIN, OP_INY: begin
@@ -571,7 +629,8 @@ module core_6502 #(
                     end
                     OP_BRK: begin
                         inc_pc = 1;
-                        push = 1; // initiate push pch
+                        stack_addr = STACK_PCH;
+                        push = 1;
                     end
                     OP_JSR: begin
                         inc_pc = 1;
@@ -591,7 +650,10 @@ module core_6502 #(
                         sb_src = r_idx;
                         alu_op = ALU_SUM;
                         {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
-                        if(!rmw) next_state = T0;
+                        if(!rmw) begin
+                            next_state = T0;
+                            exec = store;
+                        end
                     end
                     OP_XIN: begin
                         sb_src = r_idx;
@@ -605,7 +667,10 @@ module core_6502 #(
                     end
                     OP_ABS: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
-                        if(!rmw) next_state = T0;
+                        if(!rmw) begin
+                            next_state = T0;
+                            exec = store;
+                        end
                     end
                     OP_AXY: begin
                         sb_src = r_idx;
@@ -613,11 +678,8 @@ module core_6502 #(
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         next_state = (!mem_wr & !aluC) ? T0 : T4;
                     end
-                    OP_BRA: begin
-                        adl_add = 1; 
-                        sb_src = SB_DB;
-                        alu_op = ALU_SUM;
-                        
+                    OP_BRA: begin                        
+                        adl_add = 1;
                         {adh_src, adl_src} = {ADDR_PC, ADDR_ALU};
                         if(bpage_up | bpage_down) begin
                             next_state = T4; //carry adh
@@ -639,16 +701,19 @@ module core_6502 #(
                         next_state = T0;
                     end
                     OP_BRK: begin
-                        write_pch = 1; // complete push pch 
-                        push = 1; // initiate push pcl
+                        stack_addr = STACK_PCL;
+                        push = 1;
                     end
                     OP_JSR: begin
-                        // stack ptr to ald
-                        {adh_src, adl_src} = {ADDR_STACK, ADDR_HOLD};
-                        // read new adl into stack pointer
-                        // alu_ctl = {REG_M, REG_Z, 1'b0}; //TODO: make all read_* use db like this...
-                        // alu_op = ALU_ORA;
-                        up_s = 1;
+                        stack_addr = STACK_PCH;
+                        push = 1;
+
+                        // // stack ptr to adl
+                        // {adh_src, adl_src} = {ADDR_STACK, ADDR_HOLD};
+                        // // read new adl into stack pointer
+                        // // alu_ctl = {REG_M, REG_Z, 1'b0}; //TODO: make all read_* use db like this...
+                        // // alu_op = ALU_ORA;
+                        // // up_s = 1;
                     end
                     default:
                         next_state = T_JAM; //not implemented yet
@@ -657,20 +722,19 @@ module core_6502 #(
             T4: begin
                 next_state = T5;
                 case(op_type)
-                    OP_ZXY:
+                    OP_ZXY, OP_ABS:  // rmw fetch
                     begin
                         update_addrl = 0;
                         update_addrh = 0;
-                    end
-                    OP_ABS:
-                    begin // rmw fetch
-                        update_addrl = 0;
-                        update_addrh = 0;
+                        write_back = 1;
                     end
                     OP_AXY: begin
                         {adh_src, adl_src} = {ADDR_ALU, ADDR_HOLD};
                         alu_op = aluC_reg ? ALU_INB : ALU_ORA;
-                        if(!rmw) next_state = T0;
+                        if(!rmw) begin
+                            next_state = T0;
+                            exec = store;
+                        end
                     end
                     OP_XIN: begin
                         sb_src = SB_ADD;
@@ -684,7 +748,8 @@ module core_6502 #(
                         next_state = (!mem_wr & !aluC) ? T0 : T5;
                     end
                     OP_BRA: begin
-                        // alu_ctl = aluN_reg ? {R_PCH, RE_NZ, 1'b0} : {R_PCH, REG_Z, 1'b1};
+                        adh_add = 1; 
+                        alu_op = aluN_reg ? ALU_DEC : ALU_INC; //inc or dec
                         {adh_src, adl_src} = {ADDR_ALU, ADDR_PC};
                         jump = 1;
                         next_state = T1;
@@ -694,13 +759,15 @@ module core_6502 #(
                         {adh_src, adl_src} = {ADDR_HOLD, ADDR_ALU};
                     end
                     OP_BRK: begin
-                        write_pcl = 1; // complete push pcl
-                        push = 1; // initiate push p
+                        stack_addr = STACK_P;
+                        push = 1;
                     end
                     OP_JSR: begin
-                        // decrement addr (push stack)
-                        write_pch = 1;
-                        {adh_src, adl_src} = {ADDR_STACK, ADDR_ALU};
+                        stack_addr = STACK_PCL;
+                        push = 1;
+                        // // decrement addr (push stack)
+                        // write_pch = 1;
+                        // {adh_src, adl_src} = {ADDR_STACK, ADDR_ALU};
 
                         
 
@@ -718,20 +785,22 @@ module core_6502 #(
                         update_addrh = 0;
                         exec = 1;
                         next_state = T0;
-                        write_back = 1;
                     end
                     OP_AXY: begin
                         update_addrl = 0;
                         update_addrh = 0;
+                        write_back = 1;
                     end
                     OP_XIN: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         next_state = T0;
+                        exec = store;
                     end
                     OP_INY: begin
                         {adh_src, adl_src} = {ADDR_ALU, ADDR_HOLD};
                         alu_op = aluC_reg ? ALU_INB : ALU_ORA;
                         next_state = T0;
+                        exec = store;
                     end
                     OP_JIN: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
@@ -739,14 +808,13 @@ module core_6502 #(
                         next_state = T1;
                     end
                     OP_BRK: begin
-                        write_p = 1; // complete push p
                         {adh_src, adl_src} = {ADDR_INT, ADDR_INT};
                         jump = 1;
                         inc_pc = 1;
                     end
                     OP_JSR: begin
                         // decrement addr (push stack)
-                        write_pcl = 1;
+                        // write_pcl = 1;
                         // alu_ctl = {RE_NZ, R_ADL, 1'b0};
                         // {adh_src, adl_src} = {ADDR_STACK, ADDR_ALU};
                     end
@@ -762,7 +830,6 @@ module core_6502 #(
                         update_addrh = 0;
                         next_state = T0;
                         exec = 1;
-                        write_back = 1;
                     end
                     OP_BRK: begin
                         jump = 1;
@@ -774,7 +841,7 @@ module core_6502 #(
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_STACK}; 
                         // restore stack pointer from ADL
                         // alu_ctl = {REG_S, R_ADL, 1'b0};
-                        up_s = 1;
+                        // up_s = 1;
                         jump = 1;
                         next_state = T1;
                     end
@@ -802,21 +869,20 @@ module core_6502 #(
             end                
         endcase
 
-        if (write_pcl | write_pch | write_p | write_back) write_mem=1;
+        // if (write_pcl | write_pch | write_p | write_back) write_mem=1;
 
         if (push) begin // TODO: set db_src?
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
-            // alu_op = ALU_DEC | ALU_OPB;
-            // adl_add = 1;
-            // sb_src = SB_Z;
+            alu_op = ALU_DEC;
+            sb_src = SB_S;
         end
         else if (pull)  begin
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
-            alu_op = ALU_INC | ALU_OPB;
-            adl_add = 1;
-            sb_src = SB_Z;
+            alu_op = ALU_INC;
+            sb_src = SB_S;
         end
-        else if (exec) begin
+        
+        if (exec & alu_en) begin
             alu_op = alu_op_exec;
             db_src = db_src_exec;
             sb_src = sb_src_exec;
@@ -953,12 +1019,11 @@ module core_6502 #(
         // end
 
         `ifdef DEBUG_REG
-            // if (reg_set_en) begin
-            //     sync = 0;
-            // end
-            if (reg_set_en || debug_T1) begin
+            if (reg_set_en || debug_clear) begin
                 exec = 0;
-                write_mem = 0;
+                push = 0;
+                pull = 0;
+                // write_mem = 0;
             end
         `endif 
     end
@@ -967,7 +1032,7 @@ module core_6502 #(
     `ifdef DEBUG_CPU
         `include "debug/debug.sv"
     `endif 
-    logic debug_T1;
+    logic debug_clear;
     `ifdef DEBUG_REG
         always_comb begin
             pc_dbg = pc;
@@ -979,11 +1044,15 @@ module core_6502 #(
         end
         int cycle;
         always_ff @(posedge clk_m1) begin
-            debug_T1 <= reg_set_en;
-            cycle <= debug_T1 ? 0 : cycle+1;
+            debug_clear <= 0;
+            cycle <= cycle+1;
+            if (state==T_DEBUG) begin
+                debug_clear <= 1;
+                cycle <= 0;
+            end
         end
     `elsif
-        assign debug_T1=0;
+        assign debug_clear=0;
     `endif 
 
 

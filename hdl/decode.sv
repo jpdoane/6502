@@ -28,8 +28,7 @@ module decode (
     always_comb begin
         casez(opcode)     //ctl_flags = {stack, db_dst, sb_dst, db_src, sb_src, alu_op}
             8'b0??_000_00:  ctl_flags = {1'b0, DB_Z, SB_Z, DB_Z, SB_Z, ALU_NOP};       // control flow and special ops
-            8'b0?0_010_00:  ctl_flags = {1'b1, DB_M, SB_S, DB_Z, SB_S, ALU_DEC};       // PUS
-            8'b0?1_010_00:  ctl_flags = {1'b1, DB_Z, SB_S, DB_M, SB_S, ALU_INC};      // PUL
+            8'b0??_010_00:  ctl_flags = {1'b1, DB_Z, DB_Z, DB_Z, DB_Z, ALU_NOP};       // PUS
             8'b101_010_00:  ctl_flags = {1'b0, DB_Z, SB_Y, DB_Z, SB_A, ALU_NOP};       // TAY
             8'b111_010_00:  ctl_flags = {1'b0, DB_Z, SB_X, DB_Z, SB_X, ALU_INC};       // INX
             8'b110_010_00:  ctl_flags = {1'b0, DB_Z, SB_Y, DB_Z, SB_Y, ALU_INC};       // INY
@@ -89,7 +88,7 @@ module decode (
             SB_A:      upNZ=1;
             SB_X:      upNZ=1;
             SB_Y:      upNZ=1;
-            default:    upNZ=alu_en;
+            default:    upNZ=alu_en & !stack;
         endcase
         // set v flag on ADC and SBC
         upV = adc_sbc_op;
