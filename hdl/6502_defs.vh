@@ -41,46 +41,6 @@ parameter OP_BRA      = 5'h10;   // conditional branch, taken
 parameter OP_BNT      = 5'h11;   // conditional branch, not taken
 parameter OP_JAM      = 5'h1f;
 
-
-// // db bus
-// parameter REG_Z = 4'h0;  // 0
-// parameter REG_M = 4'h1;  // memory
-// parameter REG_P = 4'h2;  // P status
-// parameter R_PCL = 4'h3;  // low pc
-// parameter R_PCH = 4'h4;  // high pc
-// // parameter R_BUS = 4'h5;  // sb<=db, db<=sb
-// // sb bus
-// // parameter REG_Z = 4'h0;  // 0
-// parameter REG_A = 4'h5;  // accumulator
-// parameter REG_X = 4'h6;  // X
-// parameter REG_Y = 4'h7;  // Y
-// parameter REG_S = 4'h8;  // stack ptr
-// parameter R_ALU = 4'h9;  // alu register
-// parameter R_ADH = 4'ha;  // high address
-// parameter R_BUS = 4'hb;  // sb<=db, db<=sb
-
-//
-parameter DB_Z =    7'b0000000;
-parameter DB_M =    7'b0000001;  // memory
-parameter DB_SB =   7'b0100000;  // db<=sb
-parameter DB_ST =   7'b1000000;  // push/pull stack op
-
-// stack ops..
-parameter DB_P =    7'b0000010;  // P status
-parameter DB_PCL =  7'b0000100;  // low pc
-parameter DB_PCH =  7'b0001000;  // high pc
-parameter DB_A =    7'b0010000;  // accumulator
-
-
-parameter SB_Z =    7'b0000000;
-parameter SB_A =    7'b0000001;  // accumulator
-parameter SB_X =    7'b0000010;  // X
-parameter SB_Y =    7'b0000100;  // Y
-parameter SB_S =    7'b0001000;  // stack ptr
-parameter SB_ADD =  7'b0010000;  // alu register
-parameter SB_ADH =  7'b0100000;  // high address
-parameter SB_DB =   7'b1000000;  // sb<=db
-
 parameter ADDR_PC   = 3'h0;
 parameter ADDR_DATA   = 3'h1;
 parameter ADDR_RES  = 3'h2;
@@ -89,6 +49,21 @@ parameter ADDR_Z    = 3'h4;
 parameter ADDR_INT = 3'h5;
 parameter ADDR_STACK = 3'h6;
 parameter ADDR_HOLD = 3'h7;
+
+
+parameter REG_Z =    6'b000000;
+parameter REG_A =    6'b000001;  // accumulator
+parameter REG_X =    6'b000010;  // X
+parameter REG_Y =    6'b000100;  // Y
+parameter REG_S =    6'b001000;  // stack ptr
+parameter REG_ADD =  6'b010000;  // alu register
+parameter REG_D =    6'b100000;  // sb<=db
+
+
+parameter STACK_A   = 4'b0001;
+parameter STACK_P   = 4'b0010;
+parameter STACK_PCL = 4'b0100;
+parameter STACK_PCH = 4'b1000;
 
 
 parameter ALU_NOP   = 6'b000000;
@@ -119,9 +94,6 @@ parameter ALU_INC   = ALU_SUM | ALU_ADZ | ALU_CI1; // sum + zero b + carry in 1
 parameter ALU_DEC   = ALU_SUB | ALU_ADZ; // sub w/ inv zero
 parameter ALU_INB   = ALU_INC | ALU_OPB; // increment db
 
-
-parameter IDX_X     =1'b1;
-parameter IDX_Y     =1'b0;
 
 parameter FL_N = 8'b10000000;   // Negative
 parameter FL_V = 8'b01000000;   // Overflow

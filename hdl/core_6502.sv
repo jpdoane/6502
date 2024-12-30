@@ -55,7 +55,7 @@ module core_6502 #(
    // control signals
     logic [2:0] adl_src,adh_src;
     logic inc_pc;
-    logic exec, write_mem;
+    logic write_mem;
     logic jump, handle_int;
     logic hold_alu;
 
@@ -103,68 +103,61 @@ module core_6502 #(
     logic [7:0] sb, sb_result, db, db_result;
     always_comb begin
         
-        case(sb_src)
-            SB_A :   sb = a;
-            SB_X :   sb = x;
-            SB_Y :   sb = y;
-            SB_S :   sb = s;
-            SB_ADD : sb = add;
-            // SB_ADH : sb = adh;
-            SB_DB :  sb = data;
+        // "source" bus
+        case(1'b1)
+            src[0] : sb = a;
+            src[1] : sb = x;
+            src[2] : sb = y;
+            src[3] : sb = s;
+            src[4] : sb = add;
+            src[5] : sb = data;
             default: sb = 0;
         endcase
 
-        if (alu_en) sb_result = alu_out;
-        else begin
-            case(sb_src_exec)
-                SB_A :   sb_result = a;
-                SB_X :   sb_result = x;
-                SB_Y :   sb_result = y;
-                SB_S :   sb_result = s;
-                SB_ADD : sb_result = alu_out;
-                SB_DB :  sb_result = data;
-                default: sb_result = 0;
-            endcase
-        end
+        // "result" bus
+        case(1'b1)
+            alu_en  :       sb_result = alu_out;
+            src_result[0] : sb_result = a;
+            src_result[1] : sb_result = x;
+            src_result[2] : sb_result = y;
+            src_result[3] : sb_result = s;
+            src_result[4] : sb_result = alu_out;
+            src_result[5] : sb_result = data;
+            default       : sb_result = 0;
+        endcase
         
+        // data read bus
         db = data_i;
 
-        if(exec & mem_wr) begin
-            if(rmw)         db_result = alu_out;
-            else            db_result = sb_result;
-        end else if(push) begin
-            case(stack_addr)
-                STACK_A:    db_result = a;
-                STACK_P:    db_result = irq_event ? p : p | FL_BU; // set break flags unless irq
-                STACK_PCH:  db_result = pch;
-                STACK_PCL:  db_result = pcl;
-                default:    db_result = data_i;
-            endcase
-        end
-        else db_result = data_i;
+        // data write bus
+        case(1'b1)
+            stack_push[0]:  db_result = a;
+            stack_push[1]:  db_result = irq_event ? p : p | FL_BU; // set break flags unless irq
+            stack_push[2]:  db_result = pcl;
+            stack_push[3]:  db_result = pch;
+            // write_back:     db_result = data_i;
+            default         db_result = sb_result;
+        endcase
     end
 
     // i/o data registers
     assign RW = !write_mem;
-    logic [7:0] data;
+    // assign dor = db_result;
+    // assign write_mem = write_back_r | push_r | exec_store;
 
+    // TODO: this is a bit of a hack, and prob can be done organically..
+    logic write_back;
+
+    logic [7:0] data;
     always_ff @(posedge clk) begin
         if (rst) begin
             data <= 0;
             dor <= 0;
-            write_mem <= 0;
         end else begin
             // TODO: when to we need this?
             // if(rdy) data <= data_i;
             data <= data_i;
-            dor <= db_result;
-            write_mem <= write_back | push | (exec & mem_wr);
-
-            `ifdef DEBUG_REG
-                if(reg_set_en || debug_clear) begin
-                    write_mem <= 0;
-                end
-            `endif
+            dor <= write_back ? data_i : db_result;
         end
     end
 
@@ -178,9 +171,9 @@ module core_6502 #(
 
     always_comb begin
         pc_next = pc;
-        if (inc_pc)     pc_next = pc + 1;
-        if (read_pcl)   pc_next[7:0] = db;
-        if (read_pch)   pc_next[15:8] = db;
+        if (inc_pc)          pc_next = pc + 1;   // increment pc
+        if (stack_read[2])   pc_next[7:0] = db;  // pull pcl from stack
+        if (stack_read[3])   pc_next[15:8] = db; // pull pch from stack
     end
 
     always @(posedge clk ) begin
@@ -254,8 +247,7 @@ module core_6502 #(
 
     // decode instruction
     logic [4:0] op_type;
-    logic [6:0] db_src, db_src_exec, db_dst;
-    logic [6:0] sb_src, sb_src_exec, sb_dst;
+    logic [5:0] src, src_result, dst_result;
     logic alu_en;
     logic upNZ, upV, upC, bit_op;
     logic mem_rd, mem_wr, single_byte, idx_XY;
@@ -264,18 +256,14 @@ module core_6502 #(
         .opcode         (ir),
         .pstatus        (p),
         .op_type        (op_type ),
-        .db_src         (db_src_exec),
-        .db_dst         (db_dst),
-        .sb_src         (sb_src_exec),
-        .sb_dst         (sb_dst),
-        .alu_op         (alu_op_exec),
+        .src            (src_result),
+        .dst            (dst_result),
+        .alu_op         (alu_op_result),
         .alu_en         (alu_en),
         .upNZ           (upNZ),
         .upV            (upV),
         .upC            (upC),
         .bit_op         (bit_op),
-        .mem_rd         (mem_rd),
-        .mem_wr         (mem_wr),
         .single_byte    (single_byte),
         .idx_XY         (idx_XY),
         .stack          (stack),
@@ -283,49 +271,34 @@ module core_6502 #(
         .set_mask       (set_mask),
         .clear_mask     (clear_mask)
     );
+    assign mem_rd = src_result[5];
+    assign mem_wr = dst_result[5];
 
     // stack
-    logic push, pull, pull_r;
-    logic [1:0] stack_addr, stack_addr_r;
-    logic read_a, read_p, read_pcl, read_pch;
+    logic push, pull, push_r, pull_r;
+    logic [3:0] stack_push, stack_push_r, stack_pull, stack_pull_r, stack_read;
+    // logic read_a, read_p, read_pcl, read_pch;
     logic stack, stack_ap;
-    parameter STACK_A   = 2'h0;
-    parameter STACK_P   = 2'h1;
-    parameter STACK_PCL = 2'h2;
-    parameter STACK_PCH = 2'h3;
 
     always @(posedge clk ) begin
         if (rst) begin
             pull_r <= 0;
-            stack_addr_r <= 0;
-            read_a <= 0;
-            read_p <= 0;
-            read_pcl <= 0;
-            read_pch <= 0;
+            push_r <= 0;
+            stack_pull_r <= 0;
+            stack_push_r <= 0;
+            stack_read <= 0;
         end else begin
             pull_r <= pull;
-            stack_addr_r <= stack_addr;
-            read_a <= 0;
-            read_p <= 0;
-            read_pcl <= 0;
-            read_pch <= 0;
-            if (pull_r) begin
-                case(stack_addr_r)
-                    STACK_A:    read_a <= 1;
-                    STACK_P:    read_p <= 1;
-                    STACK_PCL:  read_pcl <= 1;
-                    STACK_PCH:  read_pch <= 1;
-                    default:    begin end
-                endcase
-            end
+            push_r <= push;
+            stack_pull_r <= stack_pull;
+            stack_push_r <= stack_push;
+            stack_read <= stack_pull_r;
 
         `ifdef DEBUG_REG
             if (reg_set_en || debug_clear) begin
                 pull_r <= 0;
-                read_a <= 0;
-                read_p <= 0;
-                read_pcl <= 0;
-                read_pch <= 0;
+                stack_pull_r <= 0;
+                stack_read <= 0;
             end
         `endif 
 
@@ -333,7 +306,7 @@ module core_6502 #(
     end
 
     //alu
-    logic [5:0] alu_op, alu_op_exec;
+    logic [5:0] alu_op, alu_op_result;
     logic [7:0] alu_ai, alu_bi, alu_out;
     logic aluV, aluC, adl_add, adh_add;
 
@@ -381,23 +354,20 @@ module core_6502 #(
                     p[7] <= bit_op ? alu_bi[7] : sb_result[7];;
                 end
 
-                case (sb_dst)
-                    SB_A:      a <= sb_result;
-                    SB_X:      x <= sb_result;
-                    SB_Y:      y <= sb_result;
-                    SB_S:      s <= sb_result;
-                    default:    begin end
-                endcase    
+                if(dst_result[0]) a <= sb_result;
+                if(dst_result[1]) x <= sb_result;
+                if(dst_result[2]) y <= sb_result;
+                if(dst_result[3]) s <= sb_result;
 
             end
 
-            if ((push | pull | up_s) & !hold_s) s <= alu_out;
-            if (read_a) begin
+            if (up_s) s <= alu_out;
+            if (stack_read[0]) begin //pull a from stack
                 a <= db;
                 p[1] <= ~|db;
                 p[7] <= db[7];
             end
-            if (read_p) begin
+            if (stack_read[1]) begin //pull p from stack
                 p <= db;
                 p[4] <= p[4]; //ignore break flag
             end
@@ -441,25 +411,29 @@ module core_6502 #(
         end
     end
 
-    //TODO:
-    wire op_jsr = op_type == OP_JSR;
-
     logic inc_addr, dec_addr, sum_addr, add_idx;
     // control
 
     logic aluC_reg, aluN_reg;
-    logic write_back;
     logic bpage_up, bpage_down;
     always @(posedge clk ) begin
         aluN_reg <= alu_out[7];
         aluC_reg <= aluC;
     end
 
-    logic [6:0] r_idx;
-    logic store;
     wire rmw = mem_wr & alu_en;
-    logic jsr_push, hold_s, up_s;
-    always @(*) begin
+    wire store = mem_wr & !alu_en;
+    // wire exec = mem_wr ? Tlast : Tstate[6];  // execute opcode on T1 or last 
+    logic exec, exec_store;
+
+    // always @(posedge clk ) begin
+    //     exec <= exec_prep;
+    // end
+
+
+    logic jsr_push, up_s;
+    logic [5:0] idx;
+    always_comb begin
         Tlast       = 0;
         toT1        = 0;
         toTrmw      = 0;
@@ -469,27 +443,28 @@ module core_6502 #(
         inc_pc      = 0;
         hold_alu    = 0;
         exec        = 0;
+        exec_store  = 0;
         write_back  = 0;
         jump        = 0;
         sync        = 0;
         handle_int  = 0;
         adl_add     = 0;
         adh_add     = 0;
-        r_idx       = idx_XY ? SB_X : SB_Y;
+        idx       = idx_XY ? REG_X : REG_Y;
         
-        stack_addr = stack_ap ? STACK_A : STACK_P;
+        write_mem   = 0;
+        stack_push  = 0;
+        stack_pull  = 0;
         push        = 0;
         pull        = 0;
         jsr_push    = 0;
-        hold_s      = 0;
         up_s        = 0;
 
-        store = (sb_dst == SB_DB) & !alu_en;
+        // store = mem_wr & !alu_en;
 
         // default alu behavior: store data in alu register
         alu_op = ALU_SUM;
-        db_src = DB_M;
-        sb_src = SB_Z;
+        src = REG_Z;
 
         bpage_up = pcl[7] & !data[7] & !alu_out[7]; // crossed to next page if base>127, offset>0, and result <= 127
         bpage_down = !pcl[7] & data[7] & alu_out[7]; // crossed to prev page if base<=127, offset<0, and result > 127
@@ -509,9 +484,10 @@ module core_6502 #(
         case (Tstate)
             T0: begin
                 inc_pc = !single_byte;
+                write_mem = mem_wr;
                 end
             T1: begin
-                exec = !mem_wr;     // execute prev op
+                exec = !mem_wr;
                 inc_pc = 1;         // fetch next op
                 sync = 1;
                 end
@@ -528,7 +504,7 @@ module core_6502 #(
                         if(rmw) toTrmw = 1;
                         else begin
                             Tlast = 1;
-                            exec = store;
+                            // exec = store;
                         end
                     end
                     OP_ZXY, OP_XIN, OP_INY: begin
@@ -540,29 +516,26 @@ module core_6502 #(
                     end
                     OP_PUS: begin
                         inc_pc = 0;
-                        push = 1;
+                        stack_push = stack_ap ? STACK_A : STACK_P;
                         Tlast = 1;
                     end
                     OP_PUL: begin
                         inc_pc = 0;
-                        pull = 1;
+                        stack_pull = stack_ap ? STACK_A : STACK_P;
                     end
                     OP_BRK: begin
-                        stack_addr = STACK_PCH;
-                        push = 1;
+                        stack_push = STACK_PCH;
                     end
                     OP_JSR: begin
                         {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
                     end
                     OP_RTS: begin
                         inc_pc = 0;
-                        pull = 1;
-                        stack_addr = STACK_PCL;
+                        stack_pull = STACK_PCL;
                     end
                     OP_RTI: begin
                         inc_pc = 0;
-                        pull = 1;
-                        stack_addr = STACK_P;
+                        stack_pull = STACK_P;
                     end
                     default: begin end
                 endcase
@@ -570,22 +543,22 @@ module core_6502 #(
             T3: begin
                 case(op_type)
                     OP_ZXY: begin
-                        sb_src = r_idx;
+                        src = idx;
                         alu_op = ALU_SUM;
                         {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
                         if(rmw) toTrmw = 1;
                         else begin
                             Tlast = 1;
-                            exec = store;
+                            // exec = store;
                         end
                     end
                     OP_XIN: begin
-                        sb_src = r_idx;
+                        src = idx;
                         alu_op = ALU_SUM;
                         {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
                     end
                     OP_INY: begin
-                        sb_src = r_idx;
+                        src = idx;
                         alu_op = ALU_INB;
                         {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
                     end
@@ -594,11 +567,11 @@ module core_6502 #(
                         if(rmw) toTrmw = 1;
                         else begin
                             Tlast = 1;
-                            exec = store;
+                            // exec = store;
                         end
                     end
                     OP_AXY: begin
-                        sb_src = r_idx;
+                        src = idx;
                         alu_op = ALU_SUM;
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         Tlast = !mem_wr & !aluC;
@@ -622,22 +595,19 @@ module core_6502 #(
                         Tlast = 1;
                     end
                     OP_BRK: begin
-                        stack_addr = STACK_PCL;
-                        push = 1;
+                        stack_push = STACK_PCL;
                     end
                     OP_JSR: begin
-                        push = 1;// push pch onto stack (via pc)
-                        stack_addr = STACK_PCH;
-                        jsr_push = 1;   // but dont do a real push, set s to adl which is currently in alu
+                        stack_push = STACK_PCH; // push pch onto stack (via pc)
+                        jsr_push = 1;           // but dont do math on stack pointer...
+                        up_s = 1;               // instead set s directly to adl which is currently in alu
                         {adh_src, adl_src} = {ADDR_STACK, ADDR_HOLD}; // hold addr at stack 
                     end
                     OP_RTS: begin
-                        pull = 1;
-                        stack_addr = STACK_PCH;
+                        stack_pull = STACK_PCH;
                     end
                     OP_RTI: begin
-                        pull = 1;
-                        stack_addr = STACK_PCL;
+                        stack_pull = STACK_PCL;
                     end
                     default: begin end
                 endcase
@@ -650,16 +620,16 @@ module core_6502 #(
                         if(rmw) toTrmw = 1;
                         else begin
                             Tlast = 1;
-                            exec = store;
+                            // exec = store;
                         end
                     end
                     OP_XIN: begin
-                        sb_src = SB_ADD;
+                        src = REG_ADD;
                         alu_op = ALU_INC;
                         {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
                     end
                     OP_INY: begin
-                        sb_src = r_idx;
+                        src = idx;
                         alu_op = ALU_SUM;
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         Tlast = (!mem_wr & !aluC);
@@ -673,27 +643,21 @@ module core_6502 #(
                     end
                     OP_JIN: begin
                         alu_op = ALU_INC;
-                        sb_src = SB_ADD;
+                        src = REG_ADD;
                         {adh_src, adl_src} = {ADDR_HOLD, ADDR_ALU};
                     end
                     OP_BRK: begin
-                        stack_addr = STACK_P;
-                        push = 1;
+                        stack_push = STACK_P;
                     end
                     OP_JSR: begin
-                        stack_addr = STACK_PCL;
-                        push = 1;
-                        jsr_push = 1;
-                        hold_s = 1;
-
-                        // decrement addr (push stack)
-                        {adh_src, adl_src} = {ADDR_STACK, ADDR_ALU};
-                        alu_op = ALU_DEC;
+                        stack_push = STACK_PCL;
+                        jsr_push = 1;           // but dont do math on stack register...
+                        {adh_src, adl_src} = {ADDR_STACK, ADDR_ALU}; // decrement adl directly
                         adl_add = 1;
+                        alu_op = ALU_DEC;
                     end
                     OP_RTI: begin
-                        pull = 1;
-                        stack_addr = STACK_PCH;
+                        stack_pull = STACK_PCH;
                     end
                     OP_RTS: begin end
                     default: begin end
@@ -704,13 +668,13 @@ module core_6502 #(
                     OP_XIN: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         Tlast = 1;
-                        exec = store;
+                        // exec = store;
                     end
                     OP_INY: begin
                         {adh_src, adl_src} = {ADDR_ALU, ADDR_HOLD};
                         alu_op = aluC_reg ? ALU_INB : ALU_ORA;
                         Tlast = 1;
-                        exec = store;
+                        // exec = store;
                     end
                     OP_JIN: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
@@ -723,10 +687,8 @@ module core_6502 #(
                         inc_pc = 1;
                     end
                     OP_JSR: begin
-                        // fetch adh
-                        // decrement addr and save in alu
-                        adl_add = 1;
-                        alu_op = ALU_DEC;
+                        alu_op = ALU_DEC; // decrement addr and save in alu
+                        adl_add = 1;      
                     end
                     OP_RTI: begin
                         adl_add = 1; // save adl in alu
@@ -748,8 +710,7 @@ module core_6502 #(
                         //read in ADH, and restore ADL from stack and jump to new addr
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_STACK}; 
                         jump = 1;
-                        // restore stack from alu
-                        hold_alu = 1;
+                        hold_alu = 1;  // restore stack from alu
                         up_s = 1;
                         toT1 = 1;
                     end
@@ -775,7 +736,10 @@ module core_6502 #(
 
             TRMW1: begin
                     {adh_src, adl_src} = {ADDR_HOLD, ADDR_HOLD};
-                    write_back = 1;
+                    write_back = 1; //this is a bit of a hack
+                                    // not needed if we can "naturally" load
+                                    // db_result but with data_i
+
                     end
             TRMW2: begin
                     {adh_src, adl_src} = {ADDR_HOLD, ADDR_HOLD};
@@ -789,27 +753,32 @@ module core_6502 #(
     
         endcase
 
+        push = |stack_push;
+        pull = |stack_pull;
+
         if (push & !jsr_push) begin
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
             alu_op = ALU_DEC;
-            sb_src = SB_S;
+            src = REG_S;
+            up_s = 1;
         end
         else if (pull)  begin
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
             alu_op = ALU_INC;
-            sb_src = SB_S;
+            src = REG_S;
+            up_s = 1;
         end
         else if (pull_r)  begin
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
         end
-        
+
         if (exec & alu_en) begin
-            alu_op = alu_op_exec;
-            db_src = db_src_exec;
-            sb_src = sb_src_exec;
-            // write_mem = mem_wr & !alu_en;
+            alu_op = alu_op_result;
+            src = src_result;
         end
-        
+
+        if((exec & mem_wr) | push_r) write_mem = 1;
+
         `ifdef DEBUG_REG
             if (reg_set_en || debug_clear) begin
                 exec = 0;

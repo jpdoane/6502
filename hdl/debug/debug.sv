@@ -228,19 +228,19 @@ function string reg_name(input logic [2:0] x);
     endcase
 endfunction
 
-function string db_name(input logic [2:0] x);
-    case(x)
-        DB_Z: db_name = "Z  ";
-        DB_DATA: db_name = "DAT";
-        DB_PCL: db_name = "PCL";
-        DB_PCH: db_name = "PCH";
-        DB_S: db_name = "S  ";
-        DB_P: db_name = "P  ";
-        DB_A: db_name = "A  ";
-        DB_SB: db_name = "SB ";
-        default: db_name = "UNDEF";
-    endcase
-endfunction
+// function string db_name(input logic [2:0] x);
+//     case(x)
+//         DB_Z: db_name = "Z  ";
+//         DB_DATA: db_name = "DAT";
+//         DB_PCL: db_name = "PCL";
+//         DB_PCH: db_name = "PCH";
+//         DB_S: db_name = "S  ";
+//         DB_P: db_name = "P  ";
+//         DB_A: db_name = "A  ";
+//         DB_SB: db_name = "SB ";
+//         default: db_name = "UNDEF";
+//     endcase
+// endfunction
 
 
 function string addr_name(input logic [2:0] x);

@@ -5,72 +5,66 @@ module decode (
     input  logic [7:0] opcode,
     input  logic [7:0] pstatus,
     output logic [4:0] op_type,
-    output logic [6:0] db_src, db_dst,
-    output logic [6:0] sb_src, sb_dst,
+    output logic [5:0] src, dst,
     output logic [5:0] alu_op,
     output logic alu_en, upNZ, upV, upC, bit_op,   // alu ctl
-    output logic mem_rd, mem_wr,                    // mem access patterns
     output logic single_byte,                       // single byte opcode
     output logic idx_XY,                            // index on X vs Y
     output logic stack, stack_ap,
     output logic [7:0] set_mask, clear_mask         // set/clear flags
     );
 
-    logic [34:0] ctl_flags;
-    assign {stack, db_dst, sb_dst, db_src, sb_src, alu_op} = ctl_flags;
+    logic [17:0] ctl_flags;
+    assign {dst, src, alu_op} = ctl_flags;
 
     // special case flags
-    logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op;
-    logic take_branch;
-    
+    logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op, take_branch;
+
     // decode datapath and alu opcode
      /* verilator lint_off CASEOVERLAP */
     always_comb begin
-        casez(opcode)     //ctl_flags = {stack, db_dst, sb_dst, db_src, sb_src, alu_op}
-            8'b0??_000_00:  ctl_flags = {1'b0, DB_Z, SB_Z, DB_Z, SB_Z, ALU_NOP};       // control flow and special ops
-            8'b0??_010_00:  ctl_flags = {1'b1, DB_Z, DB_Z, DB_Z, DB_Z, ALU_NOP};       // PUS
-            8'b101_010_00:  ctl_flags = {1'b0, DB_Z, SB_Y, DB_Z, SB_A, ALU_NOP};       // TAY
-            8'b111_010_00:  ctl_flags = {1'b0, DB_Z, SB_X, DB_Z, SB_X, ALU_INC};       // INX
-            8'b110_010_00:  ctl_flags = {1'b0, DB_Z, SB_Y, DB_Z, SB_Y, ALU_INC};       // INY
-            8'b110_010_10:  ctl_flags = {1'b0, DB_Z, SB_X, DB_Z, SB_X, ALU_DEC};       // DEX
-            8'b100_010_00:  ctl_flags = {1'b0, DB_Z, SB_Y, DB_Z, SB_Y, ALU_DEC};       // DEY
-            8'b001_0?1_00:  ctl_flags = {1'b0, DB_Z, SB_Z, DB_M, SB_A, ALU_AND};       // BIT
-            8'b100_110_00:  ctl_flags = {1'b0, DB_Z, SB_A, DB_Z, SB_Y, ALU_NOP};       // TYA
-            8'b100_010_10:  ctl_flags = {1'b0, DB_Z, SB_A, DB_Z, SB_X, ALU_NOP};       // TXA
-            8'b100_110_10:  ctl_flags = {1'b0, DB_Z, SB_S, DB_Z, SB_X, ALU_NOP};       // TXS
-            8'b101_010_10:  ctl_flags = {1'b0, DB_Z, SB_X, DB_Z, SB_A, ALU_NOP};       // TAX
-            8'b101_110_10:  ctl_flags = {1'b0, DB_Z, SB_X, DB_Z, SB_S, ALU_NOP};       // TSX
-            8'b???_1?0_00:  ctl_flags = {1'b0, DB_Z, SB_Z, DB_Z, SB_Z, ALU_NOP};       // branch & mask ops
-            8'b100_??1_00:  ctl_flags = {1'b0, DB_M, SB_DB, DB_Z, SB_Y, ALU_NOP};       // STY
-            8'b100_??1_10:  ctl_flags = {1'b0, DB_M, SB_DB, DB_Z, SB_X, ALU_NOP};       // STX
-            8'b101_???_00:  ctl_flags = {1'b0, DB_Z, SB_Y, DB_M, SB_DB, ALU_NOP};       // LDY
-            8'b100_???_?1:  ctl_flags = {1'b0, DB_M, SB_DB, DB_Z, SB_A,  ALU_NOP};       // STA
-            8'b101_???_?1:  ctl_flags = {1'b0, DB_Z, SB_A, DB_M, SB_DB, ALU_NOP};       // LDA
-            8'b101_???_10:  ctl_flags = {1'b0, DB_Z, SB_X, DB_M, SB_DB, ALU_NOP};       // LDX
-            8'b110_0??_00:  ctl_flags = {1'b0, DB_Z, SB_Z, DB_M, SB_Y, ALU_CMP};       // CPY
-            8'b111_0??_00:  ctl_flags = {1'b0, DB_Z, SB_Z, DB_M, SB_X, ALU_CMP};       // CPX
-            8'b110_???_?1:  ctl_flags = {1'b0, DB_Z, SB_Z, DB_M, SB_A, ALU_CMP};       // CMP
-            8'b111_010_10:  ctl_flags = {1'b0, DB_Z, SB_Z, DB_Z, SB_Z, ALU_NOP};       // NOP
-            8'b000_???_?1:  ctl_flags = {1'b0, DB_Z, SB_A, DB_M, SB_A, ALU_ORA};       // ORA
-            8'b001_???_?1:  ctl_flags = {1'b0, DB_Z, SB_A, DB_M, SB_A, ALU_AND};       // AND
-            8'b010_???_?1:  ctl_flags = {1'b0, DB_Z, SB_A, DB_M, SB_A, ALU_XOR};       // EOR
-            8'b011_???_?1:  ctl_flags = {1'b0, DB_Z, SB_A, DB_M, SB_A, ALU_ADC};       // ADC
-            8'b111_???_?1:  ctl_flags = {1'b0, DB_Z, SB_A, DB_M, SB_A, ALU_SBC};       // SBC
-            8'b000_010_10:  ctl_flags = {1'b0, DB_Z, SB_A, DB_Z, SB_A, ALU_ASL};       // ASL, A  
-            8'b001_010_10:  ctl_flags = {1'b0, DB_Z, SB_A, DB_Z, SB_A, ALU_ROL};       // ROL, A  
-            8'b010_010_10:  ctl_flags = {1'b0, DB_Z, SB_A, DB_Z, SB_A, ALU_LSR};       // LSR, A  
-            8'b011_010_10:  ctl_flags = {1'b0, DB_Z, SB_A, DB_Z, SB_A, ALU_ROR};       // ROR, A  
-            8'b110_???_10:  ctl_flags = {1'b0, DB_M, SB_DB, DB_M, SB_Z, ALU_DEC | ALU_OPB };       // DEC rmw
-            8'b111_???_10:  ctl_flags = {1'b0, DB_M, SB_DB, DB_M, SB_Z, ALU_INC | ALU_OPB };       // INC rmw
-            8'b000_???_10:  ctl_flags = {1'b0, DB_M, SB_DB, DB_M, SB_Z, ALU_ASL | ALU_OPB };       // ASL rmw
-            8'b001_???_10:  ctl_flags = {1'b0, DB_M, SB_DB, DB_M, SB_Z, ALU_ROL | ALU_OPB };       // ROL rmw
-            8'b010_???_10:  ctl_flags = {1'b0, DB_M, SB_DB, DB_M, SB_Z, ALU_LSR | ALU_OPB };       // LSR rmw
-            8'b011_???_10:  ctl_flags = {1'b0, DB_M, SB_DB, DB_M, SB_Z, ALU_ROR | ALU_OPB };       // ROR rmw
-            default:        ctl_flags = {1'b0, DB_Z, SB_DB, DB_Z, SB_Z, ALU_NOP};       // nop
+        casez(opcode)     //ctl_flags = {dst, src,  alu_op}
+            8'b0??_000_00:  ctl_flags = {REG_Z, REG_Z, ALU_NOP};       // control flow and special ops
+            8'b0??_010_00:  ctl_flags = {REG_Z, REG_Z, ALU_NOP};       // PUS
+            8'b101_010_00:  ctl_flags = {REG_Y, REG_A, ALU_NOP};       // TAY
+            8'b111_010_00:  ctl_flags = {REG_X, REG_X, ALU_INC};       // INX
+            8'b110_010_00:  ctl_flags = {REG_Y, REG_Y, ALU_INC};       // INY
+            8'b110_010_10:  ctl_flags = {REG_X, REG_X, ALU_DEC};       // DEX
+            8'b100_010_00:  ctl_flags = {REG_Y, REG_Y, ALU_DEC};       // DEY
+            8'b001_0?1_00:  ctl_flags = {REG_Z, REG_A, ALU_AND};       // BIT
+            8'b100_110_00:  ctl_flags = {REG_A, REG_Y, ALU_NOP};       // TYA
+            8'b100_010_10:  ctl_flags = {REG_A, REG_X, ALU_NOP};       // TXA
+            8'b100_110_10:  ctl_flags = {REG_S, REG_X, ALU_NOP};       // TXS
+            8'b101_010_10:  ctl_flags = {REG_X, REG_A, ALU_NOP};       // TAX
+            8'b101_110_10:  ctl_flags = {REG_X, REG_S, ALU_NOP};       // TSX
+            8'b???_1?0_00:  ctl_flags = {REG_Z, REG_Z, ALU_NOP};       // branch & mask ops
+            8'b100_??1_00:  ctl_flags = {REG_D, REG_Y, ALU_NOP};       // STY
+            8'b100_??1_10:  ctl_flags = {REG_D, REG_X, ALU_NOP};       // STX
+            8'b101_???_00:  ctl_flags = {REG_Y, REG_D, ALU_NOP};       // LDY
+            8'b100_???_?1:  ctl_flags = {REG_D, REG_A,  ALU_NOP};       // STA
+            8'b101_???_?1:  ctl_flags = {REG_A, REG_D, ALU_NOP};       // LDA
+            8'b101_???_10:  ctl_flags = {REG_X, REG_D, ALU_NOP};       // LDX
+            8'b110_0??_00:  ctl_flags = {REG_Z, REG_Y, ALU_CMP};       // CPY
+            8'b111_0??_00:  ctl_flags = {REG_Z, REG_X, ALU_CMP};       // CPX
+            8'b110_???_?1:  ctl_flags = {REG_Z, REG_A, ALU_CMP};       // CMP
+            8'b111_010_10:  ctl_flags = {REG_Z, REG_Z, ALU_NOP};       // NOP
+            8'b000_???_?1:  ctl_flags = {REG_A, REG_A, ALU_ORA};       // ORA
+            8'b001_???_?1:  ctl_flags = {REG_A, REG_A, ALU_AND};       // AND
+            8'b010_???_?1:  ctl_flags = {REG_A, REG_A, ALU_XOR};       // EOR
+            8'b011_???_?1:  ctl_flags = {REG_A, REG_A, ALU_ADC};       // ADC
+            8'b111_???_?1:  ctl_flags = {REG_A, REG_A, ALU_SBC};       // SBC
+            8'b000_010_10:  ctl_flags = {REG_A, REG_A, ALU_ASL};       // ASL, A  
+            8'b001_010_10:  ctl_flags = {REG_A, REG_A, ALU_ROL};       // ROL, A  
+            8'b010_010_10:  ctl_flags = {REG_A, REG_A, ALU_LSR};       // LSR, A  
+            8'b011_010_10:  ctl_flags = {REG_A, REG_A, ALU_ROR};       // ROR, A  
+            8'b110_???_10:  ctl_flags = {REG_D, REG_D, ALU_DEC | ALU_OPB };       // DEC rmw
+            8'b111_???_10:  ctl_flags = {REG_D, REG_D, ALU_INC | ALU_OPB };       // INC rmw
+            8'b000_???_10:  ctl_flags = {REG_D, REG_D, ALU_ASL | ALU_OPB };       // ASL rmw
+            8'b001_???_10:  ctl_flags = {REG_D, REG_D, ALU_ROL | ALU_OPB };       // ROL rmw
+            8'b010_???_10:  ctl_flags = {REG_D, REG_D, ALU_LSR | ALU_OPB };       // LSR rmw
+            8'b011_???_10:  ctl_flags = {REG_D, REG_D, ALU_ROR | ALU_OPB };       // ROR rmw
+            default:        ctl_flags = {REG_Z, REG_Z, ALU_NOP};       // nop
         endcase
-
-        mem_rd = db_src[0];
-        mem_wr = db_dst[0];
 
         alu_en = (alu_op != ALU_NOP);
         adc_sbc_op = &alu_op[4:3];
@@ -80,14 +74,15 @@ module decode (
         bit_op = opcode ==? 8'b001_0?1_00;
         // inc_op = opcode ==? 8'b11?_010_00 || opcode ==? 8'b111_???_10;
 
+        stack = opcode ==? 8'b0??_010_00;
         stack_ap = opcode[6]; // high for PHA,PLA, low for PHP,PLP
 
         // update status flags (BIT opcodes are special case handled elsewhere...)
         // update N&Z bits on any write to a,x,y regs and all alu ops
-        case(sb_dst)
-            SB_A:      upNZ=1;
-            SB_X:      upNZ=1;
-            SB_Y:      upNZ=1;
+        case(dst)
+            REG_A:      upNZ=1;
+            REG_X:      upNZ=1;
+            REG_Y:      upNZ=1;
             default:    upNZ=alu_en & !stack;
         endcase
         // set v flag on ADC and SBC
@@ -116,7 +111,7 @@ module decode (
         single_byte = (opcode == 8'h0) || (opcode ==? 8'b???_?10_?0);
 
         // X vs Y indexing
-        idx_XY = (opcode ==? 8'b???_1?0_?1 || opcode ==? 8'b10?_1?1_1?) ? IDX_Y : IDX_X;
+        idx_XY = (opcode ==? 8'b???_1?0_?1 || opcode ==? 8'b10?_1?1_1?) ? 1'b0 : 1'b1;
 
         // branch logic
         case(opcode[7:6])
