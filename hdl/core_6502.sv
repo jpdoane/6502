@@ -57,11 +57,96 @@ module core_6502 #(
     logic inc_pc;
     logic exec, write_mem;
     logic jump, handle_int;
-    logic hold_addr, hold_alu;
+    logic hold_alu;
+
+
+    // ADDRESS BUS
+    logic [7:0] adl,adh;
+    always @(posedge clk ) begin
+        if (rst) begin
+            addr <= 0;
+        end else begin
+            addr <= {adh, adl};
+            if(reg_set_en) addr <= pc_set;
+        end
+    end
+    always @(*) begin
+        case(adl_src)
+            ADDR_DATA:  adl = data_i;
+            ADDR_ALU:   adl = alu_out;
+            ADDR_INT:   adl = rst_event ? RST_VECTOR[7:0] :
+                              nmi_event ? NMI_VECTOR[7:0] :
+                              IRQ_VECTOR[7:0];
+            ADDR_STACK: adl = s;
+            ADDR_HOLD:  adl = addr[7:0];
+            default:    adl = pcl; //ADDR_PC
+        endcase
+        case(adh_src)
+            ADDR_DATA:  adh = data_i;
+            ADDR_ALU:   adh = alu_out;
+            ADDR_Z:     adh = 8'b0;
+            ADDR_INT:   adh = rst_event ? RST_VECTOR[15:8] :
+                              nmi_event ? NMI_VECTOR[15:8] :
+                              IRQ_VECTOR[15:8];
+            ADDR_STACK: adh = STACKPAGE;
+            ADDR_HOLD:  adh = addr[15:8];
+            default:    adh = pch; //ADDR_PC
+        endcase
+    end
+
+
+    // internal buses
+    // the real 6502 updates bus states on subcycles using out of phase clocks m1,m2)
+    // e.g. when executing an alu operation on the first subcycle the sb bus carries an operand
+    // and on the second subcycle the sb bus carries the result.
+    // in order to represent the same timing with a single clock, we implement two sets of busses
+    logic [7:0] sb, sb_result, db, db_result;
+    always_comb begin
+        
+        case(sb_src)
+            SB_A :   sb = a;
+            SB_X :   sb = x;
+            SB_Y :   sb = y;
+            SB_S :   sb = s;
+            SB_ADD : sb = add;
+            // SB_ADH : sb = adh;
+            SB_DB :  sb = data;
+            default: sb = 0;
+        endcase
+
+        if (alu_en) sb_result = alu_out;
+        else begin
+            case(sb_src_exec)
+                SB_A :   sb_result = a;
+                SB_X :   sb_result = x;
+                SB_Y :   sb_result = y;
+                SB_S :   sb_result = s;
+                SB_ADD : sb_result = alu_out;
+                SB_DB :  sb_result = data;
+                default: sb_result = 0;
+            endcase
+        end
+        
+        db = data_i;
+
+        if(exec & mem_wr) begin
+            if(rmw)         db_result = alu_out;
+            else            db_result = sb_result;
+        end else if(push) begin
+            case(stack_addr)
+                STACK_A:    db_result = a;
+                STACK_P:    db_result = irq_event ? p : p | FL_BU; // set break flags unless irq
+                STACK_PCH:  db_result = pch;
+                STACK_PCL:  db_result = pcl;
+                default:    db_result = data_i;
+            endcase
+        end
+        else db_result = data_i;
+    end
 
     // i/o data registers
     assign RW = !write_mem;
-    logic [7:0] data, push_data;
+    logic [7:0] data;
 
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -72,56 +157,17 @@ module core_6502 #(
             // TODO: when to we need this?
             // if(rdy) data <= data_i;
             data <= data_i;
-
-            if(exec & mem_wr) dor <= rmw ? alu_out : sb_result;
-            else if(push) dor <= push_data;
-            else dor <= data_i;
+            dor <= db_result;
             write_mem <= write_back | push | (exec & mem_wr);
-
 
             `ifdef DEBUG_REG
                 if(reg_set_en || debug_clear) begin
                     write_mem <= 0;
                 end
             `endif
-
         end
     end
 
-    // ADDRESS BUS
-    logic [7:0] adl,adh;
-    always @(posedge clk ) begin
-        if (rst) begin
-            addr <= 0;
-        end else begin
-            if(!hold_addr) addr <= {adh, adl};
-            if(reg_set_en) addr <= pc_set;
-        end
-    end
-    always @(*) begin
-        case(adl_src)
-            ADDR_DATA: adl = data_i;
-            ADDR_ALU: adl = alu_out;
-            ADDR_Z: adl = 8'b0;
-            ADDR_INT: adl = rst_event ? RST_VECTOR[7:0] :
-                            nmi_event ? NMI_VECTOR[7:0] :
-                            IRQ_VECTOR[7:0];
-            ADDR_STACK: adl = s;
-            ADDR_HOLD: adl = addr[7:0];
-            default: adl = pcl; //ADDR_PC
-        endcase
-        case(adh_src)
-            ADDR_DATA: adh = data_i;
-            ADDR_ALU: adh = alu_out;
-            ADDR_Z: adh = 8'b0;
-            ADDR_INT: adh = rst_event ? RST_VECTOR[15:8] :
-                            nmi_event ? NMI_VECTOR[15:8] :
-                            IRQ_VECTOR[15:8];
-            ADDR_STACK: adh = STACKPAGE;
-            ADDR_HOLD: adh = addr[15:8];
-            default: adh = pch; //ADDR_PC
-        endcase
-    end
 
     // PC
     logic [15:0] pc, pc_next /*verilator public_flat*/;
@@ -238,46 +284,6 @@ module core_6502 #(
         .clear_mask     (clear_mask)
     );
 
-    // internal buses
-    // the real 6502 updates bus states on subcycles using out of phase clocks m1,m2)
-    // e.g. when executing an alu operation on the first subcycle the sb bus carries an operand
-    // and on the second subcycle the sb bus carries the result.
-    // in order to represent the same timing with a single clock, we implement two sets of busses
-    logic [7:0] sb, sb_result, db, sb_r, db_r;
-    always @(posedge clk ) begin
-        sb_r <= sb;
-        db_r <= db;
-    end
-    always_comb begin
-        
-        case(sb_src)
-            SB_A :   sb = a;
-            SB_X :   sb = x;
-            SB_Y :   sb = y;
-            SB_S :   sb = s;
-            SB_ADD : sb = add;
-            // SB_ADH : sb = adh;
-            SB_DB :  sb = db_r;
-            default: sb = 0;
-        endcase
-
-        if (alu_en) sb_result = alu_out;
-        else begin
-            case(sb_src_exec)
-                SB_A :   sb_result = a;
-                SB_X :   sb_result = x;
-                SB_Y :   sb_result = y;
-                SB_S :   sb_result = s;
-                SB_ADD : sb_result = alu_out;
-                // SB_ADH : sb_result = adh;
-                SB_DB :  sb_result = data;
-                default: sb_result = 0;
-            endcase
-        end
-        
-        db = data_i;
-    end
-
     // stack
     logic push, pull, pull_r;
     logic [1:0] stack_addr, stack_addr_r;
@@ -324,16 +330,6 @@ module core_6502 #(
         `endif 
 
         end
-    end
-
-    always_comb begin
-        case(stack_addr)
-            STACK_A:    push_data = a;
-            STACK_P:    push_data = irq_event ? p : p | FL_BU; // set break flags unless irq
-            STACK_PCH:  push_data = pch;
-            STACK_PCL:  push_data = pcl;
-            default:    push_data = 0;
-        endcase
     end
 
     //alu
@@ -472,7 +468,6 @@ module core_6502 #(
         adh_src     = ADDR_PC;
         inc_pc      = 0;
         hold_alu    = 0;
-        hold_addr   = 0;
         exec        = 0;
         write_back  = 0;
         jump        = 0;
@@ -530,7 +525,6 @@ module core_6502 #(
                     OP_ZPG: begin
                         {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
                         inc_pc = 0;
-                        // todo!!
                         if(rmw) toTrmw = 1;
                         else begin
                             Tlast = 1;
@@ -650,11 +644,6 @@ module core_6502 #(
                 end
             T4: begin
                 case(op_type)
-                    OP_ZXY, OP_ABS:  // rmw fetch
-                    begin
-                        hold_addr = 1;
-                        write_back = 1;
-                    end
                     OP_AXY: begin
                         {adh_src, adl_src} = {ADDR_ALU, ADDR_HOLD};
                         alu_op = aluC_reg ? ALU_INB : ALU_ORA;
@@ -785,11 +774,11 @@ module core_6502 #(
                 end      
 
             TRMW1: begin
-                    hold_addr = 1;
+                    {adh_src, adl_src} = {ADDR_HOLD, ADDR_HOLD};
                     write_back = 1;
                     end
             TRMW2: begin
-                    hold_addr = 1;
+                    {adh_src, adl_src} = {ADDR_HOLD, ADDR_HOLD};
                     exec = 1;
                     Tlast = 1;
                     end
