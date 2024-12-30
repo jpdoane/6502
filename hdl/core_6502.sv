@@ -1,30 +1,6 @@
 `timescale 1ns/1ps
 `include "6502_defs.vh"
 
-// 6502 uses level-triggered logic with latches that are updated during clk=1
-// FPGA uses edge-triggered logic with registers loaded on posedge(clk)
-// thus latches loaded during clk_m1 phase should be implemented as registers triggered on posedge(m2) and vice versa 
-
-// unlike 6502 latches, registers are not transparent, cannot forward updated state on same clock,
-// so several in several cases we will need special logic
-
-// 2-byte, 2 cycle opcode summary:
-// https://www.nesdev.org/wiki/Visual6502wiki/6502_Timing_States
-//
-//      OP 1                            OP 2
-//      ----------------------------    ---------------
-// m1   T0: PC => addr                   
-// m2   T0: bus => data_reg              
-// m1   T1: data => ir, PC+1 => addr
-// m2   T1: bus => data_reg, decode
-// m1   T2: data_reg => alu (via DB)    T0: PC => addr
-// m2   T2: alu=>add                    T0: bus => data_reg
-// m1     : add=>a                      T1: data => ir, PC+1 => addr
-// m2                                   T1: bus => data_reg, decode
-// m1                                   T2: data_reg => alu (via DB)
-// m2                                   T2: alu=>add
-// m1                                       add=>a
-
 module core_6502 #(
     parameter NMI_VECTOR=16'hfffa,
     parameter RST_VECTOR=16'hfffc,
@@ -33,8 +9,7 @@ module core_6502 #(
     parameter INITIAL_STACK=8'hfd
     )
     (
-    input  logic clk_m1,
-    input  logic clk_m2,
+    input  logic clk,
     input  logic rst,
     input  logic [7:0] data_i,
     input  logic READY,
@@ -91,7 +66,7 @@ module core_6502 #(
 
     // i/o data registers
     logic [7:0] data, push_data;
-    always_ff @(posedge clk_m1) begin
+    always_ff @(posedge clk) begin
         if (rst) begin
             data <= 0;
             dor <= 0;
@@ -119,7 +94,7 @@ module core_6502 #(
 
     // ADDRESS BUS
     // external address bus updated on m1
-    always @(posedge clk_m1 ) begin
+    always @(posedge clk ) begin
         if (rst) begin
             addr <= 0;
         end else begin
@@ -133,7 +108,7 @@ module core_6502 #(
     always @(*) begin
         case(adl_src)
             ADDR_DATA: adl = data_i;
-            ADDR_ALU: adl = add;
+            ADDR_ALU: adl = alu_out;
             ADDR_Z: adl = 8'b0;
             ADDR_INT: adl = rst_event ? RST_VECTOR[7:0] :
                             nmi_event ? NMI_VECTOR[7:0] :
@@ -144,7 +119,7 @@ module core_6502 #(
         endcase
         case(adh_src)
             ADDR_DATA: adh = data_i;
-            ADDR_ALU: adh = add;
+            ADDR_ALU: adh = alu_out;
             ADDR_Z: adh = 8'b0;
             ADDR_INT: adh = rst_event ? RST_VECTOR[15:8] :
                             nmi_event ? NMI_VECTOR[15:8] :
@@ -170,7 +145,7 @@ module core_6502 #(
         pch = pc_next[15:8];
     end
 
-    always @(posedge clk_m1 ) begin
+    always @(posedge clk ) begin
         if (rst) begin
             pc <= RST_VECTOR;
         end else begin
@@ -194,7 +169,7 @@ module core_6502 #(
     //instruction pointer: pc of current opcode
     //unused by core, but helpful for debug
     (* mark_debug = "true" *)  logic [15:0] ip;
-    always @(posedge clk_m1 ) begin
+    always @(posedge clk ) begin
         if (rst) ip <= RST_VECTOR;
         else if (sync && rdy) ip <= addr;
     end
@@ -202,7 +177,7 @@ module core_6502 #(
     logic nmi_event, nmi_handled, irq_event, rst_event;
     logic fetch_intr;
     wire IRQ_masked = IRQ && !p[2];
-    always @(posedge clk_m1 ) begin
+    always @(posedge clk ) begin
         if (rst) begin
             nmi_event <= 0;
             irq_event <= 0;
@@ -232,7 +207,7 @@ module core_6502 #(
     end
 
     // opcode fetch and interrupt injection
-    always @(posedge clk_m1 ) begin
+    always @(posedge clk ) begin
         if (rst) ir <= 0;  //break from RESET_VECTOR
         else if (sync && rdy) ir <= data_i;
 
@@ -287,7 +262,7 @@ module core_6502 #(
     // and on the second subcycle the sb bus carries the result.
     // in order to represent the same timing with a single clock, we implement two sets of busses
     logic [7:0] sb, sb_result, db, sb_r, db_r;
-    always @(posedge clk_m1 ) begin
+    always @(posedge clk ) begin
         sb_r <= sb;
         db_r <= db;
     end
@@ -299,20 +274,20 @@ module core_6502 #(
             SB_Y :   sb = y;
             SB_S :   sb = s;
             SB_ADD : sb = add;
-            SB_ADH : sb = adh;
+            // SB_ADH : sb = adh;
             SB_DB :  sb = db_r;
             default: sb = 0;
         endcase
 
-        if (alu_en) sb_result = add;
+        if (alu_en) sb_result = alu_out;
         else begin
             case(sb_src_exec)
                 SB_A :   sb_result = a;
                 SB_X :   sb_result = x;
                 SB_Y :   sb_result = y;
                 SB_S :   sb_result = s;
-                SB_ADD : sb_result = add;
-                SB_ADH : sb_result = adh;
+                SB_ADD : sb_result = alu_out;
+                // SB_ADH : sb_result = adh;
                 SB_DB :  sb_result = data;
                 default: sb_result = 0;
             endcase
@@ -331,7 +306,7 @@ module core_6502 #(
     parameter STACK_PCL = 2'h2;
     parameter STACK_PCH = 2'h3;
 
-    always @(posedge clk_m1 ) begin
+    always @(posedge clk ) begin
         if (rst) begin
             pull_r <= 0;
             stack_addr_r <= 0;
@@ -392,8 +367,9 @@ module core_6502 #(
     // we are also cheating here a bit by using the registered addr than adl/adh bus, but this accomplishes the same effect
     assign  alu_ai = adl_add ? addr[7:0] :
                      adh_add ? addr[15:8] :
+                     holdalu ? add:
                      sb;
-    assign alu_bi = data; 
+    assign alu_bi = holdalu ? 0 : data; 
 
     alu u_alu(
         .op     (alu_op  ),
@@ -405,15 +381,9 @@ module core_6502 #(
         .aluC   (aluC)
     );
 
-    always @(posedge clk_m2 ) begin
-        if (rst) begin
-            add <= 0;
-            // aluC_reg <= 0;
-        end
-        else if (!holdalu) begin
-            add <= alu_out;
-            // aluC_reg <= aluC;
-        end
+    always @(posedge clk ) begin
+        if (rst) add <= 0;
+        else add <= alu_out;
     end
 
     // result
@@ -423,25 +393,11 @@ module core_6502 #(
     assign resultN = bit_op ? alu_bi[7] : sb_result[7];
 
     logic [7:0] alu_reg;
-    always @(posedge clk_m1) alu_reg <= alu_out;
-
-    // always @(*) begin
-    //     // TODO: ugh do this differently...
-    //     if      (write_p)        result = p | FL_B;
-    //     else if (write_pcl)      result = pcl;
-    //     else if (write_pch)      result = pch;
-    //     else if (write_back)     result = data;
-    //     else if (rmw)            result = alu_reg; //TODO: ugh!!
-    //     else if (alu_en)         result = add; //TODO: ugh!!
-    //     else if (db_src[0])      result = data;
-    //     else if (db_src[1])          result = p;
-    //     else                     result = sb;
-
-    // end
+    always @(posedge clk) alu_reg <= alu_out;
 
 
     //update registers
-    always @(posedge clk_m1 ) begin
+    always @(posedge clk ) begin
         if (rst) begin
             a <= 0;
             x <= 0;
@@ -471,7 +427,7 @@ module core_6502 #(
 
             end
 
-            if ((push | pull | up_s) & !hold_s) s <= add;
+            if ((push | pull | up_s) & !hold_s) s <= alu_out;
             if (read_a) begin
                 a <= db;
                 p[1] <= ~|db;
@@ -503,7 +459,7 @@ module core_6502 #(
 
     //state machine
     logic Tlast;
-    always @(posedge clk_m1 ) begin
+    always @(posedge clk ) begin
         if (rst) begin
             state <= T1;
         end
@@ -525,7 +481,7 @@ module core_6502 #(
     logic aluC_reg, aluN_reg;
     logic write_back;
     logic bpage_up, bpage_down;
-    always @(posedge clk_m1 ) begin
+    always @(posedge clk ) begin
         aluN_reg <= alu_out[7];
         aluC_reg <= aluC;
     end
@@ -1093,7 +1049,7 @@ module core_6502 #(
             p_dbg = p;
         end
         int cycle;
-        always_ff @(posedge clk_m1) begin
+        always_ff @(posedge clk) begin
             debug_clear <= 0;
             cycle <= cycle+1;
             if (state==T_DEBUG) begin

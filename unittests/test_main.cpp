@@ -14,7 +14,7 @@
 
 
 void dump_regs(const std::unique_ptr<Vcore_6502> &top,
-                const std::vector<uint8_t> &ram)
+                const std::vector<uint8_t> &ram, int cycle)
 {
 
     char pstr[] = "nv-bdizc";
@@ -23,27 +23,21 @@ void dump_regs(const std::unique_ptr<Vcore_6502> &top,
 		if( i!=5 && (p>>i) & 0x1 ) pstr[7-i] -= 32;
 
 	// printf("m1:%d AB:%04X D:%02X PC:%04X IR:%02X SB:%02X ALU:%02X A:%02X S:%02X X:%02X Y:%02X P:%02X(%s)",
-	printf("clk1:%d AB:%04X D:%02X PC:%04X A:%02X S:%02X X:%02X Y:%02X P:%02X(%s)",
-		   top->clk_m1,
+	printf("cycle %d: AB:%04X D:%02X PC:%04X A:%02X S:%02X X:%02X Y:%02X P:%02X(%s)",
+            cycle,
 		   top->addr,
 		   top->data_i,
 		   top->pc_dbg,
-		//    readIR(state),
-		//    readSB(state),
-		//    readALU(state),
 		   top->a_dbg,
 		   top->s_dbg,
 		   top->x_dbg,
 		   top->y_dbg,
 		   p, pstr);
                
-        if (top->clk_m2) {
-            if (top->RW)
-            printf(" R$%04X=$%02X", top->addr, ram[top->addr]);
-            else
-            printf(" W$%04X=$%02X", top->addr, top->dor);
-        }
-        printf("\n");
+        if (top->RW)
+            printf(" R$%04X=$%02X\n", top->addr, ram[top->addr]);
+        else
+            printf(" W$%04X=$%02X\n", top->addr, top->dor);
 
     // std::cout << std::hex << "REGS: pc=" << (int) top->pc_dbg <<
     //             ", s=" << (int) top->s_dbg <<
@@ -59,6 +53,7 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
                 std::vector<uint8_t> &ram,
                 int verbose = 0,
                 VerilatedFstC* tfp = nullptr,
+                int cycle = 0,
                 int disable_write=0)
 {
 
@@ -66,13 +61,12 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         top->eval();
 
         // record second half of cycle...
-        if(verbose) dump_regs(top, ram);
         if (tfp) tfp->dump(Verilated::time());
+        if(verbose) dump_regs(top, ram, cycle);
 
         // clock rising edge
         context->timeInc(1);
-        top->clk_m1 = 1;
-        top->clk_m2 = 0;
+        top->clk = 1;
         top->eval();
 
 
@@ -94,13 +88,11 @@ void clock_cpu(const std::unique_ptr<VerilatedContext> &context,
         top->eval();
 
         // record first half of cycle...
-        if(verbose) dump_regs(top, ram);
         if (tfp) tfp->dump(Verilated::time());
 
         // clock falling edge
         context->timeInc(1);
-        top->clk_m1 = 0;
-        top->clk_m2 = 1;
+        top->clk = 0;
         top->eval();
 
         // mem as immediate
@@ -219,13 +211,13 @@ int run_test(const std::unique_ptr<VerilatedContext> &context,
         auto cycle = test.cycles[i];
         
         rv += check_cycle(top, ram, cycle, i);
-        clock_cpu(context, top, ram, verbose, tfp);
+        clock_cpu(context, top, ram, verbose, tfp, i);
     }
 
     auto pc = top->pc_dbg;
-    clock_cpu(context, top, ram, verbose, tfp);
+    clock_cpu(context, top, ram, verbose, tfp, test.cycles.size());
     rv += check_state(test.fin, pc, top, ram);
-    clock_cpu(context, top, ram, verbose, tfp);
+    clock_cpu(context, top, ram, verbose, tfp, test.cycles.size()+1);
 
     if(rv){
         if(verbose)
