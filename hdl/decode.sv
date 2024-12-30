@@ -10,7 +10,6 @@ module decode (
     output logic [5:0] alu_op,
     output logic alu_en, upNZ, upV, upC, bit_op,   // alu ctl
     output logic mem_rd, mem_wr,                    // mem access patterns
-    output logic take_branch,
     output logic single_byte,                       // single byte opcode
     output logic idx_XY,                            // index on X vs Y
     output logic stack, stack_ap,
@@ -22,6 +21,7 @@ module decode (
 
     // special case flags
     logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op;
+    logic take_branch;
     
     // decode datapath and alu opcode
      /* verilator lint_off CASEOVERLAP */
@@ -143,7 +143,7 @@ module decode (
             8'b010_011_00:  op_type = OP_JUM;         
             8'b011_011_00:  op_type = OP_JIN;
             8'b???_011_??:  op_type = OP_ABS;          
-            8'b???_100_00:  op_type = OP_BRA;           
+            8'b???_100_00:  op_type = take_branch ? OP_BRA : OP_BNT;           
             8'b???_100_?1:  op_type = OP_INY;         
             8'b???_101_??:  op_type = OP_ZXY;        
             8'b???_110_?1,

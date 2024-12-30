@@ -35,7 +35,8 @@ parameter OP_PUS      = 5'h0c;   // php,pha
 parameter OP_PUL      = 5'h0d;   // plp,pha
 parameter OP_JUM      = 5'h0e;   // jmp abs
 parameter OP_JIN      = 5'h0f;   // jmp ind
-parameter OP_BRA      = 5'h10;   // conditional branch
+parameter OP_BRA      = 5'h10;   // conditional branch, taken
+parameter OP_BNT      = 5'h11;   // conditional branch, not taken
 parameter OP_JAM      = 5'h1f;
 
 
