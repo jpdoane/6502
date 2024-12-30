@@ -18,6 +18,8 @@ parameter T0T2    =8'b10100000;
 parameter T_JAM   =8'b00000000;
 parameter T_DEBUG =8'b11111111;
 
+parameter TRMW1   =8'b00010010;
+parameter TRMW2   =8'b00001001;
 
 parameter OP_BRK      = 5'h00;   // BRK
 parameter OP_JSR      = 5'h01;   // JSR

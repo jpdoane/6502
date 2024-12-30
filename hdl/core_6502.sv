@@ -77,6 +77,14 @@ module core_6502 #(
             else if(push) dor <= push_data;
             else dor <= data_i;
             write_mem <= write_back | push | (exec & mem_wr);
+
+
+            `ifdef DEBUG_REG
+                if(reg_set_en || debug_clear) begin
+                    write_mem <= 0;
+                end
+            `endif
+
         end
     end
 
@@ -417,7 +425,7 @@ module core_6502 #(
     end
 
     //state machine
-    logic Tlast, skipT0;
+    logic Tlast, toT1, toTrmw;
     always @(posedge clk ) begin
         if (rst) begin
             Tstate <= T1;
@@ -425,8 +433,9 @@ module core_6502 #(
         else if (rdy) begin
 
             Tstate <=   Tlast ? T0 :
-                        skipT0 ? T1 : 
+                        toT1 ? T1 : 
                         two_cycle ? T0T2 :
+                        toTrmw ? TRMW1 : 
                         Tstate >> 1;
 
             `ifdef DEBUG_REG
@@ -456,27 +465,29 @@ module core_6502 #(
     logic jsr_push, hold_s, up_s;
     always @(*) begin
         Tlast       = 0;
-        skipT0      = 0;
+        toT1        = 0;
+        toTrmw      = 0;
+
         adl_src     = ADDR_PC;
         adh_src     = ADDR_PC;
         inc_pc      = 0;
         hold_alu    = 0;
         hold_addr   = 0;
         exec        = 0;
-        write_back = 0;
+        write_back  = 0;
         jump        = 0;
         sync        = 0;
         handle_int  = 0;
-        adl_add      = 0;
-        adh_add      = 0;
-        r_idx        = idx_XY ? SB_X : SB_Y;
+        adl_add     = 0;
+        adh_add     = 0;
+        r_idx       = idx_XY ? SB_X : SB_Y;
         
         stack_addr = stack_ap ? STACK_A : STACK_P;
-        push = 0;
-        pull = 0;
-        jsr_push     = 0;
-        hold_s       = 0;
-        up_s         = 0;
+        push        = 0;
+        pull        = 0;
+        jsr_push    = 0;
+        hold_s      = 0;
+        up_s        = 0;
 
         store = (sb_dst == SB_DB) & !alu_en;
 
@@ -511,23 +522,27 @@ module core_6502 #(
                 end
             T0T2: begin
                 inc_pc = !single_byte;
-                skipT0 = 1;
+                toT1 = 1;
                 end
             T2: begin
                 inc_pc = 1;
                 case(op_type)
                     OP_ZPG: begin
                         {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
-                        exec = store;
                         inc_pc = 0;
-                        Tlast = 1;
+                        // todo!!
+                        if(rmw) toTrmw = 1;
+                        else begin
+                            Tlast = 1;
+                            exec = store;
+                        end
                     end
                     OP_ZXY, OP_XIN, OP_INY: begin
                         inc_pc = 0;
                         {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
                     end
                     OP_BNT: begin
-                        skipT0 = 1;
+                        toT1 = 1;
                     end
                     OP_PUS: begin
                         inc_pc = 0;
@@ -564,7 +579,8 @@ module core_6502 #(
                         sb_src = r_idx;
                         alu_op = ALU_SUM;
                         {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};
-                        if(!rmw) begin
+                        if(rmw) toTrmw = 1;
+                        else begin
                             Tlast = 1;
                             exec = store;
                         end
@@ -581,7 +597,8 @@ module core_6502 #(
                     end
                     OP_ABS: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
-                        if(!rmw) begin
+                        if(rmw) toTrmw = 1;
+                        else begin
                             Tlast = 1;
                             exec = store;
                         end
@@ -596,12 +613,12 @@ module core_6502 #(
                         adl_add = 1;
                         {adh_src, adl_src} = {ADDR_PC, ADDR_ALU};
                         jump = 1;
-                        skipT0 = (!bpage_up & !bpage_down);
+                        toT1 = (!bpage_up & !bpage_down);
                     end
                     OP_JUM: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         jump = 1;
-                        skipT0 = 1;
+                        toT1 = 1;
                     end
                     OP_JIN: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
@@ -615,16 +632,10 @@ module core_6502 #(
                         push = 1;
                     end
                     OP_JSR: begin
-
-                        // push pch onto stack (via pc)
-                        push = 1;
+                        push = 1;// push pch onto stack (via pc)
                         stack_addr = STACK_PCH;
-                        
-                        // but dont do a real push, set s to adl which is currently in alu
-                        jsr_push = 1;
-
-                        // hold addr at stack 
-                        {adh_src, adl_src} = {ADDR_STACK, ADDR_HOLD};
+                        jsr_push = 1;   // but dont do a real push, set s to adl which is currently in alu
+                        {adh_src, adl_src} = {ADDR_STACK, ADDR_HOLD}; // hold addr at stack 
                     end
                     OP_RTS: begin
                         pull = 1;
@@ -647,7 +658,8 @@ module core_6502 #(
                     OP_AXY: begin
                         {adh_src, adl_src} = {ADDR_ALU, ADDR_HOLD};
                         alu_op = aluC_reg ? ALU_INB : ALU_ORA;
-                        if(!rmw) begin
+                        if(rmw) toTrmw = 1;
+                        else begin
                             Tlast = 1;
                             exec = store;
                         end
@@ -668,7 +680,7 @@ module core_6502 #(
                         alu_op = aluN_reg ? ALU_DEC : ALU_INC; //inc or dec
                         {adh_src, adl_src} = {ADDR_ALU, ADDR_PC};
                         jump = 1;
-                        skipT0 = 1;
+                        toT1 = 1;
                     end
                     OP_JIN: begin
                         alu_op = ALU_INC;
@@ -700,15 +712,6 @@ module core_6502 #(
                 end
             T5: begin
                 case(op_type)
-                    OP_ZXY, OP_ABS: begin
-                        hold_addr = 1;
-                        exec = 1;
-                        Tlast = 1;
-                    end
-                    OP_AXY: begin
-                        hold_addr = 1;
-                        write_back = 1;
-                    end
                     OP_XIN: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         Tlast = 1;
@@ -723,7 +726,7 @@ module core_6502 #(
                     OP_JIN: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         jump = 1;
-                        skipT0 = 1;
+                        toT1 = 1;
                     end
                     OP_BRK: begin
                         {adh_src, adl_src} = {ADDR_INT, ADDR_INT};
@@ -748,50 +751,53 @@ module core_6502 #(
                 end                
             T6: begin
                 case(op_type)
-                    OP_AXY: begin
-                        hold_addr = 1;
-                        Tlast = 1;
-                        exec = 1;
-                    end
                     OP_BRK: begin
                         jump = 1;
                         inc_pc = 1;
                     end
                     OP_JSR: begin
-
                         //read in ADH, and restore ADL from stack and jump to new addr
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_STACK}; 
                         jump = 1;
-
                         // restore stack from alu
                         hold_alu = 1;
                         up_s = 1;
-
-                        skipT0 = 1;
+                        toT1 = 1;
                     end
                     OP_RTI: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         jump = 1;
-                        skipT0 = 1;
+                        toT1 = 1;
                     end
                     default: begin end
                 endcase
                 end      
-                T7: begin
-                    case(op_type)
-                        OP_BRK: begin
-                            {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
-                            jump = 1;
-                            handle_int = 1; // TODO: ?
-                            skipT0 = 1;
-                        end
-                        default: begin end
-                    endcase
-                    end      
-    
-                default: begin
+            T7: begin
+                case(op_type)
+                    OP_BRK: begin
+                        {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
+                        jump = 1;
+                        handle_int = 1; // TODO: ?
+                        toT1 = 1;
+                    end
+                    default: begin end
+                endcase
+                end      
+
+            TRMW1: begin
+                    hold_addr = 1;
+                    write_back = 1;
+                    end
+            TRMW2: begin
+                    hold_addr = 1;
+                    exec = 1;
+                    Tlast = 1;
+                    end
+
+            default: begin
                 // $display("6502 jammed at pc=0x%4h", pc);
                 end                
+    
         endcase
 
         if (push & !jsr_push) begin
@@ -820,7 +826,6 @@ module core_6502 #(
                 exec = 0;
                 push = 0;
                 pull = 0;
-                // write_mem = 0;
             end
         `endif 
     end
