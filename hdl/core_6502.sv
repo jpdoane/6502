@@ -324,7 +324,7 @@ module core_6502 #(
     // stack
     logic push, pull, pull_r;
     logic [1:0] stack_addr, stack_addr_r;
-    logic read_a, read_p, read_pcl, read_pch;
+    logic read_a, read_p, read_pcl, read_pch, read_s;
     logic stack, stack_ap;
     parameter STACK_A   = 2'h0;
     parameter STACK_P   = 2'h1;
@@ -342,6 +342,10 @@ module core_6502 #(
         end else begin
             pull_r <= pull;
             stack_addr_r <= stack_addr;
+            read_a <= 0;
+            read_p <= 0;
+            read_pcl <= 0;
+            read_pch <= 0;
             if (pull_r) begin
                 case(stack_addr_r)
                     STACK_A:    read_a <= 1;
@@ -350,11 +354,6 @@ module core_6502 #(
                     STACK_PCH:  read_pch <= 1;
                     default:    begin end
                 endcase
-            end else begin
-                read_a <= 0;
-                read_p <= 0;
-                read_pcl <= 0;
-                read_pch <= 0;
             end
 
         `ifdef DEBUG_REG
@@ -376,6 +375,7 @@ module core_6502 #(
             STACK_P:    push_data = irq_event ? p : p | FL_BU; // set break flags unless irq
             STACK_PCH:  push_data = pch;
             STACK_PCL:  push_data = pcl;
+            default:    push_data = 0;
         endcase
     end
 
@@ -388,7 +388,7 @@ module core_6502 #(
     logic aluV, aluC;
     logic adl_add, adh_add;
 
-    // in real 6502, adl routed to alu_bi and adh is routed via sb, but this requires subcycle control...
+    // in real 6502, adl is routed to alu_bi and adh is routed to alu_ai via sb, but this requires latches and subcycle control...
     // we are also cheating here a bit by using the registered addr than adl/adh bus, but this accomplishes the same effect
     assign  alu_ai = adl_add ? addr[7:0] :
                      adh_add ? addr[15:8] :
@@ -471,7 +471,7 @@ module core_6502 #(
 
             end
 
-            if (push | pull) s <= add;
+            if ((push | pull | up_s) & !hold_s) s <= add;
             if (read_a) begin
                 a <= db;
                 p[1] <= ~|db;
@@ -530,13 +530,10 @@ module core_6502 #(
         aluC_reg <= aluC;
     end
 
-    logic rmw;
     logic [6:0] r_idx;
-
     logic store;
-
     wire rmw = mem_wr & alu_en;
-
+    logic jsr_push, hold_s, up_s;
     always @(*) begin
         adl_src     = ADDR_PC;
         adh_src     = ADDR_PC;
@@ -552,6 +549,10 @@ module core_6502 #(
         update_addrh = 1;
         adl_add = 0;
         adh_add = 0;
+        read_s = 0;
+        jsr_push = 0;
+        hold_s = 0;
+        up_s = 0;
         r_idx = idx_XY ? SB_X : SB_Y;
 
         write_back = 0;
@@ -634,10 +635,16 @@ module core_6502 #(
                     end
                     OP_JSR: begin
                         inc_pc = 1;
-                        // point next addr at stack
+                        // fetch adl and then point at stack
                         {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
-                        adl_add = 1;
-                        // load adl into stack 
+                    end
+                    OP_RTS: begin
+                        pull = 1;
+                        stack_addr = STACK_PCL;
+                    end
+                    OP_RTI: begin
+                        pull = 1;
+                        stack_addr = STACK_P;
                     end
                     default:
                         next_state = T_JAM; //not implemented yet
@@ -705,15 +712,31 @@ module core_6502 #(
                         push = 1;
                     end
                     OP_JSR: begin
-                        stack_addr = STACK_PCH;
-                        push = 1;
 
+                        // push pch onto stack (via pc)
+                        push = 1;
+                        stack_addr = STACK_PCH;
+                        
+                        // but dont do a real push, set s to adl which is currently in alu
+                        jsr_push = 1;
+
+                        // hold addr at stack 
+                        {adh_src, adl_src} = {ADDR_STACK, ADDR_HOLD};
+                        // stack_addr = STACK_PCH;
+                        // push = 1;
                         // // stack ptr to adl
-                        // {adh_src, adl_src} = {ADDR_STACK, ADDR_HOLD};
                         // // read new adl into stack pointer
                         // // alu_ctl = {REG_M, REG_Z, 1'b0}; //TODO: make all read_* use db like this...
                         // // alu_op = ALU_ORA;
                         // // up_s = 1;
+                    end
+                    OP_RTS: begin
+                        pull = 1;
+                        stack_addr = STACK_PCH;
+                    end
+                    OP_RTI: begin
+                        pull = 1;
+                        stack_addr = STACK_PCL;
                     end
                     default:
                         next_state = T_JAM; //not implemented yet
@@ -755,7 +778,8 @@ module core_6502 #(
                         next_state = T1;
                     end
                     OP_JIN: begin
-                        // alu_ctl = {REG_Z, R_ALU, 1'b1};
+                        alu_op = ALU_INC;
+                        sb_src = SB_ADD;
                         {adh_src, adl_src} = {ADDR_HOLD, ADDR_ALU};
                     end
                     OP_BRK: begin
@@ -765,13 +789,23 @@ module core_6502 #(
                     OP_JSR: begin
                         stack_addr = STACK_PCL;
                         push = 1;
-                        // // decrement addr (push stack)
-                        // write_pch = 1;
-                        // {adh_src, adl_src} = {ADDR_STACK, ADDR_ALU};
+                        jsr_push = 1;
+                        hold_s = 1;
 
-                        
-
-                        // alu_ctl = {RE_NZ, R_ADL, 1'b0};
+                        // decrement addr (push stack)
+                        {adh_src, adl_src} = {ADDR_STACK, ADDR_ALU};
+                        alu_op = ALU_DEC;
+                        adl_add = 1;
+                    end
+                    OP_RTI: begin
+                        pull = 1;
+                        stack_addr = STACK_PCH;
+                    end
+                    OP_RTS: begin
+                        // {adh_src, adl_src} = {ADDR_ALU, ADDR_DATA};
+                        // adl_add = 1; // save adl in alu
+                        // jump = 1;
+                        // next_state = T0;
                     end
                     default:
                         next_state = T_JAM; //not implemented yet
@@ -813,10 +847,17 @@ module core_6502 #(
                         inc_pc = 1;
                     end
                     OP_JSR: begin
-                        // decrement addr (push stack)
-                        // write_pcl = 1;
-                        // alu_ctl = {RE_NZ, R_ADL, 1'b0};
-                        // {adh_src, adl_src} = {ADDR_STACK, ADDR_ALU};
+                        // fetch adh
+                        // decrement addr and save in alu
+                        adl_add = 1;
+                        alu_op = ALU_DEC;
+                    end
+                    OP_RTI: begin
+                        adl_add = 1; // save adl in alu
+                    end
+                    OP_RTS: begin
+                        jump = 1;
+                        next_state = T0;
                     end
                     default:
                         next_state = T_JAM; //not implemented yet
@@ -837,11 +878,19 @@ module core_6502 #(
                         next_state = T7;
                     end
                     OP_JSR: begin
-                        //read in ADH, and restore ADL from stack
+
+                        //read in ADH, and restore ADL from stack and jump to new addr
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_STACK}; 
-                        // restore stack pointer from ADL
-                        // alu_ctl = {REG_S, R_ADL, 1'b0};
-                        // up_s = 1;
+                        jump = 1;
+
+                        // restore stack from alu
+                        holdalu = 1;
+                        up_s = 1;
+
+                        next_state = T1;
+                    end
+                    OP_RTI: begin
+                        {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};
                         jump = 1;
                         next_state = T1;
                     end
@@ -869,9 +918,7 @@ module core_6502 #(
             end                
         endcase
 
-        // if (write_pcl | write_pch | write_p | write_back) write_mem=1;
-
-        if (push) begin // TODO: set db_src?
+        if (push & !jsr_push) begin
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
             alu_op = ALU_DEC;
             sb_src = SB_S;
@@ -880,6 +927,9 @@ module core_6502 #(
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
             alu_op = ALU_INC;
             sb_src = SB_S;
+        end
+        else if (pull_r)  begin
+            {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
         end
         
         if (exec & alu_en) begin

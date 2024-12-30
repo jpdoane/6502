@@ -44,7 +44,10 @@ br: 10 30 50 70 90 b0 d0 f0
 jmp: 4c 6c
 call_break: 00 20 40 60
 
-passing: imm_impl zp zp_xy abs abs_xy ind_x ind_y stack br jmp 
-wip: call_break
+valid: imm_impl zp zp_xy abs abs_xy ind_x ind_y stack br jmp call_break
+illegal: 80 02 12 22 32 42 52 62 72 82 92 b2 c2 d2 e2 f2 03 13 23 33 43 53 63 73 83 93 a3 b3 c3 d3 e3 f3 04 14 34 44 54 64 74 d4 f4 07 17 27 37 47 57 67 77 87 97 a7 b7 c7 d7 e7 f7 1a 3a 5a 7a da fa 0b 1b 2b 3b 4b 5b 6b 7b 8b 9b ab bb cb db eb fb 0c 1c 3c 5c 7c 9c dc fc 9e 0f 1f 2f 3f 4f 5f 6f 7f 8f 9f af bf cf df ef ff 
 
-.DEFAULT_GOAL = wip
+
+wip: 
+
+.DEFAULT_GOAL = valid
