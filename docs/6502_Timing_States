@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html class="client-nojs" lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8"/>
+<title>Visual6502wiki/6502 Timing States - NESdev Wiki</title>
+<script>document.documentElement.className="client-js";RLCONF={"wgBreakFrames":false,"wgSeparatorTransformTable":["",""],"wgDigitTransformTable":["",""],"wgDefaultDateFormat":"dmy","wgMonthNames":["","January","February","March","April","May","June","July","August","September","October","November","December"],"wgRequestId":"Z3RkQbEzU9Wm2tFieSJIDgAAAA0","wgCSPNonce":false,"wgCanonicalNamespace":"","wgCanonicalSpecialPageName":false,"wgNamespaceNumber":0,"wgPageName":"Visual6502wiki/6502_Timing_States","wgTitle":"Visual6502wiki/6502 Timing States","wgCurRevisionId":19269,"wgRevisionId":19269,"wgArticleId":2293,"wgIsArticle":true,"wgIsRedirect":false,"wgAction":"view","wgUserName":null,"wgUserGroups":["*"],"wgCategories":[],"wgPageContentLanguage":"en","wgPageContentModel":"wikitext","wgRelevantPageName":"Visual6502wiki/6502_Timing_States","wgRelevantArticleId":2293,"wgIsProbablyEditable":false,"wgRelevantPageIsProbablyEditable":false,"wgRestrictionEdit":[],"wgRestrictionMove":[]};RLSTATE={
+"site.styles":"ready","user.styles":"ready","user":"ready","user.options":"loading","skins.monobook.styles":"ready"};RLPAGEMODULES=["site","mediawiki.page.ready","mediawiki.toc","skins.monobook.scripts"];</script>
+<script>(RLQ=window.RLQ||[]).push(function(){mw.loader.implement("user.options@12s5i",function($,jQuery,require,module){mw.user.tokens.set({"patrolToken":"+\\","watchToken":"+\\","csrfToken":"+\\"});});});</script>
+<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=skins.monobook.styles&amp;only=styles&amp;skin=monobook"/>
+<script async="" src="/w/load.php?lang=en&amp;modules=startup&amp;only=scripts&amp;raw=1&amp;skin=monobook"></script>
+<meta name="ResourceLoaderDynamicStyles" content=""/>
+<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=site.styles&amp;only=styles&amp;skin=monobook"/>
+<meta name="generator" content="MediaWiki 1.39.0"/>
+<meta name="format-detection" content="telephone=no"/>
+<meta name="description" content="There are two things that are critical for correct instruction execution in the 6502 (indeed, for any complex CPU chip): the pattern of bits in the instruction register AND the pattern of &quot;time code&quot; bits from the timing control block of circuits."/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, minimum-scale=0.25, maximum-scale=5.0"/>
+<link rel="icon" href="/favicon.ico"/>
+<link rel="search" type="application/opensearchdescription+xml" href="/w/opensearch_desc.php" title="NESdev Wiki (en)"/>
+<link rel="EditURI" type="application/rsd+xml" href="https://www.nesdev.org/w/api.php?action=rsd"/>
+<link rel="alternate" type="application/atom+xml" title="NESdev Wiki Atom feed" href="/w/index.php?title=Special:RecentChanges&amp;feed=atom"/>
+	<meta property="og:type" content="article"/>
+
+	<meta property="og:site_name" content="NESdev Wiki"/>
+
+	<meta property="og:title" content="Visual6502wiki/6502 Timing States"/>
+
+	<meta property="og:description" content="There are two things that are critical for correct instruction execution in the 6502 (indeed, for any complex CPU chip): the pattern of bits in the instruction register AND the pattern of &quot;time code&quot; bits from the timing control block of circuits."/>
+
+	<meta property="og:url" content="https://www.nesdev.org/wiki/Visual6502wiki/6502_Timing_States"/>
+
+</head>
+<body class="mediawiki ltr sitedir-ltr mw-hide-empty-elt ns-0 ns-subject page-Visual6502wiki_6502_Timing_States rootpage-Visual6502wiki_6502_Timing_States skin-monobook action-view skin--responsive"><div id="globalWrapper">
+	<div id="column-content">
+		<div id="content" class="mw-body" role="main">
+			<a id="top"></a>
+			<div id="siteNotice"></div>
+			<div class="mw-indicators">
+			</div>
+			<h1 id="firstHeading" class="firstHeading mw-first-heading"><span class="mw-page-title-main">Visual6502wiki/6502 Timing States</span></h1>
+			<div id="bodyContent" class="monobook-body">
+				<div id="siteSub">From NESdev Wiki</div>
+				<div id="contentSub" ></div>
+				
+				<div id="jump-to-nav"></div><a href="#column-one" class="mw-jump-link">Jump to navigation</a><a href="#searchInput" class="mw-jump-link">Jump to search</a>
+				<!-- start content -->
+				<div id="mw-content-text" class="mw-body-content mw-content-ltr" lang="en" dir="ltr"><div class="mw-parser-output"><div id="toc" class="toc" role="navigation" aria-labelledby="mw-toc-heading"><input type="checkbox" role="button" id="toctogglecheckbox" class="toctogglecheckbox" style="display:none" /><div class="toctitle" lang="en" dir="ltr"><h2 id="mw-toc-heading">Contents</h2><span class="toctogglespan"><label class="toctogglelabel" for="toctogglecheckbox"></label></span></div>
+<ul>
+<li class="toclevel-1 tocsection-1"><a href="#Introduction"><span class="tocnumber">1</span> <span class="toctext">Introduction</span></a></li>
+<li class="toclevel-1 tocsection-2"><a href="#Time_States_Seen_Around_Instruction_Execution"><span class="tocnumber">2</span> <span class="toctext">Time States Seen Around Instruction Execution</span></a></li>
+<li class="toclevel-1 tocsection-3"><a href="#Branch_Instructions_Timing_States"><span class="tocnumber">3</span> <span class="toctext">Branch Instructions Timing States</span></a></li>
+<li class="toclevel-1 tocsection-4"><a href="#BRK_Instruction_Timing_States"><span class="tocnumber">4</span> <span class="toctext">BRK Instruction Timing States</span></a></li>
+<li class="toclevel-1 tocsection-5"><a href="#The_RMW_Instructions&#39;_Timing_States"><span class="tocnumber">5</span> <span class="toctext">The RMW Instructions' Timing States</span></a></li>
+<li class="toclevel-1 tocsection-6"><a href="#Forever_Instructions"><span class="tocnumber">6</span> <span class="toctext">Forever Instructions</span></a></li>
+<li class="toclevel-1 tocsection-7"><a href="#Time_States_That_Do_Not_Occur_During_Normal_Instruction_Execution"><span class="tocnumber">7</span> <span class="toctext">Time States That Do Not Occur During Normal Instruction Execution</span></a></li>
+<li class="toclevel-1 tocsection-8"><a href="#Demonstration_of_All_Time_States"><span class="tocnumber">8</span> <span class="toctext">Demonstration of All Time States</span></a></li>
+<li class="toclevel-1 tocsection-9"><a href="#External_References"><span class="tocnumber">9</span> <span class="toctext">External References</span></a></li>
+</ul>
+</div>
+
+<h2><span class="mw-headline" id="Introduction">Introduction</span></h2>
+<p>There are two things that are critical for correct instruction execution in the 6502 (indeed, for any complex CPU chip): the pattern of bits in the instruction register AND the pattern of "time code" bits from the timing control block of circuits.
+</p><p>Both sets of bits (IR and time code), in combination, control the output bits of the Programmable Logic Array (PLA) block of circuits. PLA outputs, in turn, affect the Random Control Logic (RCL) block of circuits, and their control outputs directly operate the connections among the registers, busses, and ALU on the other end of the chip die to actually get the instructions' work done.
+</p><p>In some situations, time code and PLA interaction merely starts a parallel chain of timing signals through the RCL part of the chip network that manage some actions themselves, instead of burdening the PLA with controlling them. The full state of timing control presented here includes such parallel processes.
+</p><p>The, "some situations", mentioned are for the Read-Modify-Write (RMW) instructions.
+</p><p>With all the combinations of parallel independent control and PLA-based control, the 6502's timing control has 24 states. A total of eleven nodes ("bits") comprise these states. Six of them are the time code applied to the PLA, the remaining five are part of the non-PLA control. The latter five are further divided up into three and two: three are internal-state members of timing generation, and the last two are in the RCL block.
+</p><p>Labeling of the time states derives from the "TIMING GENERATION LOGIC" block and the "CONTROL FLIP-FLOPS" sub-block inside the "RANDOM CONTROL LOGIC" block in <a rel="nofollow" class="external text" href="http://www.witwright.com/DonPub/6502-Block-Diagram.pdf">Dr. Donald Hanson's block diagram</a>, and from discussion of timing states in <a href="/wiki/Visual6502wiki/6502_State_Machine" title="Visual6502wiki/6502 State Machine">6502 State Machine</a>.
+</p><p>The notation developed for trace/debug output, and the notation presented hereafter in this document, uses eight fields. It lists the six explicit (PLA controlling) output nodes in numeric order first, followed by square brackets around the non-explicit internal state of timing generation (three nodes), followed by the state of the two RCL nodes. 
+</p><p>Wherever one of the explicit nodes is inactive, a blank placeholder of ".." is present for it. Similar logic also applies to the last two fields: if *all* the nodes that they correspond to are inactive, the blank placeholder appears in the respective field (".." within square brackets for the seventh field, "..." for the eighth field). Only one node at a time is active for each of the last two fields.
+</p><p>The six PLA controlling nodes are T0, T+, T2, T3, T4, and T5. The second one, called T+, corresponds to T1X in the Hanson diagram. It is presented as T+ instead to correspond to the names of the PLA nodes that it affects in the visual6502 project. The PLA controllers are active when their logic states are low.
+</p><p>The other five nodes (squeezed into fields seven and eight) are active when their logic states are high. The seventh field, in square brackets, shows three states (due to three nodes) called T1, V0 (short for VEC0), and T6 (a synonym
+for VEC1). The eighth field shows two states, due to two nodes, called SD1 and SD2.
+</p><p>When T1 is displayed inside the seventh (bracketed) field, the external SYNC pin is also being driven high (by the node tested for T1) to indicate that the current memory read operation is for an instruction opcode.
+</p><p>Here are all the combinations of states (labelled, but otherwise without context).
+</p>
+<pre>T0 .. T2 .. .. .. [..] ...   &#160;; 1st cycle of 2 cycle opcodes
+.. .. T2 .. .. .. [..] ...   &#160;; 1st cycle of 3+ cycle opcodes
+.. .. .. T3 .. .. [..] ...   &#160;; 2nd cycle of 4+ cycle opcodes
+.. .. .. T3 .. .. [..] SD1   &#160;; 2nd cycle of RMW zp
+.. .. .. .. T4 .. [..] ...   &#160;; 3rd cycle of 5+ cycle opcodes
+.. .. .. .. T4 .. [..] SD1   &#160;; 3rd cycle of RMW zp,X &amp; abs
+.. .. .. .. T4 .. [..] SD2   &#160;; 3rd cycle of RMW zp
+.. .. .. .. .. T5 [..] ...   &#160;; 4th cycle of 6+ cycle opcodes
+.. .. .. .. .. T5 [..] SD1   &#160;; 4th cycle of RMW abs,X &amp; abs,Y (latter illegal)
+.. .. .. .. .. T5 [..] SD2   &#160;; 4th cycle of RMW zp,X &amp; abs
+.. .. .. .. .. T5 [V0] ...   &#160;; 4th cycle of BRK
+.. .. .. .. .. .. [T6] ...   &#160;; 5th cycle of BRK
+.. .. .. .. .. .. [..] SD1   &#160;; 5th cycle of RMW (zp,X) &amp; (zp),Y (illegal)
+.. .. .. .. .. .. [..] SD2   &#160;; 5th of RMW abs,X&amp;Y, 6th of RMW (zp,X) &amp; (zp),Y
+.. .. .. .. .. .. [..] ...   &#160;; Terminal state of opcodes that run forever
+T0 .. .. .. .. .. [..] ...   &#160;; 2nd-to-last cycle of all(*) opcodes
+.. T+ .. .. .. .. [T1] ...   &#160;; Last cycle of all(*) opcodes
+.. .. .. .. .. .. [T1] ...   &#160;; Last cycle of branches not taken &amp; no page cross
+T0 T+ .. .. .. .. [..] ...   &#160;; Clock long-term hold by RES
+T0 .. .. .. .. .. [T6] ...   &#160;; 1 cycle after RES of BRK during T5 [V0] cycle
+T0 .. .. .. .. .. [..] SD1   &#160;; 1 cycle after RES of RMW during SD cycle
+T0 .. .. .. .. .. [..] SD2   &#160;; 1 cycle after RES of RMW just after SD cycle
+T0 T+ .. .. .. .. [..] SD2   &#160;; 2 cycles after RES (still held) of RMW during SD cycle
+.. T+ .. .. .. .. [T1] SD2   &#160;; 2 cycles after RES (released) of RMW during SD cycle
+
+* All opcodes except branches not taken &amp; branches taken with no page cross
+</pre>
+<p>As seen above, there are two states where three nodes are active at the same time (three-hot), twelve states where two nodes are active at the same time (two-hot), nine that are one-hot, and a single none-hot state.
+</p><p>The PLA subset itself has two two-hot states, six one-hot states, and one none-hot.
+</p><p>The low-profile "blank" notation of ".." assists visual examination of trace/debug output by keeping consistent placeholders for nodes when they are inactive, with minimized visual clutter. Aligning everything in fixed positions
+contributes to rapid recognition of changes.
+</p><p>Eight fields is a compromise between a full eleven fields of one node each, and a minimum of three fields to show states that have three nodes active at the same time. This format shows the segregation of timing's external PLA-affecting nodes from its internal nodes and from the RCL nodes. An alternative compact compromise could be to reserve two fields for the external nodes (for its two-hot states) and one field each for the internal and RCL nodes.
+</p>
+<h2><span class="mw-headline" id="Time_States_Seen_Around_Instruction_Execution">Time States Seen Around Instruction Execution</span></h2>
+<p>During normal operation (when the clock is not under the influence of the RES interrupt line being active), only 18 of the 24 possible states actually arises.
+</p><p>The convention for presenting time states for instruction execution here is a a little different from that supplied in the usual programming literature in two ways: by time numbering and by first through last cycles listed.
+</p><p>The time numbering issue applies to matching up the time codes used in Appendix A of <a rel="nofollow" class="external text" href="//archive.6502.org/books/mcs6500_family_hardware_manual.pdf">"MCS6500 Microcomputer Family Hardware Manual"</a>, with the time states documented here. "T0" in the manual matches with the states that have [T1] in them here (most often T+ [T1]). The rest of the time codes in the hardware manual listings match up with those here after being incremented by one. The second-to-last time code in each hardware manual listing corresponds to the T0-containing states here, and the last code in each listing is the [T1] state again.
+</p><p>The convention here for "first" and "last" cycle time states is focused upon when each opcode is actually occupying the instruction register (IR). The emphasis is upon the span of states in which control signals are initiated, and not upon the span over which operations are completed. The typical narrative has the opcode fetch cycle as the first one, listing [T1] through T0. Here, all instructions are listed as beginning with T2 in their time state and ending with [T1] in their time state. Although [T1] reads the opcode from memory, the instruction register (IR) is only set to the new opcode during the first half of T2 (T2 phase 1). That is the first moment of actual execution of the opcode, when it can start sending signals by affecting the states of PLA nodes and the RCL nodes further across the chip. The opcode remains undisturbed inside the IR all the way to the end of the next [T1] clock state ([T1] phase 2). This allows an instruction to do its last signal origination even during the fetching of its successor instruction by other circuits on the chip. These propagated last signals can perform the final operations of an instruction even one cycle later (T2 again) when the next instruction is in the IR. Not all instructions have any work to do by [T1], so it is sometimes an idle cycle in terms of instruction work. The strictly two-cycle instructions are always busy during [T1]. [T1] is always busy for fetching instructions.
+</p><p>After having gone through so much justification to start listing instruction timing states with T2, it must also be noted that there is some opcode identification that happens in the second half of [T1]. This is the predecode register's function that identifies two-cycle instructions and one-byte instructions by binary digital interference pattern. Two-cycle identification determines which of two possible T2 states will start the instruction execution. One-byte instruction identification determines whether the program counter (PC) is auto-incremented after reading the byte after the opcode during T2 (auto-increment is inhibited for one-byte instructions).
+</p><p>Time states with T0 in them have a special significance. All instructions must, at some late point in their execution, generate a signal that propagates around to set the clock to T0. That initiates the fetch for the next instruction at [T1] one cycle later. Instructions that don't do this run forever (but with two exceptions). There are twelve opcodes in the baseline 6502 that have this problem, and they can only be terminated by the RES interrupt. RES is effective because it sets the clock to T0 on its own, among other effects.
+</p><p>By contrast, the IRQ and NMI interrupts depend upon the currently running instruction to set the clock to T0 the normal way: the T0 state lets a pending IRQ or NMI signal propagate to where it causes a BRK instruction to be started at the next T2 state, beginning the response to the interrupt. This is the implementation of the IRQ/NMI feature that allows the currently running instruction to finish before starting the interrupt response. This is also its vulnerability to the "forever" instructions that don't set the clock back to T0: IRQ and NMI interrupts are locked out of having any effect while the non-terminating instruction runs. It is correct behavior that goes on for too long.
+</p><p>Generically, instructions run through time states of
+</p>
+<pre>.. .. T2 .. .. .. [..] ...
+.. .. .. T3 .. .. [..] ...
+.. .. .. .. T4 .. [..] ...
+.. .. .. .. .. T5 [..] ...
+T0 .. .. .. .. .. [..] ...
+.. T+ .. .. .. .. [T1] ...
+</pre>
+<p>The above example is for an instruction that runs for six cycles. Instructions that run for fewer cycles have T0 and [T1] occur sooner:
+</p>
+<pre>       Five cycles          |         Four cycles          |         Three cycles
+.. .. T2 .. .. .. [..] ...  |  .. .. T2 .. .. .. [..] ...  |  .. .. T2 .. .. .. [..] ...
+.. .. .. T3 .. .. [..] ...  |  .. .. .. T3 .. .. [..] ...  |  T0 .. .. .. .. .. [..] ...
+.. .. .. .. T4 .. [..] ...  |  T0 .. .. .. .. .. [..] ...  |  .. T+ .. .. .. .. [T1] ...
+T0 .. .. .. .. .. [..] ...  |  .. T+ .. .. .. .. [T1] ...  |
+.. T+ .. .. .. .. [T1] ...  |                              |
+</pre>
+<p>All of the above examples also apply to instructions that have variable execution times due to using indexed addressing modes: requiring one more cycle when a page crossing is required to access the correct memory address. Variable execution times for memory access applies only to instructions that only perform a read of memory.
+</p><p><br />
+The instructions that run in only two cycles have T0 and T2 combined into the same cycle. This is courtesy of the effects of predecode upon the clock, where it identifies two-cycle instructions.
+</p>
+<pre>T0 .. T2 .. .. .. [..] ...
+.. T+ .. .. .. .. [T1] ...
+</pre>
+<h2><span class="mw-headline" id="Branch_Instructions_Timing_States">Branch Instructions Timing States</span></h2>
+<p>The mentioned two exceptions to requiring instructions to set the clock to T0 are the conditional branch instructions. For review, branch instruction execution has three cases of behavior:
+</p>
+<pre>* Branch not taken. Runs for two cycles.
+* Branch taken without crossing a memory page. Runs for three cycles.
+* Branch taken and it crosses to another memory page. Runs for four cycles.
+</pre>
+<p>The first two cases do not set the clock to T0. Instead, they bypass T0, going directly to [T1] for opcode fetch. The third case acts like a normal instruction.
+</p><p><br />
+The [T1] state caused by T0-bypassing is qualitatively different:
+</p>
+<pre>.. .. .. .. .. .. [T1] ...
+</pre>
+<p>The T+ (aka T1X) node is inactive. It only appears if the previous clock state had T0 active.
+</p><p>Comparison of all the branch cases:
+</p>
+<pre>        No branch           |       Branch, no cross       |      Branch with cross
+.. .. T2 .. .. .. [..] ...  |  .. .. T2 .. .. .. [..] ...  |  .. .. T2 .. .. .. [..] ...
+.. .. .. .. .. .. [T1] ...  |  .. .. .. T3 .. .. [..] ...  |  .. .. .. T3 .. .. [..] ...
+                            |  .. .. .. .. .. .. [T1] ...  |  T0 .. .. .. .. .. [..] ...
+                            |                              |  .. T+ .. .. .. .. [T1] ...
+</pre>
+<p><br />
+There is an issue with the lack of a T0 state for the first two branch instruction cases. NMI and IRQ depend upon T0 happening, so they would be locked out for the brief extra time it takes to get to a non-branch instruction (or a branch instruction of the third case). They would be completely locked out by an infinite loop of non-crossing branch instructions.
+</p><p>This problem is remediated for all the branch instructions by allowing the T2 state to also let a pending NMI or IRQ signal propagate further to cause the interrupt response, just like T0. The T2 window is ONLY available for the
+branch instructions. This window for a branch catching IRQ and NMI for the first two cases is admittedly a little narrow (2 cycles wide: [T1] followed by T2), so if it is missed, one will still have to wait until the end of the instruction after the branch (or T2 if that next instruction is a branch) to catch them. The saving grace is the prevention of IRQ and NMI lock-out by the infinite loop scenario.
+</p><p>In all branch cases where IRQ and NMI are caught early at T2, the branch instruction does finish. Confirming the reader's suspicions, the page-crossing case gives IRQ and NMI TWO opportunities to be caught and processed.
+</p>
+<h2><span class="mw-headline" id="BRK_Instruction_Timing_States">BRK Instruction Timing States</span></h2>
+<p>The BRK instruction has a special extension of the clock for itself. The extensions originate the control signals needed to clear the interrupt state(s) of the 6502. BRK is the instruction for the processor's response to an interrupt. It is also available as a readable opcode, providing a software interrupt for debugging. It is helpful, and most general, to think of there being four ways to run a BRK instruction: pulling the RES line, pulling the NMI line, pulling the IRQ line, and reading a BRK opcode. The internal difference between the interrupt line invocation and the opcode read invocation occurs when clock state T2 phase 1 is clocked in. For the interrupt cases, the IR is cleared to all zero bits (set to the BRK opcode) instead of being set to whatever was read from memory during [T1]. For the opcode case, the same thing happens as with all other opcodes: IR is set to the bitwise NOT of the predecode register (the predecode register is itself the bitwise NOT of what was read from memory).
+</p><p>BRK has a different T5 state from all other instructions, and a unique T6 state of its own.
+</p>
+<pre>.. .. T2 .. .. .. [..] ...
+.. .. .. T3 .. .. [..] ...
+.. .. .. .. T4 .. [..] ...
+.. .. .. .. .. T5 [V0] ...
+.. .. .. .. .. .. [T6] ...
+T0 .. .. .. .. .. [..] ...
+.. T+ .. .. .. .. [T1] ...
+</pre>
+<p>The "V0" in the T5 state is short for VEC0. It is a node that is activated by a PLA node when the clock enters the T5 state. The signal carried independently by VEC0 propagates one cycle later to a node called VEC1: this is the T6 state. The signal continues back to the main clock one cycle later to set it to T0.
+</p>
+<h2><span id="The_RMW_Instructions.27_Timing_States"></span><span class="mw-headline" id="The_RMW_Instructions'_Timing_States">The RMW Instructions' Timing States</span></h2>
+<p>These are the remaining normal operation timing states: the ones that use the independent timing signal paths in the RCL. Nodes in the PLA initiate the SD1 and SD2 states, and that signal propagation ends with setting the clock to T0.
+</p><p>The alignment of SD1 and SD2 with the clock states shown so far depends upon the addressing mode used by the RMWs. There are six RMW instructions: ASL, DEC, INC, LSR, ROL, and ROR. They use 4 addressing modes that reach into memory.
+</p>
+<pre>        Zero Page           |    ZP Indexed &amp; Absolute     |       Absolute Indexed
+.. .. T2 .. .. .. [..] ...  |  .. .. T2 .. .. .. [..] ...  |  .. .. T2 .. .. .. [..] ...
+.. .. .. T3 .. .. [..] SD1  |  .. .. .. T3 .. .. [..] ...  |  .. .. .. T3 .. .. [..] ...
+.. .. .. .. T4 .. [..] SD2  |  .. .. .. .. T4 .. [..] SD1  |  .. .. .. .. T4 .. [..] ...
+T0 .. .. .. .. .. [..] ...  |  .. .. .. .. .. T5 [..] SD2  |  .. .. .. .. .. T5 [..] SD1
+.. T+ .. .. .. .. [T1] ...  |  T0 .. .. .. .. .. [..] ...  |  .. .. .. .. .. .. [..] SD2
+                            |  .. T+ .. .. .. .. [T1] ...  |  T0 .. .. .. .. .. [..] ...
+                            |                              |  .. T+ .. .. .. .. [T1] ...
+</pre>
+<p>In all of the examples above, the time state before the SD1 state is the one that initiates the separate SD1 SD2 signal chain. For zero page addressing mode, the signal is initiated at T2 by a PLA node, and it clock phase propagates to the SD1 node by one cycle later. Contrast this against V0 being activated immediately at T5 by a PLA node for the BRK instruction.
+</p><p>There are still more instructions that use SD1 and SD2. They happen to be RMWs among the illegal/undocumented opcodes. They use all of the addressing modes above (plus Absolute Indexed Y that the official RMWs do not use). They also use the two indirect indexed addressing modes, (zp,X) and (zp),Y. That takes eight cycles, and those addressing modes initiate the signal chain at T5. The mnemonics for the opcodes, according to <a href="/wiki/Visual6502wiki/6502_all_256_Opcodes" title="Visual6502wiki/6502 all 256 Opcodes">6502 all 256 Opcodes</a> are SLO, RLA, SRE, RRA, DCP, and ISC.
+</p>
+<pre>.. .. T2 .. .. .. [..] ...
+.. .. .. T3 .. .. [..] ...
+.. .. .. .. T4 .. [..] ...
+.. .. .. .. .. T5 [..] ...
+.. .. .. .. .. .. [..] SD1  &lt;-- Unique to illegal RMW (zp,X) and (zp),Y
+.. .. .. .. .. .. [..] SD2
+T0 .. .. .. .. .. [..] ...
+.. T+ .. .. .. .. [T1] ...
+</pre>
+<p>The unique timing state added to the collection that doesn't happen with any of the official instructions is the all blank state with SD1.
+</p>
+<h2><span class="mw-headline" id="Forever_Instructions">Forever Instructions</span></h2>
+<p>There's one more time state from normal operation to be introduced.
+</p>
+<pre>.. .. T2 .. .. .. [..] ...
+.. .. .. T3 .. .. [..] ...
+.. .. .. .. T4 .. [..] ...
+.. .. .. .. .. T5 [..] ...
+.. .. .. .. .. .. [..] ...
+.. .. .. .. .. .. [..] ...  &lt;-- etc, never changes
+</pre>
+<p>The above is from any of the twelve illegal opcodes that runs forever. The all blank time state shows that there is no signal in progress that will set the clock back to T0 to initiate the fetch of a new instruction.
+</p>
+<h2><span class="mw-headline" id="Time_States_That_Do_Not_Occur_During_Normal_Instruction_Execution">Time States That Do Not Occur During Normal Instruction Execution</span></h2>
+<pre>T0 .. .. .. .. .. [T6] ...   &#160;; 1 cycle after RES of BRK during T5 [V0] cycle
+T0 T+ .. .. .. .. [..] ...   &#160;; Clock long-term hold by RES
+T0 .. .. .. .. .. [..] SD1   &#160;; 1 cycle after RES of RMW during SD cycle
+.. T+ .. .. .. .. [T1] SD2   &#160;; 2 cycles after RES (released) of RMW during SD cycle
+T0 T+ .. .. .. .. [..] SD2   &#160;; 2 cycles after RES (still held) of RMW during SD cycle
+T0 .. .. .. .. .. [..] SD2   &#160;; 1 cycle after RES of RMW just after SD cycle
+</pre>
+<p>These are all due to the RES interrupt aborting various instructions at specific times during their operation. Some background on when RES is sensed and its short term effects on the clock is necessary.
+</p><p>The RES interrupt line being down (asserted) is first sensed when clock phase 2 is changed to clock phase 1 (when phase 1 is "clocked in"). If RES is asserted after the processor is already in phase 1, it will not be sensed until the next time that phase 1 is clocked in.
+</p><p>The clock cycle that begins with this phase 2 to phase 1 transition shall be called the "sense cycle". Its clock time state is not affected. The time state for the next clock cycle IS affected: it is changed to T0 by RES having been sensed.
+</p>
+<pre>    Tn-1 Phase 1
+    Tn-1 Phase 2
+
+RES asserted (low)
+    Tn Phase 1              &lt;==+
+RES de-asserted (high)         |- RES sense cycle
+    Tn Phase 2              &lt;==+
+
+    T0 Phase 1              &lt;==\_ T0 cycle caused by RES
+    T0 Phase 2              &lt;==/
+</pre>
+<p>The newly invented term, "sense cycle", shall be used shortly.
+</p><p><br />
+The time state:
+</p>
+<pre>T0 .. .. .. .. .. [T6] ...
+</pre>
+<p>is caused by RES interrupting a BRK instruction at a sense cycle of T5 [V0].
+</p><p><br />
+The time state:
+</p>
+<pre>T0 T+ .. .. .. .. [..] ...
+</pre>
+<p>arises when RES is down when a T0 phase 1 clock state is clocked in. This can be either the T0 that is usually scheduled by an instruction's imminent termination, or the T0 caused by instruction abort shown above. Holding down RES long enough causes the T0 T+ state to arise.
+</p>
+<pre>   Instruction's own T0   |     T0 caused by RES
+--------------------------|--------------------------
+      Tn Phase 2          |      Tn-1 Phase 2
+                          |
+  RES asserted (low)      |  RES asserted (low)
+      T0 Phase 1          |      Tn Phase 1
+  RES de-asserted (high)  |      Tn Phase 2
+      T0 Phase 2          |
+                          |      T0 Phase 1
+      T0 T+ Phase 1       |  RES de-asserted (high)
+      ...etc.             |      T0 Phase 2
+                          |
+                          |      T0 T+ Phase 1
+                          |      ...etc.
+</pre>
+<p>The sense cycle for T0 T+ can be any clock time for all instructions other than the RMWs. For the RMW instructions, the sense cycle must not be its SD chain initiation cycle. That cycle is T2 for zero page mode, T3 for zero page indexed and absolute (unindexed) modes, T4 for absolute indexed modes (X and Y), and T5 for the indirect and indexed modes (illegal RMWs).
+</p><p>The rest of the time states occur only with the RMW instructions.
+</p><p><br />
+The time state:
+</p>
+<pre>T0 .. .. .. .. .. [..] SD1
+</pre>
+<p>occurs if the sense cycle for RES <i><b>is</b></i> the SD chain initiation cycle of an RMW. If RES rises back up before this (T0) cycle's phase 1 is clocked in, then the next time state will be:
+</p>
+<pre>.. T+ .. .. .. .. [T1] SD2
+</pre>
+<p>If, however, RES stays down until after the T0 SD1 cycle's phase 1 is clocked in, then the next time state will instead be:
+</p>
+<pre>T0 T+ .. .. .. .. [..] SD2
+</pre>
+<p>This is exactly the same situation as the T0 T+ state without SD2: the SD signal just happens to be propagating independently in parallel with T0 T+.
+</p><p>An extra phenomenon to note with T0 SD1 followed by T+ [T1] SD2: the T0 SD1 state would have caused the opcode read state (T+ [T1] SD2) to be in <i><b>write mode</b></i> (!) were it not for RES having already forced the 6502 to be in read-only mode. Elaborating further: the 6502 will have been in read-only mode since during the T0 SD1 cycle, which is the cycle after the sense cycle. The effect of SD1 commanding a write operation shows up at the external read-write pin one cycle later, when we are in the T+ [T1] SD2 state, but RES has already overridden that to be a read (and maintaining consistency with SYNC being high to indicate opcode read).
+</p><p><br />
+The final time state to present,
+</p>
+<pre>T0 .. .. .. .. .. [..] SD2
+</pre>
+<p>occurs if the sense cycle for RES is the SD1 cycle for an RMW (the cycle after the SD chain initiating cycle).
+</p>
+<h2><span class="mw-headline" id="Demonstration_of_All_Time_States">Demonstration of All Time States</span></h2>
+<p><a rel="nofollow" class="external text" href="//visual6502.org/JSSim/expert.html?graphics=f&amp;steps=292&amp;logmore=Execute,res,State,tcstate,TState,Phi&amp;r=2EC&amp;a=2EC&amp;d=A90B8DFCFFA9038DFDFFA10018B00090009001FFE600EE0000FE0000130002A9128DFCFFE600A9198DFCFFE600A9208DFCFFE600A9278DFCFF0001EA&amp;reset0=123&amp;reset1=126&amp;reset0=157&amp;reset1=158&amp;reset0=193&amp;reset1=196&amp;reset0=229&amp;reset1=230&amp;reset0=267&amp;reset1=272">This link</a> runs the expert version of visual6502 with a minimal 6502 program, including five RES interrupts, that causes the appearance of all the time code states documented above.
+</p><p>The human readable coding of the program:
+</p>
+<pre>;                  Test 1
+02EC LDA #0B      &#160;; Change RES vector to 030B for test 2
+02EE STA FFFC
+02F1 LDA #03
+02F3 STA FFFD
+02F6 LDA (00,X)   &#160;; Show all common T states (a 6 cycle instruction)
+02F8 CLC          &#160;; Show T0 T2 (a 2-cycle instruction)
+02F9 BCS 02FB     &#160;; Show [T1] at end (AKA next opcode fetch), after this one's T2 (no branch)
+02FB BCC 02FD     &#160;; Show [T1] at end (AKA next opcode fetch), after this one's T3 (branch, no page cross)
+02FD BCC 0300     &#160;; Show branch with page cross
+02FF FF           &#160;; FF padding
+0300 INC 00       &#160;; Show T3 SD1 and T4 SD2
+0302 INC 0000     &#160;; Show T4 SD1 and T5 SD2
+0305 INC 0000,X   &#160;; Show T5 SD1 and blank SD2
+0308 SLO (00),Y   &#160;; Show blank SD1 and blank SD2
+030A KIL          &#160;; Show all blank
+Phase 123, RES0   &#160;; RES down during second T blank Phase 2
+Phase 126, RES1   &#160;; RES up after clocking in T0 Phase 1
+                  &#160;; Shows T0 T+ state before invoking RES BRK
+                  &#160;; The RES invoked BRK shall also show the T5 [V0] and the [T6] states
+;
+;                  Test 2
+030B LDA #12      &#160;; Change RES vector to 0312 for test 3
+030D STA FFFC
+0310 INC 00
+Phase 157, RES0   &#160;; RES down during T+ [T1] Phase 2
+Phase 158, RES1   &#160;; RES up after clocking in T2 Phase 1
+                  &#160;; Shows T0 SD1 and T+ [T1] SD2 states before RES BRK
+                  &#160;; Also hiccups a second T0 and T+ [T1] before RES BRK
+;
+;                  Test 3
+0312 LDA #19      &#160;; Change RES vector to 0319 for test 4
+0314 STA FFFC
+0317 INC 00
+Phase 193, RES0   &#160;; RES down during T+ [T1] Phase 2
+Phase 196, RES1   &#160;; RES up after clocking in T0 Phase 1
+                  &#160;; Shows T0 T+ SD2 state before RES BRK
+;
+;                  Test 4
+0319 LDA #20      &#160;; Change RES vector to 0320 for test 5
+031B STA FFFC
+031E INC 00
+Phase 229, RES0   &#160;; RES down during T2 Phase 2
+Phase 230, RES1   &#160;; RES up after clocking in T3 Phase 1
+                  &#160;; Shows T0 SD2 before RES BRK
+;
+;                  Test 5
+0320 LDA #27      &#160;; Change RES vector to 0327 for end (not absolutely necessary)
+0322 STA FFFC
+0325 BRK #01
+Phase 267, RES0   &#160;; RES down during T4 Phase 2
+Phase 272, RES1   &#160;; RES up after clocking in first T0 T+ Phase 1
+                  &#160;; Shows T0 [T6] before RES BRK
+                  &#160;; Only needs RES down for one clock pulse to cause T0 [T6], but needs RES down for five clock pulses
+                  &#160;; to outlast the signal from T6 that turns off the interrupt state, allowing us to successfully
+                  &#160;; invoke a RES BRK
+                  &#160;; That's preferable to the unpredictable PC after a failed invocation of RES BRK (0000, 00FD seen)
+0327 NOP          &#160;; Confirm end
+</pre>
+<p><br />
+Some extra effects are noticed from the interaction of RES and the interrupted instruction. The RMW instructions can "hiccup" an extra pair of T0 and T+ [T1] states after the T0 and T+ [T1] states caused directly by RES. This happens when the sense cycle for RES is the SD initiating cycle for the instruction's addressing mode, and RES is let back up before the T0 caused by RES is clocked in (before T0 phase 1). The second T0 is caused by the SD signal chain propagating back to the clock, re-setting it to T0 when it would have gone to the T2 state.
+</p><p>The RMW hiccup phenomenon delays the reset response by an extra two cycles. The delay can be reduced to only one extra cycle by holding RES down long enough to clock in T0 phase 1, and then let RES up before clocking in the next phase 1. After T0 SD1, that will cause the T0 T+ SD2 state to arise (instead of T+ [T1] SD2), and then T+ [T1] after that. The T+ [T1] state will be unaffected by the arrival of the clock resetting signal, unlike states T2 and beyond.
+</p><p>The other extra effect is the requirement for RES to be held down for longer than the minimum needed to be sensed when the instruction being interrupted is a BRK, and it is interrupted with a sense cycle of T5 [V0] or [T6]. The signal chain through the clock extension for BRK will normally turn off the interrupt state (nodes RESG and INTG in visual6502) in phase 1 of the cycle after the _T6_ cycle ("_T6_" meaning a time state that has [T6] active in it, of which there are two: plain [T6] and T0 [T6]). Sustaining RESG through that cycle after _T6_ requires RES to be held down until after phase 1 of that cycle has been clocked in. That's a minimum of five clock pulses for sense at T5 [V0], and three clock pulses for sense at [T6]. Holding RES down so long keeps another node (RESP) on for both phases of that cycle-after-_T6_. RESP keeps the RESG node from being grounded by the shut-off signal. The shut-off signal is fully extinct at phase 1 of the second cycle after _T6_.
+</p><p>When RES is not held down for long enough, one can see RESG turned off <i><b>late</b></i> at phase 2 of the cycle after _T6_. When RESP changes state in phase 1, its effect upon RESG is not immediate: there's a further node that is connected to RESP only during phase 2, and that further node (named pipephi2Reset0x) has direct influence upon RESG. Only when phase 2 arrives is that further node connected to RESP again and changed to the same state.
+</p><p>In our case of the further node being driven false by phase 2 connection to a false RESP, it allows RESG to be grounded by the shut-off signal. The phase 2 delay also causes the opposite behavior when RESP goes true: phase 2 of the sense cycle sees RESG ungrounded and become true.
+</p><p>The phase 2 shut-off of RESG happens when RES is held for 4 and 3 clock pulses after sense at T5 [V0], and held for less than three pulses after sense at [T6]. RES hold for 2 and 1 clock pulses after sense at T5 [V0] results in the normal RESG shut-off time.
+</p><p>The normal RESG shut-off (phase 1) corresponds to RESP false during _T6_ and the cycle after _T6_. The late RESG shut-off at phase 2 corresponds to RESP true during _T6_ and false during the cycle after _T6_. Prevention of RESG shut-off corresponds to RESP true during _T6_ and the cycle after _T6_.
+</p><p>We can conclude this last tangent with what happens to BRK execution when RES is not held long enough. Sense cycle of T5 [V0] with all RES holds less than five pulses messes up the PC and fetches the next opcode from an unpredictable address (0000 and 00FD have been witnessed). Sense cycle of [T6] with RES holds of two and one pulses merely substitutes the RES vector for the BRK/IRQ vector and puts control into the RES handler. The original BRK instruction otherwise
+finishes normally without really being interrupted.
+</p>
+<h2><span class="mw-headline" id="External_References">External References</span></h2>
+<p><a rel="nofollow" class="external text" href="http://www.witwright.com/DonPub/6502-Block-Diagram.pdf">Dr. Donald Hanson's block diagram</a>
+</p><p><a href="/wiki/Visual6502wiki/6502_State_Machine" title="Visual6502wiki/6502 State Machine">6502 State Machine</a>
+</p><p><a rel="nofollow" class="external text" href="http://archive.6502.org/books/mcs6500_family_hardware_manual.pdf">"MCS6500 Microcomputer Family Hardware Manual"</a>
+</p><p><a href="/wiki/Visual6502wiki/6502_all_256_Opcodes" title="Visual6502wiki/6502 all 256 Opcodes">6502 all 256 Opcodes</a>
+</p><p><a rel="nofollow" class="external text" href="http://forum.6502.org/viewtopic.php?f=4&amp;t=1634">"A taken branch delays interrupt handling by one instruction"</a> forum thread
+</p>
+<!-- 
+NewPP limit report
+Cached time: 20241231013142
+Cache expiry: 86400
+Reduced expiry: false
+Complications: [show‐toc]
+CPU time usage: 0.036 seconds
+Real time usage: 0.050 seconds
+Preprocessor visited node count: 133/1000000
+Post‐expand include size: 0/2097152 bytes
+Template argument size: 0/2097152 bytes
+Highest expansion depth: 2/100
+Expensive parser function count: 0/100
+Unstrip recursion depth: 0/20
+Unstrip post‐expand size: 9138/5000000 bytes
+-->
+<!--
+Transclusion expansion time report (%,ms,calls,template)
+100.00%    0.000      1 -total
+-->
+
+<!-- Saved in parser cache with key nesdev_db-wiki_:pcache:idhash:2293-0!canonical and timestamp 20241231013142 and revision id 19269.
+ -->
+</div>
+<div class="printfooter" data-nosnippet="">Retrieved from "<a dir="ltr" href="https://www.nesdev.org/w/index.php?title=Visual6502wiki/6502_Timing_States&amp;oldid=19269">https://www.nesdev.org/w/index.php?title=Visual6502wiki/6502_Timing_States&amp;oldid=19269</a>"</div></div>
+				<div id="catlinks" class="catlinks catlinks-allhidden" data-mw="interface"></div>
+				<!-- end content -->
+				<div class="visualClear"></div>
+			</div>
+		</div>
+		<div class="visualClear"></div>
+	</div>
+	<div id="column-one" >
+		<h2>Navigation menu</h2>
+		<div role="navigation" class="portlet" id="p-cactions" aria-labelledby="p-cactions-label">
+			<h3 id="p-cactions-label" >Page actions</h3>
+			<div class="pBody">
+				<ul >
+				<li id="ca-nstab-main" class="selected mw-list-item"><a href="/wiki/Visual6502wiki/6502_Timing_States" title="View the content page [c]" accesskey="c">Page</a></li><li id="ca-talk" class="new mw-list-item"><a href="/w/index.php?title=Talk:Visual6502wiki/6502_Timing_States&amp;action=edit&amp;redlink=1" rel="discussion" title="Discussion about the content page (page does not exist) [t]" accesskey="t">Discussion</a></li><li id="ca-view" class="selected mw-list-item"><a href="/wiki/Visual6502wiki/6502_Timing_States">Read</a></li><li id="ca-viewsource" class="mw-list-item"><a href="/w/index.php?title=Visual6502wiki/6502_Timing_States&amp;action=edit" title="This page is protected.&#10;You can view its source [e]" accesskey="e">View source</a></li><li id="ca-history" class="mw-list-item"><a href="/w/index.php?title=Visual6502wiki/6502_Timing_States&amp;action=history" title="Past revisions of this page [h]" accesskey="h">History</a></li>
+				
+				</ul>
+			</div>
+		</div>
+		
+<div role="navigation" class="portlet mw-portlet mw-portlet-cactions-mobile"
+	id="p-cactions-mobile" aria-labelledby="p-cactions-mobile-label">
+	<h3 id="p-cactions-mobile-label" >Page actions</h3>
+	<div class="pBody">
+		<ul ><li id="main-mobile" class="selected mw-list-item"><a href="/wiki/Visual6502wiki/6502_Timing_States" title="Page">Page</a></li><li id="talk-mobile" class="new mw-list-item"><a href="/w/index.php?title=Talk:Visual6502wiki/6502_Timing_States&amp;action=edit&amp;redlink=1" title=" (page does not exist)">Discussion</a></li><li id="ca-more" class="mw-list-item"><a href="#p-cactions">More</a></li><li id="ca-tools" class="mw-list-item"><a href="#p-tb" title="Tools">Tools</a></li></ul>
+		
+	</div>
+</div>
+
+		<div role="navigation" class="portlet" id="p-personal" aria-labelledby="p-personal-label">
+			<h3 id="p-personal-label" >Personal tools</h3>
+			<div class="pBody">
+				<ul >
+				<li id="pt-login" class="mw-list-item"><a href="/w/index.php?title=Special:UserLogin&amp;returnto=Visual6502wiki%2F6502+Timing+States" title="You are encouraged to log in; however, it is not mandatory [o]" accesskey="o">Log in</a></li>
+				</ul>
+			</div>
+		</div>
+		<div class="portlet" id="p-logo" role="banner">
+			<a href="/wiki/Nesdev_Wiki" class="mw-wiki-logo"></a>
+		</div>
+		<div id="sidebar">
+		
+<div role="navigation" class="portlet mw-portlet mw-portlet-navigation"
+	id="p-navigation" aria-labelledby="p-navigation-label">
+	<h3 id="p-navigation-label" >Navigation</h3>
+	<div class="pBody">
+		<ul ><li id="n-Wiki-main-page" class="mw-list-item"><a href="/wiki/Nesdev_Wiki">Wiki main page</a></li><li id="n-NES-reference-guide" class="mw-list-item"><a href="/wiki/NES_reference_guide">NES reference guide</a></li><li id="n-Programming-guide" class="mw-list-item"><a href="/wiki/Programming_guide">Programming guide</a></li><li id="n-Projects" class="mw-list-item"><a href="/wiki/Projects">Projects</a></li><li id="n-NESdev-Forums" class="mw-list-item"><a href="http://forums.nesdev.org/" rel="nofollow">NESdev Forums</a></li><li id="n-NESdev-Discord" class="mw-list-item"><a href="https://discord.gg/JSG4kuF8EK" rel="nofollow">NESdev Discord</a></li><li id="n-recentchanges" class="mw-list-item"><a href="/wiki/Special:RecentChanges" title="A list of recent changes in the wiki [r]" accesskey="r">Recent changes</a></li></ul>
+		
+	</div>
+</div>
+
+		<div role="search" class="portlet" id="p-search">
+			<h3 id="p-search-label" ><label for="searchInput">Search</label></h3>
+			<div class="pBody" id="searchBody">
+				<form action="/w/index.php" id="searchform"><input type="hidden" value="Special:Search" name="title"><input type="search" name="search" placeholder="Search NESdev Wiki" aria-label="Search NESdev Wiki" autocapitalize="sentences" title="Search NESdev Wiki [f]" accesskey="f" id="searchInput"/><input type="submit" name="go" value="Go" title="Go to a page with this exact name if it exists" class="searchButton" id="searchButton"/> <input type="submit" name="fulltext" value="Search" title="Search the pages for this text" class="searchButton mw-fallbackSearchButton" id="mw-searchButton"/></form>
+			</div>
+		</div>
+		
+<div role="navigation" class="portlet mw-portlet mw-portlet-tb"
+	id="p-tb" aria-labelledby="p-tb-label">
+	<h3 id="p-tb-label" >Tools</h3>
+	<div class="pBody">
+		<ul ><li id="t-whatlinkshere" class="mw-list-item"><a href="/wiki/Special:WhatLinksHere/Visual6502wiki/6502_Timing_States" title="A list of all wiki pages that link here [j]" accesskey="j">What links here</a></li><li id="t-recentchangeslinked" class="mw-list-item"><a href="/wiki/Special:RecentChangesLinked/Visual6502wiki/6502_Timing_States" rel="nofollow" title="Recent changes in pages linked from this page [k]" accesskey="k">Related changes</a></li><li id="t-specialpages" class="mw-list-item"><a href="/wiki/Special:SpecialPages" title="A list of all special pages [q]" accesskey="q">Special pages</a></li><li id="t-print" class="mw-list-item"><a href="javascript:print();" rel="alternate" title="Printable version of this page [p]" accesskey="p">Printable version</a></li><li id="t-permalink" class="mw-list-item"><a href="/w/index.php?title=Visual6502wiki/6502_Timing_States&amp;oldid=19269" title="Permanent link to this revision of this page">Permanent link</a></li><li id="t-info" class="mw-list-item"><a href="/w/index.php?title=Visual6502wiki/6502_Timing_States&amp;action=info" title="More information about this page">Page information</a></li></ul>
+		
+	</div>
+</div>
+
+		
+		</div>
+		<a href="#sidebar" title="Jump to navigation"
+			class="menu-toggle" id="sidebar-toggle"></a>
+		<a href="#p-personal" title="user tools"
+			class="menu-toggle" id="p-personal-toggle"></a>
+		<a href="#globalWrapper" title="back to top"
+			class="menu-toggle" id="globalWrapper-toggle"></a>
+	</div>
+	<!-- end of the left (by default at least) column -->
+	<div class="visualClear"></div>
+	<div id="footer" class="mw-footer" role="contentinfo"
+		>
+		<div id="f-poweredbyico" class="footer-icons">
+			<a href="https://www.mediawiki.org/"><img src="/w/resources/assets/poweredby_mediawiki_88x31.png" alt="Powered by MediaWiki" srcset="/w/resources/assets/poweredby_mediawiki_132x47.png 1.5x, /w/resources/assets/poweredby_mediawiki_176x62.png 2x" width="88" height="31" loading="lazy"/></a>
+		</div>
+		<ul id="f-list">
+			<li id="lastmod"> This page was last edited on 18 March 2022, at 01:03.</li>
+			<li id="privacy"><a href="/wiki/Nesdev_wiki:Privacy_policy">Privacy policy</a></li><li id="about"><a href="/wiki/Nesdev_wiki:About">About NESdev Wiki</a></li><li id="disclaimer"><a href="/wiki/Nesdev_wiki:General_disclaimer">Disclaimers</a></li>
+		</ul>
+	</div>
+</div>
+<script>(RLQ=window.RLQ||[]).push(function(){mw.config.set({"wgPageParseReport":{"limitreport":{"cputime":"0.036","walltime":"0.050","ppvisitednodes":{"value":133,"limit":1000000},"postexpandincludesize":{"value":0,"limit":2097152},"templateargumentsize":{"value":0,"limit":2097152},"expansiondepth":{"value":2,"limit":100},"expensivefunctioncount":{"value":0,"limit":100},"unstrip-depth":{"value":0,"limit":20},"unstrip-size":{"value":9138,"limit":5000000},"timingprofile":["100.00%    0.000      1 -total"]},"cachereport":{"timestamp":"20241231013142","ttl":86400,"transientcontent":false}}});mw.config.set({"wgBackendResponseTime":225});});</script>
+</body>
+</html>

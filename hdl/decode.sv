@@ -10,7 +10,7 @@ module decode (
     output logic alu_en, upNZ, upV, upC, bit_op,   // alu ctl
     output logic single_byte,                       // single byte opcode
     output logic idx_XY,                            // index on X vs Y
-    output logic stack, stack_ap,
+    output logic stack_ap,
     output logic [7:0] set_mask, clear_mask         // set/clear flags
     );
 
@@ -18,8 +18,8 @@ module decode (
     assign {dst, src, alu_op} = ctl_flags;
 
     // special case flags
-    logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op, take_branch;
-
+    logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op, take_branch, stack;
+    
     // decode datapath and alu opcode
      /* verilator lint_off CASEOVERLAP */
     always_comb begin

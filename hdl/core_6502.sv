@@ -50,7 +50,7 @@ module core_6502 #(
     logic [7:0] a, s, x, y, p /*verilator public_flat*/;
 
       // state
-    logic [7:0] Tstate;
+    logic [7:0] Tstate /*verilator public_flat*/;
 
    // control signals
     logic [2:0] adl_src,adh_src;
@@ -249,8 +249,10 @@ module core_6502 #(
     logic [4:0] op_type;
     logic [5:0] src, src_result, dst_result;
     logic alu_en;
+    logic [5:0] alu_op, alu_op_result;
     logic upNZ, upV, upC, bit_op;
     logic mem_rd, mem_wr, single_byte, idx_XY;
+    logic stack_ap;
     logic [7:0] set_mask, clear_mask;
     decode u_decode(
         .opcode         (ir),
@@ -266,7 +268,6 @@ module core_6502 #(
         .bit_op         (bit_op),
         .single_byte    (single_byte),
         .idx_XY         (idx_XY),
-        .stack          (stack),
         .stack_ap       (stack_ap),
         .set_mask       (set_mask),
         .clear_mask     (clear_mask)
@@ -277,9 +278,6 @@ module core_6502 #(
     // stack
     logic push, pull, push_r, pull_r;
     logic [3:0] stack_push, stack_push_r, stack_pull, stack_pull_r, stack_read;
-    // logic read_a, read_p, read_pcl, read_pch;
-    logic stack, stack_ap;
-
     always @(posedge clk ) begin
         if (rst) begin
             pull_r <= 0;
@@ -306,7 +304,6 @@ module core_6502 #(
     end
 
     //alu
-    logic [5:0] alu_op, alu_op_result;
     logic [7:0] alu_ai, alu_bi, alu_out;
     logic aluV, aluC, adl_add, adh_add;
 
@@ -798,7 +795,7 @@ module core_6502 #(
 
 
     `ifdef DEBUG_CPU
-        `include "debug/debug.sv"
+        // `include "debug/debug.sv"
     `endif 
     logic debug_clear;
     `ifdef DEBUG_REG
@@ -819,7 +816,7 @@ module core_6502 #(
                 cycle <= 0;
             end
         end
-    `elsif
+    `else
         assign debug_clear=0;
     `endif 
 

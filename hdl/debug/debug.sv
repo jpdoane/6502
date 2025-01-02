@@ -221,10 +221,9 @@ function string reg_name(input logic [2:0] x);
         REG_X: reg_name = "X  ";
         REG_Y: reg_name = "Y  ";
         REG_S: reg_name = "S  ";
-        REG_P: reg_name = "P  ";
         REG_ADD: reg_name = "ADD";
-        REG_DATA: reg_name = "DAT";
-        default: reg_name = "UNDEF";
+        REG_D: reg_name = "MEM";
+        default: reg_name = "???";
     endcase
 endfunction
 
@@ -248,7 +247,7 @@ function string addr_name(input logic [2:0] x);
         ADDR_PC: addr_name = "PC ";
         ADDR_DATA: addr_name = "DAT";
         ADDR_RES: addr_name = "RES";
-        ADDR_ADD: addr_name = "ADD";
+        ADDR_ALU: addr_name = "ALU";
         ADDR_Z: addr_name = "Z  ";
         ADDR_INT: addr_name = "INT"; 
         ADDR_STACK: addr_name = "STK"; 
@@ -256,17 +255,24 @@ function string addr_name(input logic [2:0] x);
     endcase
 endfunction
 
-function string alu_name(input logic [2:0] x);
-    case(x)
+function string alu_name(input logic [5:0] x);
+    case(x & 6'b011111)
         ALU_NOP: alu_name = "NOP";
-        ALU_ADD: alu_name = "ADD";
         ALU_AND: alu_name = "AND";
-        ALU_OR: alu_name = "OR ";
+        ALU_ORA: alu_name = "ORA";
+        ALU_SUM: alu_name = "SUM";
         ALU_XOR: alu_name = "XOR";
-        ALU_SR: alu_name = "SR ";
-        ALU_SL: alu_name = "SL ";
-        ALU_BIT: alu_name = "BIT";
-        default: alu_name = "UNDEF";
+        ALU_SUB: alu_name = "SUB";
+        ALU_LSR: alu_name = "LSR";
+        ALU_ROR: alu_name = "ROR";
+        ALU_ASL: alu_name = "ASL";
+        ALU_ROL: alu_name = "ROL";
+        ALU_ADC: alu_name = "ADC";
+        ALU_SBC: alu_name = "SBC";
+        ALU_CMP: alu_name = "CMP";
+        ALU_INC: alu_name = "INC";
+        ALU_DEC: alu_name = "DEC";
+        default: alu_name = "???";
     endcase
 endfunction
 
