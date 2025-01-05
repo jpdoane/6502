@@ -22,9 +22,9 @@ test: $(DEBUG_TARGET) $(TESTROM)
 
 #$(DEBUG_TARGET) -r $(TESTROM) -l $(TESTROM:%.bin=%.lst) -j 400 -w $(WAVEFILE) 
 
-# INTTESTROM = roms/build/6502_interrupt_test.bin
-# .PHONY: testint
-# testint: $(TARGET) $(INTTESTROM)
-# 	$(TARGET) -r $(INTTESTROM) -l $(INTTESTROM:%.bin=%.lst) -i bffc -j 400 -v
+INTTESTROM = testroms/build/6502_interrupt_test.bin
+.PHONY: testint
+testint: $(DEBUG_TARGET) $(INTTESTROM)
+	$(DEBUG_TARGET) -r $(INTTESTROM) -l $(INTTESTROM:%.bin=%.lst) -i bffc -j 400 -w $(WAVEFILE) 
 
 .DEFAULT_GOAL = $(DEBUG_TARGET)

@@ -177,15 +177,14 @@ int main(int argc, char** argv, char** env) {
         exit(EXIT_FAILURE);
     }
 
-    // load rom
-    loadROMSim(romfile);
-
-
     // initialize Verilator context
     const std::unique_ptr<VerilatedContext> context{new VerilatedContext};
     const std::unique_ptr<Vcore_6502> top{new Vcore_6502{context.get(), "core_6502"}};
     initSim(argc, argv, context.get(), top.get(), intport);
-    
+
+    // load rom
+    loadROMSim(romfile);
+
     if (startvec_en)
         jumpSim(top.get(), startvec);
 
