@@ -36,7 +36,12 @@ module core_6502 #(
     output  logic [7:0] a_dbg,
     output  logic [7:0] x_dbg,
     output  logic [7:0] y_dbg,
-    output  logic [7:0] p_dbg
+    output  logic [7:0] p_dbg,
+    output  logic [7:0] ir_dbg,
+    output  logic [7:0] alu_dbg,
+    output  logic [7:0] tstate_dbg,
+    output  logic [15:0] ip_dbg,
+    output  int cycle_dbg
     `endif 
 
     );
@@ -132,7 +137,7 @@ module core_6502 #(
         // data write bus
         case(1'b1)
             stack_push[0]:  db_result = a;
-            stack_push[1]:  db_result = irq_event ? p : p | FL_BU; // set break flags unless irq
+            stack_push[1]:  db_result = interrupt ? p : p | FL_BU; // set break flags unless irq
             stack_push[2]:  db_result = pcl;
             stack_push[3]:  db_result = pch;
             // write_back:     db_result = data_i;
@@ -198,6 +203,7 @@ module core_6502 #(
 
     // interrupt handling
     logic nmi_event, nmi_handled, irq_event, rst_event;
+    wire interrupt = nmi_event || irq_event;
     logic fetch_intr;
     wire IRQ_masked = IRQ && !p[2];
     always @(posedge clk ) begin
@@ -206,7 +212,7 @@ module core_6502 #(
             irq_event <= 0;
             rst_event <= 1;
             nmi_handled <= 0;
-            fetch_intr <= 0;
+            // fetch_intr <= 0;
         end else begin
 
             rst_event <= 0;
@@ -224,14 +230,16 @@ module core_6502 #(
 
             if(!NMI) nmi_handled <= 0;
 
-            // set ir to BRK (0) rather than fetched instruction
-            fetch_intr <= nmi_event | irq_event | rst_event;
+            
         end
     end
 
+    // set ir to BRK (0) rather than fetched instruction
+    assign fetch_intr = sync && interrupt;
+
     // opcode fetch and interrupt injection
     always @(posedge clk ) begin
-        if (rst) ir <= 0;  //break from RESET_VECTOR
+        if (rst || fetch_intr) ir <= 0;  //break from RESET_VECTOR
         else if (sync && rdy) ir <= data_i;
 
         `ifdef DEBUG_REG
@@ -243,7 +251,7 @@ module core_6502 #(
     logic two_cycle;
     assign two_cycle =  sync && ((data_i ==? 8'b1??_000_?0) ||                            
                                 (data_i ==? 8'b???_010_?? && data_i !=? 8'b0??_010_00) ||
-                                (data_i ==? 8'b???_110_?0));
+                                (data_i ==? 8'b???_110_?0)) && !interrupt;
 
     // decode instruction
     logic [4:0] op_type;
@@ -407,6 +415,7 @@ module core_6502 #(
             `endif
         end
     end
+    assign jam = !|Tstate; //if Tstate reaches all zeros we have a jam
 
     logic inc_addr, dec_addr, sum_addr, add_idx;
     // control
@@ -521,6 +530,7 @@ module core_6502 #(
                         stack_pull = stack_ap ? STACK_A : STACK_P;
                     end
                     OP_BRK: begin
+                        inc_pc = !interrupt; //only increment pc if this is actual BRK opcode, not external interrupt
                         stack_push = STACK_PCH;
                     end
                     OP_JSR: begin
@@ -806,12 +816,17 @@ module core_6502 #(
             x_dbg = x;
             y_dbg = y;
             p_dbg = p;
+            ir_dbg = ir;
+            alu_dbg = add;
+            tstate_dbg = Tstate;
+            ip_dbg = ip;
+            cycle_dbg = cycle;
         end
         int cycle;
         always_ff @(posedge clk) begin
             debug_clear <= 0;
             cycle <= cycle+1;
-            if (Tstate==T_DEBUG) begin
+            if (reg_set_en || Tstate==T_DEBUG) begin
                 debug_clear <= 1;
                 cycle <= 0;
             end

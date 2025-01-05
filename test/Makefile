@@ -1,19 +1,30 @@
 include ../inc/make.inc
 
-TOP=cpu_tb
-ASM_SOURCE = test_simple.s
-# ASM_SOURCE = test6502.s
+TOP=core_6502
+VERILATE_TOP=sim6502.cpp common6502.cpp
+VERILATE_INCL=input.vc
+HDL_SOURCE = $(CPU_SOURCE)
+VERILATOR_FLAGS += -DDEBUG_REG=1
 
-include ../inc/make.build
+DEBUG_SRC=debugger.cpp
+DEBUG_TARGET=$(BUILD_PATH)/debugger
 
-HDL_SOURCE = $(CPU_SOURCE) $(TOP).sv
-HDL_INCLUDE = $(CPU_INCLUDE)
-CUSTOMSIMARGS=-D'ROM_FILE="$(OBJFILE)"' \
-			  -DRESET_RAM=1 \
-			  -DDEBUG_CPU=1 \
-			  -DDEBUG_REG=1
-SIMREQS=$(OBJFILE)
+include ../inc/make.verilator
 
-include ../inc/make.sim
+$(DEBUG_TARGET):  $(DEBUG_SRC) $(VMODEL)
+	g++ $^ $(VFLAGS) -g -o $(DEBUG_TARGET)
 
- .DEFAULT_GOAL = sim
+TESTROM = testroms/build/6502_functional_test.bin
+.PHONY: test
+test: $(DEBUG_TARGET) $(TESTROM)
+	$(DEBUG_TARGET) -r $(TESTROM) -l $(TESTROM:%.bin=%.lst) -j 400
+
+
+#$(DEBUG_TARGET) -r $(TESTROM) -l $(TESTROM:%.bin=%.lst) -j 400 -w $(WAVEFILE) 
+
+# INTTESTROM = roms/build/6502_interrupt_test.bin
+# .PHONY: testint
+# testint: $(TARGET) $(INTTESTROM)
+# 	$(TARGET) -r $(INTTESTROM) -l $(INTTESTROM:%.bin=%.lst) -i bffc -j 400 -v
+
+.DEFAULT_GOAL = $(DEBUG_TARGET)

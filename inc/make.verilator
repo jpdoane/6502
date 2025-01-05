@@ -9,8 +9,7 @@ endif
 
 LOG_PATH=$(BUILD_PATH)/logs
 WAVEFILE=$(LOG_PATH)/$(TOP).fst
-WAVESAVEFILE=$(abspath .)/$(TOP).sav
-
+WAVESAVEFILE=$(PROJ_ROOT)/inc/wave.sav
 
 ######################################################################
 # Set up verilog variables
@@ -31,7 +30,8 @@ endif
 
 # VERILATOR_FLAGS =
 # Generate C++ in executable form
-VERILATOR_FLAGS += -cc --exe
+# VERILATOR_FLAGS += -cc --exe
+VERILATOR_FLAGS += -cc
 # Generate makefile dependencies (not shown as complicates the Makefile)
 #VERILATOR_FLAGS += -MMD
 # Optimize
@@ -69,19 +69,26 @@ VERILATOR_INPUT = -f $(VERILATE_INCL) $(HDL_SOURCE) $(VERILATE_TOP)
 # # Input file from Verilator
 # VERILATOR_COV_FLAGS += $(LOG_PATH)/coverage.dat
 
-TARGET=$(BUILD_PATH)/V$(TOP)
+#TARGET=$(BUILD_PATH)/$(TOP)
+VMODEL=$(BUILD_PATH)/libV$(TOP).a
+VERILATORLIBS=$(BUILD_PATH)/libverilated.a -lz
+
+VERILATOR_CFLAGS = `pkg-config --cflags verilator`
+
+VFLAGS = $(VERILATORLIBS) $(VERILATOR_CFLAGS)
 
 ######################################################################
 default: run
 
-$(TARGET): $(VERILATE_INCL) $(HDL_SOURCE) $(VERILATE_TOP)
+lib: $(VMODEL)
+
+$(VMODEL): $(VERILATE_INCL) $(HDL_SOURCE) $(VERILATE_TOP)
 	make prebuild
-	$(VERILATOR) --version
 	$(VERILATOR) $(VERILATOR_FLAGS) $(VERILATOR_INPUT)
 	@mkdir -p $(LOG_PATH)
 
-run: $(TARGET)
-	$(TARGET) $(VERILATE_ARGS)
+#run: $(TARGET)
+#	$(TARGET) $(VERILATE_ARGS)
 
 view: 
 	@gtkwave $(WAVEFILE) -a $(WAVESAVEFILE) > /dev/null 2>&1 &

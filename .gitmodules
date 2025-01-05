@@ -1,6 +1,10 @@
-[submodule "unittests/65x02"]
-	path = unittests/65x02
+[submodule "test/unittests/65x02"]
+	path = test/unittests/65x02
 	url = https://github.com/SingleStepTests/65x02.git
-[submodule "unittests/json"]
-	path = unittests/json
+[submodule "test/unittests/json"]
+	path = test/unittests/json
 	url = https://github.com/nlohmann/json.git
+[submodule "test/perfect6502"]
+	path = test/perfect6502
+	url = git@github.com:jpdoane/perfect6502.git
+	branch = develop

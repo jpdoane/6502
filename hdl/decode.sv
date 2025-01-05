@@ -68,7 +68,7 @@ module decode (
 
         alu_en = (alu_op != ALU_NOP);
         adc_sbc_op = &alu_op[4:3];
-        cmp_op = opcode ==? 8'b11?_0??_00 || opcode ==? 8'b110_???_?1;
+        cmp_op = (alu_op == ALU_CMP);
         rot_op = opcode ==? 8'b0?1_???_10;
         shift_op = opcode ==? 8'b0?0_???_10;
         bit_op = opcode ==? 8'b001_0?1_00;

@@ -1,0 +1,237 @@
+[*]
+[*] GTKWave Analyzer v3.3.116 (w)1999-2023 BSI
+[*] Fri Jan  3 14:19:37 2025
+[*]
+[dumpfile] "/home/jpdoane/6502/debug/build/logs/core_6502.fst"
+[dumpfile_mtime] "Fri Jan  3 05:59:20 2025"
+[dumpfile_size] 60307
+[savefile] "/home/jpdoane/6502/debug/core_6502.sav"
+[timestart] 5783
+[size] 1355 976
+[pos] 1034 -1
+*-3.048910 5815 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] core_6502.
+[treeopen] core_6502.core_6502.
+[sst_width] 276
+[signals_width] 210
+[sst_expanded] 1
+[sst_vpaned_height] 271
+@800200
+-cycle
+@24
+core_6502.core_6502.cycle
+@22
+[color] 1
+core_6502.core_6502.reg_set_en
+@28
+core_6502.core_6502.sync
+@22
+[color] 3
+core_6502.core_6502.ip[15:0]
+@2022
+^2 /home/jpdoane/6502/inc/wavefilters/opcodes.txt
+core_6502.core_6502.ir[7:0]
+^3 /home/jpdoane/6502/inc/wavefilters/optypes.txt
+core_6502.core_6502.u_decode.op_type[4:0]
+@1000200
+-cycle
+@800200
+-addr bus
+@c00023
+[color] 3
+core_6502.core_6502.addr[15:0]
+@28
+(0)core_6502.core_6502.addr[15:0]
+(1)core_6502.core_6502.addr[15:0]
+(2)core_6502.core_6502.addr[15:0]
+(3)core_6502.core_6502.addr[15:0]
+(4)core_6502.core_6502.addr[15:0]
+(5)core_6502.core_6502.addr[15:0]
+(6)core_6502.core_6502.addr[15:0]
+(7)core_6502.core_6502.addr[15:0]
+(8)core_6502.core_6502.addr[15:0]
+(9)core_6502.core_6502.addr[15:0]
+(10)core_6502.core_6502.addr[15:0]
+(11)core_6502.core_6502.addr[15:0]
+(12)core_6502.core_6502.addr[15:0]
+(13)core_6502.core_6502.addr[15:0]
+(14)core_6502.core_6502.addr[15:0]
+(15)core_6502.core_6502.addr[15:0]
+@1401201
+-group_end
+@22
+[color] 5
+core_6502.core_6502.data[7:0]
+[color] 1
+core_6502.core_6502.dor[7:0]
+core_6502.RW
+@1000200
+-addr bus
+@800200
+-reg
+@22
+core_6502.core_6502.a[7:0]
+core_6502.core_6502.x[7:0]
+core_6502.core_6502.y[7:0]
+core_6502.core_6502.s[7:0]
+core_6502.core_6502.p[7:0]
+@1000200
+-reg
+@c00200
+-exec
+@22
+core_6502.core_6502.pc[15:0]
+@28
+core_6502.core_6502.exec
+core_6502.core_6502.store
+@22
+core_6502.core_6502.stack_pull[3:0]
+core_6502.core_6502.stack_push[3:0]
+core_6502.core_6502.stack_read[3:0]
+@28
+core_6502.core_6502.jump
+@1401200
+-exec
+@c00200
+-busses
+@22
+core_6502.core_6502.db[7:0]
+core_6502.core_6502.sb[7:0]
+core_6502.core_6502.sb_result[7:0]
+@1401200
+-busses
+@c00200
+-alu
+@28
+core_6502.core_6502.alu_en
+@c02028
+^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
+core_6502.core_6502.u_alu.op[5:0]
+@2028
+^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
+(0)core_6502.core_6502.u_alu.op[5:0]
+^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
+(1)core_6502.core_6502.u_alu.op[5:0]
+^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
+(2)core_6502.core_6502.u_alu.op[5:0]
+^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
+(3)core_6502.core_6502.u_alu.op[5:0]
+^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
+(4)core_6502.core_6502.u_alu.op[5:0]
+^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
+(5)core_6502.core_6502.u_alu.op[5:0]
+@1401200
+-group_end
+@c00022
+core_6502.core_6502.alu_ai[7:0]
+@28
+(0)core_6502.core_6502.alu_ai[7:0]
+(1)core_6502.core_6502.alu_ai[7:0]
+(2)core_6502.core_6502.alu_ai[7:0]
+(3)core_6502.core_6502.alu_ai[7:0]
+(4)core_6502.core_6502.alu_ai[7:0]
+(5)core_6502.core_6502.alu_ai[7:0]
+(6)core_6502.core_6502.alu_ai[7:0]
+(7)core_6502.core_6502.alu_ai[7:0]
+@1401200
+-group_end
+@22
+core_6502.core_6502.alu_bi[7:0]
+@c00022
+core_6502.core_6502.u_alu.a[7:0]
+@28
+(0)core_6502.core_6502.u_alu.a[7:0]
+(1)core_6502.core_6502.u_alu.a[7:0]
+(2)core_6502.core_6502.u_alu.a[7:0]
+(3)core_6502.core_6502.u_alu.a[7:0]
+(4)core_6502.core_6502.u_alu.a[7:0]
+(5)core_6502.core_6502.u_alu.a[7:0]
+(6)core_6502.core_6502.u_alu.a[7:0]
+(7)core_6502.core_6502.u_alu.a[7:0]
+@1401200
+-group_end
+@22
+core_6502.core_6502.u_alu.b[7:0]
+@28
+core_6502.core_6502.u_alu.c
+@c00022
+core_6502.core_6502.alu_out[7:0]
+@28
+(0)core_6502.core_6502.alu_out[7:0]
+(1)core_6502.core_6502.alu_out[7:0]
+(2)core_6502.core_6502.alu_out[7:0]
+(3)core_6502.core_6502.alu_out[7:0]
+(4)core_6502.core_6502.alu_out[7:0]
+(5)core_6502.core_6502.alu_out[7:0]
+(6)core_6502.core_6502.alu_out[7:0]
+(7)core_6502.core_6502.alu_out[7:0]
+@1401200
+-group_end
+@28
+core_6502.core_6502.u_alu.aluC
+core_6502.core_6502.u_alu.aluV
+@c00022
+core_6502.core_6502.alu_op[5:0]
+@28
+(0)core_6502.core_6502.alu_op[5:0]
+(1)core_6502.core_6502.alu_op[5:0]
+(2)core_6502.core_6502.alu_op[5:0]
+(3)core_6502.core_6502.alu_op[5:0]
+(4)core_6502.core_6502.alu_op[5:0]
+(5)core_6502.core_6502.alu_op[5:0]
+@1401200
+-group_end
+@c00022
+core_6502.core_6502.add[7:0]
+@28
+(0)core_6502.core_6502.add[7:0]
+(1)core_6502.core_6502.add[7:0]
+(2)core_6502.core_6502.add[7:0]
+(3)core_6502.core_6502.add[7:0]
+(4)core_6502.core_6502.add[7:0]
+(5)core_6502.core_6502.add[7:0]
+(6)core_6502.core_6502.add[7:0]
+(7)core_6502.core_6502.add[7:0]
+@1401200
+-group_end
+-alu
+@c00200
+-status_flags
+@c00022
+core_6502.core_6502.p[7:0]
+@28
+(0)core_6502.core_6502.p[7:0]
+(1)core_6502.core_6502.p[7:0]
+(2)core_6502.core_6502.p[7:0]
+(3)core_6502.core_6502.p[7:0]
+(4)core_6502.core_6502.p[7:0]
+(5)core_6502.core_6502.p[7:0]
+(6)core_6502.core_6502.p[7:0]
+(7)core_6502.core_6502.p[7:0]
+@1401200
+-group_end
+@28
+core_6502.core_6502.u_decode.upC
+core_6502.core_6502.u_decode.upNZ
+core_6502.core_6502.u_decode.upV
+@22
+core_6502.core_6502.u_decode.set_mask[7:0]
+core_6502.core_6502.u_decode.clear_mask[7:0]
+@28
+core_6502.core_6502.u_decode.bit_op
+core_6502.core_6502.aluC
+core_6502.core_6502.aluV
+@1401200
+-status_flags
+@c00200
+-interrupts
+@28
+core_6502.core_6502.NMI
+core_6502.core_6502.IRQ
+core_6502.core_6502.IRQ_masked
+core_6502.core_6502.interrupt
+core_6502.core_6502.handle_int
+@1401200
+-interrupts
+[pattern_trace] 1
+[pattern_trace] 0
