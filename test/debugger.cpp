@@ -2,13 +2,14 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include <getopt.h>
 #include <signal.h>
 
 #include "common6502.h"
 #include "sim6502.h"
-// #include "reference6502.h"
+#include "reference6502.h"
 
 #define BRANCH_OP(ir) ((ir & 0x10) == 0x10)
 #define JUMP_OP(ir) ((ir & 0x4c) == 0x4c)
@@ -16,39 +17,27 @@
 static volatile sig_atomic_t caught_int = 0;
 static void intHandler(int) {caught_int = 1;}
 
-// return 1 if we are jumping to same pc as previous
-int detect_trap(const std::vector<state6502> &trace)
+
+int detect_trap(const std::vector<state6502> &history);
+std::vector<uint16_t> parseBreakpoints(std::string bp_csv );
+void printTrace(const std::vector<state6502>& history, const std::vector<std::string>& listing, int lines = 10);
+std::string emptyLOC(uint16_t pc);
+void printLOC(uint16_t pc, const std::vector<std::string>& listing);
+std::vector<std::string> loadListing(std::string listfile);
+
+
+void debug(Abstract6502* sim,
+            std::vector<uint16_t> bps,
+            std::vector<std::string> listing,
+            bool verbose,
+            bool stepping = false)
 {
-    if (!BRANCH_OP(trace.back().ir) && !JUMP_OP(trace.back().ir)) return 0; //not jump or branch
-    if (trace.size() < 2) return 0; // too few entries
-    return (trace.end()-1)->pc == (trace.end()-2)->pc;;
-}
-
-std::vector<uint16_t> parseBreakpoints(std::string bp_csv )
-{
-    std::stringstream bplist;
-    std::string bpstr;
-    std::vector<uint16_t> bps;
-    bplist << bp_csv;
-    while( bplist.good() ) {
-        getline( bplist, bpstr, ',' );
-        bps.push_back( std::stoul(bpstr, nullptr, 16) );
-    }
-    return bps;
-}
-
-void debugSim(Vcore_6502* top, 
-            bool verbose, std::vector<uint16_t> bps,
-            VerilatedFstC* tfp, const std::vector<std::string> &listing,
-            bool stepping = false) {
-
-    bool logging = true;
-    std::vector<state6502> trace;
-
     state6502 simState;
+    std::vector<state6502> history;
+    size_t cnt=0;
     while(true) {
-        stepSim(top,tfp);
-        getStateSim(top, &simState);
+        sim->cycle();
+        simState = sim->getState();
 
         // user interrupt - break and step
         if(caught_int) stepping = true;
@@ -58,28 +47,33 @@ void debugSim(Vcore_6502* top,
 
         if (simState.sync) // new instruction
         { 
-            trace.push_back(simState);
+            cnt++;
+            history.push_back(simState);
 
-            if(detect_trap(trace))
+            if(detect_trap(history))
             {
-                printTrace(trace, listing);
-                printf("Trap at PC 0x%x\n", top->pc_dbg);
+                printTrace(history, listing);
+                printf("Trap at PC 0x%x\n", simState.pc);
                 break;
             }
             else if(std::find(bps.begin(), bps.end(), simState.pc) != bps.end())
             {
                 // encountered breakpoint
-                printTrace(trace, listing);
+                printTrace(history, listing);
                 printf("hit breakpoint\n");
                 stepping = true;
-                logging = true;
             }
             else if (stepping)
                 prtstate = true;
+            else if (cnt % 1000 == 0)
+                printf("processed %ld instructions...\n",cnt);
         }
         
         if(prtstate)
+        {
+            printLOC(simState.pc, listing);
             printState(simState);
+        }
 
         if(stepping && simState.sync)
         {
@@ -100,10 +94,10 @@ void debugSim(Vcore_6502* top,
             }
         }
 
-        if(top->jam)
+        if(sim->jammed())
         {
             printf("CPU is jammed!\n");
-            printTrace(trace, listing);
+            printTrace(history, listing);
             break;
         }
     }
@@ -125,11 +119,11 @@ int main(int argc, char** argv, char** env) {
     bool startvec_en = false;
     bool verbose = 0;
     bool stepping = false;
-
+    bool refdesign = false;
 
     char c;
     opterr = 0;
-    while ((c = getopt(argc, argv, "r:b:l:j:i:w:sv")) != -1)
+    while ((c = getopt(argc, argv, "r:b:l:j:i:w:svp")) != -1)
         switch (c)
         {
         case 'r': // rom file
@@ -157,6 +151,9 @@ int main(int argc, char** argv, char** env) {
         case 's':
             stepping = true;
             break;
+        case 'p':
+            refdesign = true;
+            break;
         case '?':
             if (optopt == 'b' || optopt == 'l')
                 fprintf(stderr, "Option -%c requires an argument.\n", optopt);
@@ -173,28 +170,104 @@ int main(int argc, char** argv, char** env) {
 
     if( romfile.empty() )
     {
-        std::cerr << "Error - no testfile!" <<std::endl;
+        std::cerr << "Error - no romfile" <<std::endl;
         exit(EXIT_FAILURE);
     }
 
-    // initialize Verilator context
-    const std::unique_ptr<VerilatedContext> context{new VerilatedContext};
-    const std::unique_ptr<Vcore_6502> top{new Vcore_6502{context.get(), "core_6502"}};
-    initSim(argc, argv, context.get(), top.get(), intport);
-
-    // load rom
-    loadROMSim(romfile);
+    Abstract6502* sim;
+    if(refdesign)
+    {
+        sim = new Reference6502(romfile, intport);
+    }
+    else
+    {
+        Verilated6502* vsim = new Verilated6502(romfile, intport);
+        vsim->openWaveTrace(wavefile);
+        sim = vsim;
+    }
 
     if (startvec_en)
-        jumpSim(top.get(), startvec);
+        sim->jump(startvec);
 
-    VerilatedFstC* tfp = openWaveTrace(top.get(), wavefile);
+    std::cout << "Debugging " << romfile << "..." << std::endl;
+    debug(sim, bps, listing, verbose, stepping);
 
-    debugSim(top.get(), verbose, bps, tfp, listing, stepping);
-    closeWaveTrace(tfp);
-    // closeSim(top);
-      top->final();
-
+    delete sim;
     return 0;
 }
 
+
+
+// return 1 if we are jumping to same pc as previous
+int detect_trap(const std::vector<state6502> &history)
+{
+    if (!BRANCH_OP(history.back().ir) && !JUMP_OP(history.back().ir)) return 0; //not jump or branch
+    if (history.size() < 2) return 0; // too few entries
+    return (history.end()-1)->pc == (history.end()-2)->pc;;
+}
+
+std::vector<uint16_t> parseBreakpoints(std::string bp_csv )
+{
+    std::stringstream bplist;
+    std::string bpstr;
+    std::vector<uint16_t> bps;
+    bplist << bp_csv;
+    while( bplist.good() ) {
+        getline( bplist, bpstr, ',' );
+        bps.push_back( std::stoul(bpstr, nullptr, 16) );
+    }
+    return bps;
+}
+
+
+void printTrace(const std::vector<state6502>& history, const std::vector<std::string>& listing, int lines)
+{
+    if (lines > history.size())
+        lines = history.size();
+    
+    for(int i = 0; i<lines; i++)
+	{
+		state6502 state = history[history.size()-lines+i];
+		printLOC(state.pc, listing);
+		printState(state);
+	}
+}
+
+std::string emptyLOC(uint16_t pc)
+{
+	std::stringstream l;
+	l << std::hex << pc << "\t\t<no listing>";
+	return l.str();
+}
+
+void printLOC(uint16_t pc, const std::vector<std::string>& listing)
+{
+	if (pc <= listing.size())
+		std::cout << listing[pc] << std::endl;
+	else
+		std::cout << std::hex << "PC: 0x" << pc << "\t\t<no listing>" << std::endl;
+}
+
+std::vector<std::string> loadListing(std::string listfile)
+{
+    std::vector<std::string> listing;
+	std::ifstream fin(listfile);
+	std::string linestr; 
+
+	int pc;
+	while (std::getline(fin, linestr))
+	{
+		try {
+			pc = std::stoul(linestr, nullptr, 16);
+			if(pc < listing.size())
+				listing[pc] = linestr;
+			else {
+				while(pc >= listing.size())
+					listing.push_back(emptyLOC(pc));
+				listing.push_back(linestr);
+			}
+		}
+		catch (std::invalid_argument) {} //not all lines in file will be valid LOC
+	}
+    return listing;
+}

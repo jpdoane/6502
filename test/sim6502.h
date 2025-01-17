@@ -11,15 +11,30 @@
 #include "verilated_fst_c.h"
 
 
-void stepSim( Vcore_6502* top, VerilatedFstC* tfp=nullptr, bool handlememory=true);
-void initSim(int argc, char** argv, VerilatedContext* context, Vcore_6502* top, uint16_t interrupt_port);
-void getStateSim(const Vcore_6502* top, state6502* simState);
-void resetSim(Vcore_6502* top, const state6502& simState);
-void jumpSim(Vcore_6502* top, uint16_t pc);
-void closeSim(Vcore_6502* top);
+class Verilated6502 : public Abstract6502
+{
+private:
+    uint16_t interrupt_port;
+    VerilatedContext* context;
+    Vcore_6502* top;
+    VerilatedFstC* tfp;
 
-VerilatedFstC* openWaveTrace(Vcore_6502* top, std::string tracefile);
-void closeWaveTrace(VerilatedFstC* tfp);
-int loadROMSim(std::string romfile);
+    uint16_t latch_addr_bus;
+
+public:
+    Verilated6502(std::string romfile, uint16_t interrupt_port = 0);
+    ~Verilated6502();
+    void reset();
+    void jump(uint16_t pc);
+    void clock( int nextclk );
+    void cycle( ) { clock(1); clock(0); };
+    
+    void setState(const state6502& state);
+    state6502 getState();
+    bool jammed();
+
+    void openWaveTrace(std::string tracefile);
+    void closeWaveTrace();
+};
 
 #endif

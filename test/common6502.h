@@ -8,7 +8,6 @@
 
 #define MEMSIZE 0x10000
 
-
 typedef struct
 {
     uint64_t cycle;
@@ -28,12 +27,21 @@ typedef struct
     bool rw;    
 } state6502;
 
+
 void printState(const state6502 &state);
-void printLOC(uint16_t pc, const std::vector<std::string> listing);
-void printTrace(const std::vector<state6502> &trace, const std::vector<std::string> &listing, int lines = 10);
 
-int loadROM(uint8_t *mem, std::string romfile, size_t memsize);
-std::vector<std::string> loadListing(std::string listfile);
 
+class Abstract6502{
+protected:
+    uint8_t* mem;
+public:
+    virtual void reset() = 0;
+    virtual void jump(uint16_t pc) = 0;
+    virtual void setState(const state6502& state) = 0;
+    virtual state6502 getState() = 0;
+    virtual bool jammed() = 0;
+    virtual void cycle() = 0;
+    int loadROM(std::string romfile);
+};
 
 #endif
