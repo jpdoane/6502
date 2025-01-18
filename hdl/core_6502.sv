@@ -72,7 +72,9 @@ module core_6502 #(
             addr <= 0;
         end else begin
             addr <= {adh, adl};
+            `ifdef DEBUG_REG
             if(reg_set_en) addr <= pc_set;
+            `endif
         end
     end
     always @(*) begin
