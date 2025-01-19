@@ -7,6 +7,7 @@
 #include "common6502.h"
 
 #include "build/Vcore_6502.h"
+#include "build/Vcore_6502_core_6502.h"
 #include "verilated.h"
 #include "verilated_fst_c.h"
 

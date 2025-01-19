@@ -5,9 +5,6 @@
 #include <vector>
 
 #include "sim6502.h"
-#include "verilated.h"
-#include "verilated_fst_c.h"
-
 
 Verilated6502::Verilated6502(std::string romfile, uint16_t interrupt_port)
 :interrupt_port(interrupt_port), tfp(nullptr), latch_addr_bus(0)
@@ -66,16 +63,18 @@ void Verilated6502::clock( int clk)
 void  Verilated6502::setState(const state6502& state)
 {
     // initialize registers
-    top->pc_set = state.pc;
-    top->s_set =  state.s;
-    top->a_set =  state.a;
-    top->x_set =  state.x;
-    top->y_set =  state.y;
-    top->p_set =  state.p;
-    top->reg_set_en = 1;
+    top->rst = 1;
     cycle( );
-    top->reg_set_en = 0;
-    // stepSim( top );
+    cycle( );
+    cycle( );
+    cycle( );
+    top->rst = 0;
+    // top->core_6502->pc = state.pc;
+    // top->core_6502->s =  state.s;
+    // top->core_6502->a =  state.a;
+    // top->core_6502->x =  state.x;
+    // top->core_6502->y =  state.y;
+    // top->core_6502->p =  state.p;
 }
 
 void Verilated6502::reset()
@@ -84,7 +83,6 @@ void Verilated6502::reset()
     top->SV = 1;
     top->NMI = 0;
     top->IRQ = 0;
-    top->reg_set_en = 0;
     top->rst = 1;  
     top->clk = 1;  
 
@@ -105,21 +103,21 @@ void Verilated6502::jump(uint16_t pc)
 state6502 Verilated6502::getState()
 {
     state6502 state;
-    state.addr = top->addr;
-    state.pc = top->pc_dbg;
-    state.ir = top->ir_dbg;
+    state.addr = top->core_6502->addr;
+    state.pc = top->core_6502->pc;
+    state.ir = top->core_6502->ir;
     state.data = top->RW ? top->data_i : top->dor,
-	state.alu = top->alu_dbg;
-    state.a = top->a_dbg;
-    state.s = top->s_dbg;
-    state.x = top->x_dbg;
-    state.y = top->y_dbg;
-    state.p = top->p_dbg;
-    state.tstate = top->tstate_dbg;
+	state.alu = top->core_6502->add;
+    state.a = top->core_6502->a;
+    state.s = top->core_6502->s;
+    state.x = top->core_6502->x;
+    state.y = top->core_6502->y;
+    state.p = top->core_6502->p;
+    state.tstate = top->core_6502->Tstate;
     state.clk = top->clk;
     state.rw = top->RW;
     state.sync = top->sync;
-    state.cycle = top->cycle_dbg;
+    state.cycle = top->core_6502->cycle;
     return state;
 }
 

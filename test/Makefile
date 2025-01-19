@@ -24,7 +24,7 @@ $(DEBUG_TARGET): $(DEBUG_SRC) $(PERFECT_OBJS) $(VMODEL)
 TESTROM = testroms/build/6502_functional_test.bin
 .PHONY: test
 test: $(DEBUG_TARGET) $(TESTROM)
-	$(DEBUG_TARGET) -r $(TESTROM) -l $(TESTROM:%.bin=%.lst) -j 400 $(TESTFLAGS)
+	$(DEBUG_TARGET) -r $(TESTROM) -l $(TESTROM:%.bin=%.lst) -w $(WAVEFILE) -j 400 $(TESTFLAGS)
 
 # ALLTESTROM = testroms/build/AllSuiteA.bin
 # .PHONY: alltest
