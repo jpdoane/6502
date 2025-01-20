@@ -68,7 +68,7 @@ void Reference6502::jump(uint16_t pc)
 	setState(state);
 }
 
-state6502 Reference6502::getState()
+state6502 Reference6502::getState() const
 {
     state6502 state;
     state.addr = readAddressBus(model);
@@ -126,7 +126,7 @@ void  Reference6502::setState(const state6502& state)
 
 }
 
-bool Reference6502::jammed()
+bool Reference6502::jammed() const
 {
 	return false;
     // return readTstate(model) == 0x3f;

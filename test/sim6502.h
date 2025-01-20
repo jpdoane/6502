@@ -23,7 +23,7 @@ private:
     uint16_t latch_addr_bus;
 
 public:
-    Verilated6502(std::string romfile, uint16_t interrupt_port = 0);
+    Verilated6502(std::string romfile = std::string(), uint16_t interrupt_port = 0);
     ~Verilated6502();
     void reset();
     void jump(uint16_t pc);
@@ -31,8 +31,8 @@ public:
     void cycle( ) { clock(1); clock(0); };
     
     void setState(const state6502& state);
-    state6502 getState();
-    bool jammed();
+    state6502 getState() const;
+    bool jammed() const;
 
     void openWaveTrace(std::string tracefile);
     void closeWaveTrace();

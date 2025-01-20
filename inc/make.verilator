@@ -52,11 +52,14 @@ VERILATOR_FLAGS += --build -j
 #VERILATOR_FLAGS += --gdbbt
 
 VERILATOR_FLAGS += $(CUSTOMSIMARGS)
-VERILATOR_FLAGS += -CFLAGS -DDUMP_WAVE_FILE=$(WAVEFILE)
 VERILATOR_FLAGS += --Mdir $(BUILD_PATH)
 
 # Input files for Verilator
+VERILATE_INCL=$(BUILD_PATH)/input.vc
 VERILATOR_INPUT = -f $(VERILATE_INCL) $(HDL_SOURCE) $(VERILATE_TOP)
+
+CCFLAGS += -DDUMP_WAVE_FILE=$(WAVEFILE)
+CCFLAGS += $(VERILATORLIBS) $(VERILATOR_CFLAGS)
 
 ######################################################################
 
@@ -75,17 +78,24 @@ VERILATORLIBS=$(BUILD_PATH)/libverilated.a -lz
 
 VERILATOR_CFLAGS = `pkg-config --cflags verilator`
 
-VFLAGS = $(VERILATORLIBS) $(VERILATOR_CFLAGS)
-
 ######################################################################
 default: run
+
+$(VERILATE_INCL):
+	@mkdir -p $(BUILD_PATH)
+	@mkdir -p $(LOG_PATH)
+	echo "+libext+.v+.sv+.vh+.svh" > $@
+	echo "-y $(abspath .) " >> $@
+	echo "-y $(PROJ_ROOT)/hdl/" >> $@
+	echo "-y $(PROJ_ROOT)/hdl/debug" >> $@
+	echo "--top-module $(TOP)" >> $@
+
 
 lib: $(VMODEL)
 
 $(VMODEL): $(VERILATE_INCL) $(HDL_SOURCE) $(VERILATE_TOP)
 	make prebuild
 	$(VERILATOR) $(VERILATOR_FLAGS) $(VERILATOR_INPUT)
-	@mkdir -p $(LOG_PATH)
 
 #run: $(TARGET)
 #	$(TARGET) $(VERILATE_ARGS)

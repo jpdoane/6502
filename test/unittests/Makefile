@@ -1,15 +1,15 @@
-include ../inc/make.inc
+include ../../inc/make.inc
 
 TOP=core_6502
-VERILATE_TOP=test_main.cpp
+VERILATE_TOP=
 VERILATE_INCL=input.vc
 HDL_SOURCE = $(CPU_SOURCE)
-VERILATOR_FLAGS += -DDEBUG_REG=1
+CCFLAGS += -I../
+# VERILATOR_FLAGS += -DDEBUG_REG=1
 
-include ../inc/make.verilator
-
+TEST_SRC=unittests.cpp ../common6502.cpp ../sim6502.cpp
+TEST_TARGET=$(BUILD_PATH)/unittester
 TESTPATH=$(abspath .)/65x02/nes6502/v1
-
 
 testfiles=$(wildcard $(TESTPATH)/*.json)
 logfiles=$(patsubst $(TESTPATH)/%.json,$(LOG_PATH)/%.log,$(testfiles))
@@ -17,17 +17,25 @@ logsummary=$(LOG_PATH)/summary.log
 testops=$(patsubst $(TESTPATH)/%.json,%,$(testfiles))
 
 
-# .PHONY: clearsummary
-# clearsummary:
-# 	-rm $(logsummary)
+# PERFECT_PATH=perfect6502
+# PERFECT_OBJS=$(BUILD_PATH)/perfect6502.o $(BUILD_PATH)/netlist_sim.o
+
+include ../../inc/make.verilator
+
+# $(BUILD_PATH)/%.o: $(PERFECT_PATH)/%.c
+# 	-@mkdir $(BUILD_PATH)
+# 	gcc -c $^ -o $@
+
+$(TEST_TARGET): $(TEST_SRC) $(VMODEL)
+	g++ $^ $(CCFLAGS) -g -o $@
 
 .PHONY: all
 all: $(logfiles)
 
 # uncomment to force retesting...
 .PHONY: $(logfiles)
-$(logfiles): $(LOG_PATH)/%.log: $(TESTPATH)/%.json $(TARGET)
-	$(TARGET) $< | tee $@; exit $${PIPESTATUS[0]}
+$(logfiles): $(LOG_PATH)/%.log: $(TESTPATH)/%.json $(TEST_TARGET)
+	$(TEST_TARGET) $< | tee $@; exit $${PIPESTATUS[0]}
 
 .PHONY: $(testops)
 $(testops): %: $(LOG_PATH)/%.log

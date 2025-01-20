@@ -44,15 +44,15 @@ private:
     int cycle_cnt;
 
 public:
-    Reference6502(std::string romfile, uint16_t interrupt_port = 0);
+    Reference6502(std::string romfile = std::string(), uint16_t interrupt_port = 0);
     ~Reference6502();
     void clock( );
     void cycle( );
     void reset();
-    void jump(uint16_t pc);  // will reset chip
+    void jump(uint16_t pc);
     void setState(const state6502& state); 
-    state6502 getState();
-    bool jammed();
+    state6502 getState() const;
+    bool jammed() const;
 };
 
 #endif

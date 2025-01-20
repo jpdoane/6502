@@ -2,12 +2,15 @@
 `include "6502_defs.vh"
 
 module core_6502 #(
-    parameter NMI_VECTOR=16'hfffa,
-    parameter RST_VECTOR=16'hfffc,
-    parameter IRQ_VECTOR=16'hfffe,
-    parameter INITIAL_STATUS=FL_I | FL_U,
-    parameter INITIAL_STACK=8'hfd
-    )
+    parameter NMI_VECTOR = 16'hfffa,
+    parameter RST_VECTOR = 16'hfffc,
+    parameter IRQ_VECTOR = 16'hfffe,
+    parameter A_RST      = 8'h0,
+    parameter X_RST      = 8'h0,
+    parameter Y_RST      = 8'h0,
+    parameter S_RST      = 8'hfd,
+    parameter P_RST      = FL_I | FL_U
+    )   
     (
     input  logic clk,
     input  logic rst,
@@ -24,41 +27,6 @@ module core_6502 #(
     output logic jam
 
     );
-
-    // logic dbg_rst = 0;
-    // `ifdef DEBUG_REG
-    //     logic [15:0] PC_RST;
-    //     logic [7:0] A_RST = 8'h0;
-    //     logic [7:0] S_RST = 8'h0;
-    //     logic [7:0] X_RST = 8'h0;
-    //     logic [7:0] Y_RST = INITIAL_STACK;
-    //     logic [7:0] P_RST = INITIAL_STATUS;
-
-    //     function debug_reset(pc,a,s,x,y,p)
-    //         PC_RST = pc;
-    //         A_RST = a;
-    //         S_RST = s;
-    //         X_RST = x;
-    //         Y_RST = y;
-    //         P_RST = p;
-    //         dbg_rst = 1;
-    //     endfunction
-    // `else 
-        localparam A_RST = 8'h0;
-        localparam X_RST = 8'h0;
-        localparam Y_RST = 8'h0;
-        localparam S_RST = INITIAL_STACK;
-        localparam P_RST = INITIAL_STATUS;
-    // `endif 
-
-    logic reg_set_en /*verilator public*/;
-    logic [15:0] pc_set /*verilator public*/;
-    logic [7:0] a_set /*verilator public*/;
-    logic [7:0] s_set /*verilator public*/;
-    logic [7:0] x_set /*verilator public*/;
-    logic [7:0] y_set /*verilator public*/;
-    logic [7:0] p_set /*verilator public*/;
-
 
     // ready signal
     wire rdy = READY | ~RW; //ignore not ready when writing
@@ -256,10 +224,6 @@ module core_6502 #(
     always @(posedge clk ) begin
         if (rst || fetch_intr) ir <= 0;  //break from RESET_VECTOR
         else if (sync && rdy) ir <= data_i;
-
-        // `ifdef DEBUG_REG
-        //     if (reg_set_en) ir <= 8'hea; // set ir to nop while we load debug state
-        // `endif         
     end
 
     // predecode flag for two-cycle ops (LD/CP, imm, impl)
@@ -314,15 +278,6 @@ module core_6502 #(
             stack_pull_r <= stack_pull;
             stack_push_r <= stack_push;
             stack_read <= stack_pull_r;
-
-        // `ifdef DEBUG_REG
-        //     if (reg_set_en || debug_clear) begin
-        //         pull_r <= 0;
-        //         stack_pull_r <= 0;
-        //         stack_read <= 0;
-        //     end
-        // `endif 
-
         end
     end
 
@@ -330,7 +285,7 @@ module core_6502 #(
     logic [7:0] alu_ai, alu_bi, alu_out;
     logic aluV, aluC, adl_add, adh_add;
 
-    // in real 6502, adl is routed to alu_bi and adh is routed to alu_ai via sb, but this requires latches and subcycle control...
+    // in real 6502, adl is routed to alu_bi and adh is routed to alu_ai via sb, controlled at subcycle
     // we are also cheating here a bit by using the registered addr than adl/adh bus, but this accomplishes the same effect
     assign  alu_ai = adl_add ? addr[7:0] :
                      adh_add ? addr[15:8] :
@@ -414,10 +369,6 @@ module core_6502 #(
                         toTrmw ? TRMW1 : 
                         Tstate >> 1;
 
-        //     `ifdef DEBUG_REG
-        //         if(reg_set_en) Tstate <= T_DEBUG;
-        //         if(Tstate == T_DEBUG) Tstate <= T1;
-        //     `endif
         end
     end
     assign jam = !|Tstate; //if Tstate reaches all zeros we have a jam
@@ -741,11 +692,6 @@ module core_6502 #(
                         jump = 1;
                         handle_int = 1; // TODO: ?
                         toT1 = 1;
-
-                        // `ifdef DEBUG_REG
-                        //     if (dbg_rst) {adh_src, adl_src} = PC_RST;
-                        // `endif
-
                     end
                     default: begin end
                 endcase
@@ -795,14 +741,6 @@ module core_6502 #(
         end
 
         if((exec & mem_wr) | push_r) write_mem = 1;
-
-        // `ifdef DEBUG_REG
-        //     if (reg_set_en || debug_clear) begin
-        //         exec = 0;
-        //         push = 0;
-        //         pull = 0;
-        //     end
-        // `endif 
     end
 
     //instruction pointer: pc of current opcode
@@ -813,33 +751,10 @@ module core_6502 #(
         else if (sync && rdy)   ip <= addr;
     end
 
-
-    // `ifdef DEBUG_CPU
-    //     // `include "debug/debug.sv"
-    // `endif 
-    logic debug_clear;
-    // `ifdef DEBUG_REG
-    //     always_comb begin
-    //         pc_dbg = pc;
-    //         s_dbg = s;
-    //         a_dbg = a;
-    //         x_dbg = x;
-    //         y_dbg = y;
-    //         p_dbg = p;
-    //         ir_dbg = ir;
-    //         alu_dbg = add;
-    //         tstate_dbg = Tstate;
-    //         ip_dbg = ip;
-    //         cycle_dbg = cycle;
-    //     end
-        int cycle /*verilator public*/;
-        always_ff @(posedge clk) begin
-            if (rst) cycle <= 0;
-            else cycle <= cycle+1;
-        end
-
-        // `else
-        assign debug_clear=0;
-    // `endif 
+    int cycle /*verilator public*/;
+    always_ff @(posedge clk) begin
+        if (rst) cycle <= 0;
+        else cycle <= cycle+1;
+    end
 
 endmodule

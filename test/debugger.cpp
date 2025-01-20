@@ -36,7 +36,6 @@ void debug(Abstract6502* sim,
     std::vector<state6502> history;
     size_t cnt=0;
     while(true) {
-        sim->cycle();
         simState = sim->getState();
 
         // user interrupt - break and step
@@ -100,6 +99,9 @@ void debug(Abstract6502* sim,
             printTrace(history, listing);
             break;
         }
+
+        sim->cycle();
+
     }
 }
 
@@ -254,20 +256,66 @@ std::vector<std::string> loadListing(std::string listfile)
 	std::ifstream fin(listfile);
 	std::string linestr; 
 
-	int pc;
+    int pccol = -1;
+    int pcwidth = 4;
 	while (std::getline(fin, linestr))
 	{
-		try {
-			pc = std::stoul(linestr, nullptr, 16);
-			if(pc < listing.size())
-				listing[pc] = linestr;
-			else {
-				while(pc >= listing.size())
-					listing.push_back(emptyLOC(pc));
-				listing.push_back(linestr);
-			}
-		}
-		catch (std::invalid_argument) {} //not all lines in file will be valid LOC
+        if(linestr.find("ca65") != std::string::npos){
+            pccol = 2;
+            break;
+        }
+        if(linestr.find("asm") != std::string::npos){
+            pccol = 8;
+            break;
+        }
 	}
+    if (pccol<0){
+        std::cerr << "WARNING - unknown list file format!" << std::endl;
+        return listing;
+    }
+
+	std::string pc_listing;
+    int pc = 0;
+    int pc_next = 0;
+
+    //TODO: lines with no PC should be added to following PC not previous...
+    while (std::getline(fin, linestr))
+    {
+        pc_next = -1;
+        try {
+            std::cout << linestr << std::endl;
+
+            // check for valid PC on this line...
+            if (linestr.length() >= pccol+pcwidth && 
+                linestr.substr(pccol, pcwidth).find_first_not_of("0123456789abcdefABCDEF") == std::string::npos)
+                {
+                    // convert to hex number
+                    // throws if not valid
+                    pc_next = std::stoul(linestr.substr(pccol, pcwidth), nullptr, 16);                
+                }
+        }
+        catch (std::invalid_argument) {} //not all lines in file will be valid PCs
+
+        // on new pc
+        if( pc_next > pc)
+        {
+            // found next pc
+            // add empty listings to all missing pcs so far...
+            while(pc > listing.size())
+                listing.push_back(emptyLOC(pc));
+
+            // add this pc
+            listing.push_back(pc_listing);
+            pc_listing.clear();
+            pc = pc_next;
+        }
+
+        // log this line to listing for current pc
+        if (pc_listing.empty())
+            pc_listing = linestr;
+        else
+            pc_listing += "\n" + linestr;
+    }
+
     return listing;
 }

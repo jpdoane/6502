@@ -15,13 +15,13 @@ Verilated6502::Verilated6502(std::string romfile, uint16_t interrupt_port)
     context = new VerilatedContext;
     context->debug(0);
     context->randReset(2);
-    context->traceEverOn(true); // Verilator must compute traced signals
     // context->commandArgs(argc, argv);
     top = new Vcore_6502{context, "core_6502"};
 
-    loadROM(romfile);
-    reset();
+    if(!romfile.empty())
+        loadROM(romfile);
 
+    reset();
 }
 
 Verilated6502::~Verilated6502()
@@ -57,24 +57,25 @@ void Verilated6502::clock( int clk)
             top->data_i = mem[latch_addr_bus];
         }
 
-        if (tfp) tfp->dump(Verilated::time());
+        if (tfp) tfp->dump(Verilated::time());         
 }
 
 void  Verilated6502::setState(const state6502& state)
 {
-    // initialize registers
+    // reset chip
+    top->READY = 0;
     top->rst = 1;
     cycle( );
-    cycle( );
-    cycle( );
-    cycle( );
     top->rst = 0;
-    // top->core_6502->pc = state.pc;
-    // top->core_6502->s =  state.s;
-    // top->core_6502->a =  state.a;
-    // top->core_6502->x =  state.x;
-    // top->core_6502->y =  state.y;
-    // top->core_6502->p =  state.p;
+    // initialize pc and registers, with rdy = 0
+    top->core_6502->pc = state.pc-1;
+    top->core_6502->s =  state.s;
+    top->core_6502->a =  state.a;
+    top->core_6502->x =  state.x;
+    top->core_6502->y =  state.y;
+    top->core_6502->p =  state.p;
+    cycle( );
+    top->READY = 1; // enable READY, pc is now at state.pc
 }
 
 void Verilated6502::reset()
@@ -100,7 +101,7 @@ void Verilated6502::jump(uint16_t pc)
     setState(state);
 }
 
-state6502 Verilated6502::getState()
+state6502 Verilated6502::getState() const
 {
     state6502 state;
     state.addr = top->core_6502->addr;
@@ -121,7 +122,7 @@ state6502 Verilated6502::getState()
     return state;
 }
 
-bool Verilated6502::jammed()
+bool Verilated6502::jammed() const
 {
     return top->jam;
 }
@@ -134,16 +135,25 @@ void Verilated6502::openWaveTrace(std::string tracefile)
     if (tracefile.empty())
         return;
 
-    std::cout << "Logging wavefile " << tracefile << std::endl;
-    Verilated::traceEverOn(true);
-    VerilatedFstC* tfp = new VerilatedFstC;
+    context->traceEverOn(true);
+    tfp = new VerilatedFstC;
     top->trace (tfp, 99);
     tfp->open(tracefile.c_str());
+
+    if (tfp->isOpen()) {
+        std::cout << "Logging to wavefile " << tracefile << std::endl;
+    }
+    else {
+        std::cout << "ERROR opening wavefile " << tracefile << std::endl;
+        closeWaveTrace();
+    }
+
 }   
 
 void Verilated6502::closeWaveTrace()
 {
     if(tfp){
+        context->traceEverOn(false);
         tfp->close();
         delete tfp;
         tfp = nullptr;

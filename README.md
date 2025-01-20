@@ -1,20 +1,22 @@
 
 ## 6502 cpu
 
-Attempt at a cycle accurate 6502 core. Still a few rough edges, but passes the following test programs:
-- https://github.com/robfinch/Cores/blob/master/bc6502/test6502.a65
-- https://www.qmtpro.com/~nes/misc/nestest.txt
+Cycle accurate 6502 core (no decimal mode). Passes following tests:
+- https://github.com/Klaus2m5/6502_65C02_functional_tests
+- https://github.com/pmonta/FPGA-netlist-tools/blob/master/6502-test-code/AllSuiteA.asm
+- https://github.com/SingleStepTests/65x02/tree/main/nes6502/v1
 
 # Simulation
 
 Install prerequisites. 
 ```
-$ sudo apt install iverilog gtkwave xa65
+$ sudo apt install verilator gtkwave xa65
 ```
 
-Simulate testbench and view in gtkwave
+Simulate test program with simple debugger.  Hit Ctrl-C to break and step, or run with -s flag to debug from start.
 ```
 $ cd test
 $ make 
 ```
+
 

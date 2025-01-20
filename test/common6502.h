@@ -32,14 +32,15 @@ void printState(const state6502 &state);
 
 
 class Abstract6502{
-protected:
-    uint8_t* mem;
 public:
+    uint8_t* mem;
+    virtual ~Abstract6502() {}; // enable destruction of derived class from base ptr
+
     virtual void reset() = 0;
     virtual void jump(uint16_t pc) = 0;
     virtual void setState(const state6502& state) = 0;
-    virtual state6502 getState() = 0;
-    virtual bool jammed() = 0;
+    virtual state6502 getState() const = 0;
+    virtual bool jammed() const = 0;
     virtual void cycle() = 0;
     int loadROM(std::string romfile);
 };
