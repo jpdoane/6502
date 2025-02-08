@@ -5,20 +5,22 @@ CA65_SRCS = \
 ASM_SRCS = \
 	AllSuiteA.asm
 
-OBJS = $(CA65_SRCS:%.ca65=build/%.bin) $(ASM_SRCS:%.asm=build/%.bin)
+BUILDPATH = build
+
+OBJS = $(CA65_SRCS:%.ca65=$(BUILDPATH)/%.bin) $(ASM_SRCS:%.asm=$(BUILDPATH)/%.bin)
 
 all: $(OBJS)
 
-build/%.o: %.ca65
+$(BUILDPATH)/%.o: %.ca65
 	@mkdir -p build
 	ca65 -l build/$*.lst -o $@ $<
 
-build/%.asm_o: %.asm
+$(BUILDPATH)/%.asm_o: %.asm
 	@mkdir -p build
 	acme -r build/$*.lst -o $@ $<
 
 #store .ORG offset in file so we can build flat ROM binary
-build/%.org: %.asm
+$(BUILDPATH)/%.org: %.asm
 	sed -nE 's/.*.ORG \$$([0-9]+)/ibase=16; \1\n/p' $< | tr -d '\r' | bc > $@
 
 %.bin: %.o
@@ -33,5 +35,28 @@ build/%.org: %.asm
 build/%.bin: build/%.asm_o build/%.org
 	dd obs=1 seek=`cat build/$*.org` if=build/$*.asm_o of=$@
 
+
+DEBUGGER=../build/debugger
+
+.PHONY: run_rom
+run_rom: $(TESTROM)
+	$(DEBUGGER) -r $(TESTROM) -l $(TESTROM:%.bin=%.lst) $(TESTFLAGS)
+
+.PHONY: functional_test
+functional_test: TESTROM=$(BUILDPATH)/6502_functional_test.bin
+functional_test: TESTFLAGS += -j 400
+functional_test: run_rom
+
+.PHONY: interrupt_test
+interrupt_test: TESTROM=$(BUILDPATH)/6502_interrupt_test.bin 
+interrupt_test: TESTFLAGS += -j 400 -i bffc
+interrupt_test: run_rom
+
+.PHONY: AllSuiteA
+AllSuiteA: TESTROM=$(BUILDPATH)/AllSuiteA.bin 
+AllSuiteA: TESTFLAGS += -j 4000
+AllSuiteA: run_rom
+
 clean:
 	rm -rf build
+

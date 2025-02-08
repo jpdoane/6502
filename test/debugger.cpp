@@ -170,9 +170,9 @@ int main(int argc, char** argv, char** env) {
             abort();
         }
 
-    if( romfile.empty() )
+    if( romfile.empty() || romfile[0] == '-' )
     {
-        std::cerr << "Error - no romfile" <<std::endl;
+        std::cerr << "Error: no romfile" <<std::endl;
         exit(EXIT_FAILURE);
     }
 
@@ -283,7 +283,7 @@ std::vector<std::string> loadListing(std::string listfile)
     {
         pc_next = -1;
         try {
-            std::cout << linestr << std::endl;
+            // std::cout << linestr << std::endl;
 
             // check for valid PC on this line...
             if (linestr.length() >= pccol+pcwidth && 

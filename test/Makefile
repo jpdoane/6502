@@ -17,40 +17,21 @@ $(BUILD_PATH)/%.o: $(PERFECT_PATH)/%.c
 	-@mkdir $(BUILD_PATH)
 	gcc -c $^ -o $@
 
+
+.PHONY: debugger
+debugger: $(DEBUG_TARGET)
+
 $(DEBUG_TARGET): $(DEBUG_SRC) $(PERFECT_OBJS) $(VMODEL)
 	g++ $^ $(CCFLAGS) -g -o $@
 
+.PHONY: unittests
+unittests:
+	make -C unittests
 
-.PHONY: test_rom
-test_rom: $(TESTROM) $(DEBUG_TARGET)
-	$(DEBUG_TARGET) -r $(TESTROM) -l $(TESTROM:%.bin=%.lst)  $(_TESTFLAGS) $(TESTFLAGS)
+.PHONY: testrom
+testrom: $(DEBUG_TARGET)
+	export TESTFLAGS="-w $(WAVEFILE)"
+	export DEBUGGER=$(DEBUG_TARGET)
+	make -C testroms functional_test 
 
-.PHONY: functional_test
-functional_test: TESTROM=testroms/build/6502_functional_test.bin
-functional_test: _TESTFLAGS+=-j 400
-functional_test: test_rom
-
-.PHONY: interrupt_test
-interrupt_test: TESTROM=testroms/build/6502_interrupt_test.bin 
-interrupt_test: _TESTFLAGS+=-j 400
-interrupt_test: _TESTFLAGS+=-i bffc
-interrupt_test: test_rom
-
-
-.PHONY: interrupt_test
-interrupt_test: TESTROM=testroms/build/6502_interrupt_test.bin 
-interrupt_test: _TESTFLAGS+=-j 400
-interrupt_test: _TESTFLAGS+=-i bffc
-interrupt_test: test_rom
-
-.PHONY: AllSuiteA
-AllSuiteA: TESTROM=testroms/build/AllSuiteA.bin 
-AllSuiteA: _TESTFLAGS+=-j 4000 -w $(WAVEFILE)
-AllSuiteA: test_rom
-
-# ALLTESTROM = testroms/build/AllSuiteA.bin
-# .PHONY: alltest
-# alltest: $(DEBUG_TARGET) $(ALLTESTROM)
-# 	$(DEBUG_TARGET) -r $(ALLTESTROM) -j 4000 $(TESTFLAGS)
-
-.DEFAULT_GOAL = functional_test
+.DEFAULT_GOAL = unittests
