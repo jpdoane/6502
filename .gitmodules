@@ -1,5 +1,5 @@
-[submodule "test/unittests/65x02"]
-	path = test/unittests/65x02
+[submodule "test/65x02"]
+	path = test/65x02
 	url = git@github.com:SingleStepTests/65x02.git
 [submodule "test/perfect6502"]
 	path = test/perfect6502

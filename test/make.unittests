@@ -1,13 +1,4 @@
-include ../../inc/make.inc
-
-TOP=core_6502
-VERILATE_TOP=
-VERILATE_INCL=input.vc
-HDL_SOURCE = $(CPU_SOURCE)
-CCFLAGS += -I../
-# VERILATOR_FLAGS += -DDEBUG_REG=1
-
-TEST_SRC=unittests.cpp ../common6502.cpp ../sim6502.cpp
+TEST_SRC=unittests.cpp common6502.cpp sim6502.cpp
 TEST_TARGET=$(BUILD_PATH)/unittester
 TESTPATH=$(abspath .)/65x02/nes6502/v1
 
@@ -16,11 +7,11 @@ logfiles=$(patsubst $(TESTPATH)/%.json,$(LOG_PATH)/%.log,$(testfiles))
 logsummary=$(LOG_PATH)/summary.log
 testops=$(patsubst $(TESTPATH)/%.json,%,$(testfiles))
 
+.PHONY: all
+all: $(logfiles)
 
 # PERFECT_PATH=perfect6502
 # PERFECT_OBJS=$(BUILD_PATH)/perfect6502.o $(BUILD_PATH)/netlist_sim.o
-
-include ../../inc/make.verilator
 
 # $(BUILD_PATH)/%.o: $(PERFECT_PATH)/%.c
 # 	-@mkdir $(BUILD_PATH)
@@ -28,9 +19,6 @@ include ../../inc/make.verilator
 
 $(TEST_TARGET): $(TEST_SRC) $(VMODEL)
 	g++ $^ $(CCFLAGS) -g -o $@
-
-.PHONY: all
-all: $(logfiles)
 
 # uncomment to force retesting...
 .PHONY: $(logfiles)
@@ -60,4 +48,4 @@ illegal: 80 02 12 22 32 42 52 62 72 82 92 b2 c2 d2 e2 f2 03 13 23 33 43 53 63 73
 
 wip: 
 
-.DEFAULT_GOAL = legal
+unittests: legal

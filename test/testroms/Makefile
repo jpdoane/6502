@@ -5,7 +5,7 @@ CA65_SRCS = \
 ASM_SRCS = \
 	AllSuiteA.asm
 
-BUILDPATH = build
+BUILDPATH = $(abspath ./build)
 
 OBJS = $(CA65_SRCS:%.ca65=$(BUILDPATH)/%.bin) $(ASM_SRCS:%.asm=$(BUILDPATH)/%.bin)
 
@@ -26,20 +26,15 @@ $(BUILDPATH)/%.org: %.asm
 %.bin: %.o
 	ld65 $*.o -o $@ -m $*.map -C link.cfg
 
-# build/%.bin: %.asm
-# 	acme -r build/$*.lst -o build/temp.o $^
-# 	sed -nE 's/.*.ORG \$$([0-9]+)/ibase=16; \1\n/p' $< | tr -d '\r' | bc > org.tmp
-# 	dd obs=1 seek=`cat org.tmp` if=build/temp.o of=$@
-# 	rm org.tmp
-
-build/%.bin: build/%.asm_o build/%.org
+$(BUILDPATH)/%.bin: $(BUILDPATH)/%.asm_o $(BUILDPATH)/%.org
 	dd obs=1 seek=`cat build/$*.org` if=build/$*.asm_o of=$@
 
 
 DEBUGGER=../build/debugger
 
+
 .PHONY: run_rom
-run_rom: $(TESTROM)
+run_rom: $(OBJS)
 	$(DEBUGGER) -r $(TESTROM) -l $(TESTROM:%.bin=%.lst) $(TESTFLAGS)
 
 .PHONY: functional_test

@@ -17,16 +17,11 @@ $(BUILD_PATH)/%.o: $(PERFECT_PATH)/%.c
 	-@mkdir $(BUILD_PATH)
 	gcc -c $^ -o $@
 
-
 .PHONY: debugger
 debugger: $(DEBUG_TARGET)
 
 $(DEBUG_TARGET): $(DEBUG_SRC) $(PERFECT_OBJS) $(VMODEL)
 	g++ $^ $(CCFLAGS) -g -o $@
-
-.PHONY: unittests
-unittests:
-	make -C unittests
 
 .PHONY: testrom
 testrom: $(DEBUG_TARGET)
@@ -34,4 +29,9 @@ testrom: $(DEBUG_TARGET)
 	export DEBUGGER=$(DEBUG_TARGET)
 	make -C testroms functional_test 
 
+include make.unittests
 .DEFAULT_GOAL = unittests
+
+clean:
+	-rm -rf $(BUILD_PATH)
+	-make -C testroms clean 
