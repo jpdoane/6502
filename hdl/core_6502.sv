@@ -199,8 +199,6 @@ module core_6502 #(
             // fetch_intr <= 0;
         end else begin
 
-            rst_event <= 0;
-
             nmi_event <= NMI && !nmi_handled;
             if (IRQ_masked)
                 irq_event <= 1;

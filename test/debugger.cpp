@@ -230,7 +230,8 @@ void printTrace(const std::vector<state6502>& history, const std::vector<std::st
     for(int i = 0; i<lines; i++)
 	{
 		state6502 state = history[history.size()-lines+i];
-		printLOC(state.pc, listing);
+		if(!listing.empty())
+            (state.pc, listing);
 		printState(state);
 	}
 }
@@ -244,7 +245,7 @@ std::string emptyLOC(uint16_t pc)
 
 void printLOC(uint16_t pc, const std::vector<std::string>& listing)
 {
-	if (pc <= listing.size())
+	if (pc < listing.size())
 		std::cout << listing[pc] << std::endl;
 	else
 		std::cout << std::hex << "PC: 0x" << pc << "\t\t<no listing>" << std::endl;

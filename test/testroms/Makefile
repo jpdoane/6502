@@ -30,26 +30,27 @@ $(BUILDPATH)/%.bin: $(BUILDPATH)/%.asm_o $(BUILDPATH)/%.org
 	dd obs=1 seek=`cat build/$*.org` if=build/$*.asm_o of=$@
 
 
-DEBUGGER=../build/debugger
+DEBUGGER ?= ../build/debugger
 
 
 .PHONY: run_rom
 run_rom: $(OBJS)
-	$(DEBUGGER) -r $(TESTROM) -l $(TESTROM:%.bin=%.lst) $(TESTFLAGS)
+	$(DEBUGGER) -r $(TESTROM) $(TESTFLAGS) $(_TESTFLAGS)
 
+#-l $(BUILDPATH)/6502_functional_test.lst
 .PHONY: functional_test
 functional_test: TESTROM=$(BUILDPATH)/6502_functional_test.bin
-functional_test: TESTFLAGS += -j 400
+functional_test: _TESTFLAGS = -j 400
 functional_test: run_rom
 
 .PHONY: interrupt_test
 interrupt_test: TESTROM=$(BUILDPATH)/6502_interrupt_test.bin 
-interrupt_test: TESTFLAGS += -j 400 -i bffc
+interrupt_test: _TESTFLAGS = -j 400 -i bffc
 interrupt_test: run_rom
 
 .PHONY: AllSuiteA
 AllSuiteA: TESTROM=$(BUILDPATH)/AllSuiteA.bin 
-AllSuiteA: TESTFLAGS += -j 4000
+AllSuiteA: _TESTFLAGS = -j 4000
 AllSuiteA: run_rom
 
 clean:

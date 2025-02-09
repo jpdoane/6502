@@ -25,9 +25,7 @@ $(DEBUG_TARGET): $(DEBUG_SRC) $(PERFECT_OBJS) $(VMODEL)
 
 .PHONY: testrom
 testrom: $(DEBUG_TARGET)
-	export TESTFLAGS="-w $(WAVEFILE)"
-	export DEBUGGER=$(DEBUG_TARGET)
-	make -C testroms functional_test 
+	make -C testroms functional_test DEBUGGER=$(DEBUG_TARGET)
 
 include make.unittests
 .DEFAULT_GOAL = unittests
