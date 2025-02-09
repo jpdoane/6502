@@ -37,20 +37,20 @@ DEBUGGER ?= ../build/debugger
 run_rom: $(OBJS)
 	$(DEBUGGER) -r $(TESTROM) $(TESTFLAGS) $(_TESTFLAGS)
 
-#-l $(BUILDPATH)/6502_functional_test.lst
+#
 .PHONY: functional_test
 functional_test: TESTROM=$(BUILDPATH)/6502_functional_test.bin
-functional_test: _TESTFLAGS = -j 400
+functional_test: _TESTFLAGS = -j 400 -l $(BUILDPATH)/6502_functional_test.lst
 functional_test: run_rom
 
 .PHONY: interrupt_test
 interrupt_test: TESTROM=$(BUILDPATH)/6502_interrupt_test.bin 
-interrupt_test: _TESTFLAGS = -j 400 -i bffc
+interrupt_test: _TESTFLAGS = -j 400 -i bffc -l $(BUILDPATH)/6502_interrupt_test.lst
 interrupt_test: run_rom
 
 .PHONY: AllSuiteA
 AllSuiteA: TESTROM=$(BUILDPATH)/AllSuiteA.bin 
-AllSuiteA: _TESTFLAGS = -j 4000
+AllSuiteA: _TESTFLAGS = -j 4000 -l $(BUILDPATH)/AllSuiteA.lst
 AllSuiteA: run_rom
 
 clean:

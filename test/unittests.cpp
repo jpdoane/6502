@@ -33,8 +33,8 @@ int check_cycle(Abstract6502* sim, const UnitTestCycle &cycle, int cycle_cnt, in
 
     if( cycle.data != state.data)
     {
-        if(verbose) std::cout << std::hex << "Error: expected bus data " << cycle.data <<
-                    " but observed " << state.data << " in cycle " << cycle_cnt << std::endl;
+        if(verbose) std::cout << std::hex << "Error: expected bus data " << (int) cycle.data <<
+                    " but observed " << (int) state.data << " in cycle " << cycle_cnt << std::endl;
         rv = 3;
     }
 
@@ -86,7 +86,7 @@ int run_test(Abstract6502* sim, const UnitTest &test, int verbose) {
     for (int i=0; i<test.init.ram.size(); i++)
     {
         sim->mem[test.init.ram[i].addr] = test.init.ram[i].data;
-        if(verbose) std::cout << "initializing ram[" << test.init.ram[i].addr << "] <- " << (int) test.init.ram[i].data << std::endl;
+        if(verbose) std::cout << std::hex << "initializing ram[" << test.init.ram[i].addr << "] <= " << (int) test.init.ram[i].data << std::endl;
     }
 
     // initialize registers
@@ -97,6 +97,7 @@ int run_test(Abstract6502* sim, const UnitTest &test, int verbose) {
     state.x = test.init.x;
     state.y = test.init.y;
     state.p = test.init.p;
+    state.cycle = 0;
     sim->setState(state);
 
     int rv=0;

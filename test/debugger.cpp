@@ -231,7 +231,7 @@ void printTrace(const std::vector<state6502>& history, const std::vector<std::st
 	{
 		state6502 state = history[history.size()-lines+i];
 		if(!listing.empty())
-            (state.pc, listing);
+            printLOC(state.pc, listing);
 		printState(state);
 	}
 }

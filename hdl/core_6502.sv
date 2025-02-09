@@ -8,7 +8,7 @@ module core_6502 #(
     parameter A_RST      = 8'h0,
     parameter X_RST      = 8'h0,
     parameter Y_RST      = 8'h0,
-    parameter S_RST      = 8'hfd,
+    parameter S_RST      = 8'hff,
     parameter P_RST      = FL_I | FL_U
     )   
     (
@@ -62,7 +62,7 @@ module core_6502 #(
     end
     always @(*) begin
         case(adl_src)
-            ADDR_DATA:  adl = data_i;
+            ADDR_DATA:  adl = db;
             ADDR_ALU:   adl = alu_out;
             ADDR_INT:   adl = rst_event ? RST_VECTOR[7:0] :
                               nmi_event ? NMI_VECTOR[7:0] :
@@ -72,7 +72,7 @@ module core_6502 #(
             default:    adl = pcl; //ADDR_PC
         endcase
         case(adh_src)
-            ADDR_DATA:  adh = data_i;
+            ADDR_DATA:  adh = db;
             ADDR_ALU:   adh = alu_out;
             ADDR_Z:     adh = 8'b0;
             ADDR_INT:   adh = rst_event ? RST_VECTOR[15:8] :
@@ -125,15 +125,12 @@ module core_6502 #(
             stack_push[1]:  db_result = interrupt ? p : p | FL_BU; // set break flags unless irq
             stack_push[2]:  db_result = pcl;
             stack_push[3]:  db_result = pch;
-            // write_back:     db_result = data_i;
             default         db_result = sb_result;
         endcase
     end
 
     // i/o data registers
-    assign RW = !write_mem;
-    // assign dor = db_result;
-    // assign write_mem = write_back_r | push_r | exec_store;
+    assign RW = !write_mem | rst_event;
 
     // TODO: this is a bit of a hack, and prob can be done organically..
     logic write_back;
@@ -183,7 +180,7 @@ module core_6502 #(
     end
 
     // interrupt handling
-    logic nmi_event, nmi_handled, irq_event, rst_event;
+    logic nmi_event, nmi_handled, irq_event, rst_event /*verilator public*/;
     // verilator lint_off SYMRSVDWORD
     wire interrupt = nmi_event || irq_event;
     // verilator lint_on SYMRSVDWORD
@@ -220,15 +217,15 @@ module core_6502 #(
 
     // opcode fetch and interrupt injection
     always @(posedge clk ) begin
-        if (rst || fetch_intr) ir <= 0;  //break from RESET_VECTOR
-        else if (sync && rdy) ir <= data_i;
+        if (rst || rst_event || fetch_intr) ir <= 0;  //break from RESET_VECTOR
+        else if (sync && rdy) ir <= db;
     end
 
     // predecode flag for two-cycle ops (LD/CP, imm, impl)
     logic two_cycle;
-    assign two_cycle =  sync && ((data_i ==? 8'b1??_000_?0) ||                            
-                                (data_i ==? 8'b???_010_?? && data_i !=? 8'b0??_010_00) ||
-                                (data_i ==? 8'b???_110_?0)) && !interrupt;
+    assign two_cycle =  sync && ((db ==? 8'b1??_000_?0) ||                            
+                                (db ==? 8'b???_010_?? && db !=? 8'b0??_010_00) ||
+                                (db ==? 8'b???_110_?0)) && !(interrupt || rst_event);
 
     // decode instruction
     logic [4:0] op_type;

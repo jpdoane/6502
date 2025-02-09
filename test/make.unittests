@@ -41,6 +41,7 @@ br: 10 30 50 70 90 b0 d0 f0
 jmp: 4c 6c
 call_break: 00 20 40 60
 
+
 legal: imm_impl zp zp_xy abs abs_xy ind_x ind_y rmw stack br jmp call_break
 	@echo "All tests Pass!"
 
@@ -48,4 +49,5 @@ illegal: 80 02 12 22 32 42 52 62 72 82 92 b2 c2 d2 e2 f2 03 13 23 33 43 53 63 73
 
 wip: 
 
+.PHONY: unittests
 unittests: legal

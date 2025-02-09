@@ -66,29 +66,32 @@ void  Verilated6502::setState(const state6502& state)
     uint8_t rvl = mem[0xFFFC];
     uint8_t rvh = mem[0xFFFD];
 
-    // set rv to pc
-    mem[0xFFFC] = state.pc & 0xff;
-    mem[0xFFFD] = state.pc >> 8;
-
     // reset chip
     top->READY = 1;
     top->rst = 1;
     cycle( );
     top->rst = 0;
+    // set rv to pc
+    mem[0xFFFC] = state.pc & 0xff;
+    mem[0xFFFD] = state.pc >> 8;
 
-    // initialize registers, wait for sync
-    while(top->core_6502->cycle<6 || !top->core_6502->sync){
-        top->core_6502->s =  state.s;
-        top->core_6502->a =  state.a;
-        top->core_6502->x =  state.x;
-        top->core_6502->y =  state.y;
-        top->core_6502->p =  state.p;
+    // wait for reset process to complete
+    while(top->core_6502->cycle<6)
         cycle( );
-    }
 
     // restore reset vector
     mem[0xFFFC] = rvl;
     mem[0xFFFD] = rvh;
+    cycle( );
+
+    // initialize registers
+    top->core_6502->s =  state.s;
+    top->core_6502->a =  state.a;
+    top->core_6502->x =  state.x;
+    top->core_6502->y =  state.y;
+    top->core_6502->p =  state.p;
+    top->core_6502->cycle =  state.cycle;    
+
 
 }
 
