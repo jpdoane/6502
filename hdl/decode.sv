@@ -77,6 +77,7 @@ module decode (
         stack = opcode ==? 8'b0??_010_00;
         stack_ap = opcode[6]; // high for PHA,PLA, low for PHP,PLP
 
+
         // update status flags (BIT opcodes are special case handled elsewhere...)
         // update N&Z bits on any write to a,x,y regs and all alu ops
         case(dst)

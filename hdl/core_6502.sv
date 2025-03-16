@@ -221,12 +221,6 @@ module core_6502 #(
         else if (sync && rdy) ir <= db;
     end
 
-    // predecode flag for two-cycle ops (LD/CP, imm, impl)
-    logic two_cycle;
-    assign two_cycle =  sync && ((db ==? 8'b1??_000_?0) ||                            
-                                (db ==? 8'b???_010_?? && db !=? 8'b0??_010_00) ||
-                                (db ==? 8'b???_110_?0)) && !(interrupt || rst_event);
-
     // decode instruction
     logic [4:0] op_type;
     logic [5:0] src, src_result, dst_result;
@@ -360,7 +354,6 @@ module core_6502 #(
 
             Tstate <=   Tlast ? T0 :
                         toT1 ? T1 : 
-                        two_cycle ? T0T2 :
                         toTrmw ? TRMW1 : 
                         Tstate >> 1;
 
@@ -448,55 +441,55 @@ module core_6502 #(
                 inc_pc = 1;         // fetch next op
                 sync = 1;
                 end
-            T0T2: begin
-                inc_pc = !single_byte;
-                toT1 = 1;
-                end
             T2: begin
                 inc_pc = 1;
                 case(op_type)
-                    OP_ZPG: begin
-                        {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
-                        inc_pc = 0;
-                        if(rmw) toTrmw = 1;
-                        else begin
-                            Tlast = 1;
-                            // exec = store;
+                        OP_ZPG: begin
+                            {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
+                            inc_pc = 0;
+                            if(rmw) toTrmw = 1;
+                            else begin
+                                Tlast = 1;
+                                // exec = store;
+                            end
                         end
-                    end
-                    OP_ZXY, OP_XIN, OP_INY: begin
-                        inc_pc = 0;
-                        {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
-                    end
-                    OP_BNT: begin
-                        toT1 = 1;
-                    end
-                    OP_PUS: begin
-                        inc_pc = 0;
-                        stack_push = stack_ap ? STACK_A : STACK_P;
-                        Tlast = 1;
-                    end
-                    OP_PUL: begin
-                        inc_pc = 0;
-                        stack_pull = stack_ap ? STACK_A : STACK_P;
-                    end
-                    OP_BRK: begin
-                        inc_pc = !interrupt; //only increment pc if this is actual BRK opcode, not external interrupt
-                        stack_push = STACK_PCH;
-                    end
-                    OP_JSR: begin
-                        {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
-                    end
-                    OP_RTS: begin
-                        inc_pc = 0;
-                        stack_pull = STACK_PCL;
-                    end
-                    OP_RTI: begin
-                        inc_pc = 0;
-                        stack_pull = STACK_P;
-                    end
-                    default: begin end
-                endcase
+                        OP_ZXY, OP_XIN, OP_INY: begin
+                            inc_pc = 0;
+                            {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};
+                        end
+                        OP_PUS: begin
+                            inc_pc = 0;
+                            stack_push = stack_ap ? STACK_A : STACK_P;
+                            Tlast = 1;
+                        end
+                        OP_PUL: begin
+                            inc_pc = 0;
+                            stack_pull = stack_ap ? STACK_A : STACK_P;
+                        end
+                        OP_BRK: begin
+                            inc_pc = !interrupt; //only increment pc if this is actual BRK opcode, not external interrupt
+                            stack_push = STACK_PCH;
+                        end
+                        OP_JSR: begin
+                            {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
+                        end
+                        OP_RTS: begin
+                            inc_pc = 0;
+                            stack_pull = STACK_PCL;
+                        end
+                        OP_RTI: begin
+                            inc_pc = 0;
+                            stack_pull = STACK_P;
+                        end
+                        OP_IMM,
+                        OP_IMP,
+                        OP_BNT: begin
+                            // this is effectively the T0T2 state
+                            inc_pc = !single_byte;
+                            toT1 = 1;
+                        end
+                        default: begin end
+                    endcase
                 end
             T3: begin
                 case(op_type)

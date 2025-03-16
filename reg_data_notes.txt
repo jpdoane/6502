@@ -1,0 +1,27 @@
+db currently is unregistered mem read, valid on same clock as addr
+
+critical path
+addr -> data -> addr
+
+need "fast path" to set addr/pc to data_in
+
+combinatoric uses:
+db
+    adl/adh
+    pc_next
+        pcl
+            bpage_up
+            db_result (stack_push)
+        pch
+            db_result
+    two_cycle
+
+registered uses:
+db => ir
+db => a
+db => p
+adl/adh => addr
+two_cycle => Tstate
+pc_next => pc
+db_result => dor
+
