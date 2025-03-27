@@ -20,16 +20,20 @@ module core_6502 #(
     input  logic NMI,
     input  logic IRQ,
 
-    output logic [15:0] addr,
-    output logic [7:0] dor,
-    output logic RW,
+    // because the FPGA implementation uses synchronous memory,
+    // the output address bus appears one clock earlier than in a real 6502
+    output logic [15:0] addr_next,
+    output logic [7:0] data_o_next,
+    output logic RW_next,
+
     output logic sync,
     output logic jam
 
     );
 
+   
     // ready signal
-    wire rdy = READY | ~RW; //ignore not ready when writing
+    wire rdy = READY | ~RW_next; //ignore not ready when writing
 
     // registers
     logic [7:0] ir /*verilator public*/;
@@ -53,11 +57,16 @@ module core_6502 #(
 
     // ADDRESS BUS
     logic [7:0] adl,adh;
+    logic [7:0] adl_r,adh_r;
+    assign addr_next = {adh,adl};
+
     always @(posedge clk ) begin
         if (rst) begin
-            addr <= 0;
+            adl_r <= 0;
+            adh_r <= 0;
         end else begin
-            addr <= {adh, adl};
+            adl_r <= adl;
+            adh_r <= adh;
         end
     end
     always @(*) begin
@@ -68,7 +77,7 @@ module core_6502 #(
                               nmi_event ? NMI_VECTOR[7:0] :
                               IRQ_VECTOR[7:0];
             ADDR_STACK: adl = s;
-            ADDR_HOLD:  adl = addr[7:0];
+            ADDR_HOLD:  adl = adl_r;
             default:    adl = pcl; //ADDR_PC
         endcase
         case(adh_src)
@@ -79,7 +88,7 @@ module core_6502 #(
                               nmi_event ? NMI_VECTOR[15:8] :
                               IRQ_VECTOR[15:8];
             ADDR_STACK: adh = STACKPAGE;
-            ADDR_HOLD:  adh = addr[15:8];
+            ADDR_HOLD:  adh = adh_r;
             default:    adh = pch; //ADDR_PC
         endcase
     end
@@ -100,7 +109,7 @@ module core_6502 #(
             src[2] : sb = y;
             src[3] : sb = s;
             src[4] : sb = add;
-            src[5] : sb = data;
+            src[5] : sb = data_r;
             default: sb = 0;
         endcase
 
@@ -112,7 +121,7 @@ module core_6502 #(
             src_result[2] : sb_result = y;
             src_result[3] : sb_result = s;
             src_result[4] : sb_result = alu_out;
-            src_result[5] : sb_result = data;
+            src_result[5] : sb_result = data_r;
             default       : sb_result = 0;
         endcase
         
@@ -130,21 +139,20 @@ module core_6502 #(
     end
 
     // i/o data registers
-    assign RW = !write_mem | rst_event;
-
+    assign RW_next = !write_mem | rst_event | rst;
+    
     // TODO: this is a bit of a hack, and prob can be done organically..
     logic write_back;
 
-    logic [7:0] data;
+    logic [7:0] data_r;
+    assign data_o_next = write_back ? db : db_result;
     always_ff @(posedge clk) begin
         if (rst) begin
-            data <= 0;
-            dor <= 0;
+            data_r <= 0;
         end else begin
             // TODO: when to we need this?
-            // if(rdy) data <= data_i;
-            data <= data_i;
-            dor <= write_back ? data_i : db_result;
+            // if(rdy) data_r <= data_i;
+            data_r <= data_i;
         end
     end
 
@@ -276,11 +284,11 @@ module core_6502 #(
 
     // in real 6502, adl is routed to alu_bi and adh is routed to alu_ai via sb, controlled at subcycle
     // we are also cheating here a bit by using the registered addr than adl/adh bus, but this accomplishes the same effect
-    assign  alu_ai = adl_add ? addr[7:0] :
-                     adh_add ? addr[15:8] :
+    assign  alu_ai = adl_add ? adl_r :
+                     adh_add ? adh_r :
                      hold_alu ? add:
                      sb;
-    assign alu_bi = hold_alu ? 0 : data; 
+    assign alu_bi = hold_alu ? 0 : data_r; 
 
     alu u_alu(
         .op     (alu_op  ),
@@ -402,7 +410,7 @@ module core_6502 #(
         adh_add     = 0;
         idx       = idx_XY ? REG_X : REG_Y;
         
-        write_mem   = 0;
+        // write_mem   = 0;
         stack_push  = 0;
         stack_pull  = 0;
         push        = 0;
@@ -416,8 +424,8 @@ module core_6502 #(
         alu_op = ALU_SUM;
         src = REG_Z;
 
-        bpage_up = pcl[7] & !data[7] & !alu_out[7]; // crossed to next page if base>127, offset>0, and result <= 127
-        bpage_down = !pcl[7] & data[7] & alu_out[7]; // crossed to prev page if base<=127, offset<0, and result > 127
+        bpage_up = pcl[7] & !data_r[7] & !alu_out[7]; // crossed to next page if base>127, offset>0, and result <= 127
+        bpage_down = !pcl[7] & data_r[7] & alu_out[7]; // crossed to prev page if base<=127, offset<0, and result > 127
 
         // From: https://www.nesdev.org/wiki/Visual6502wiki/6502_Timing_States
         // The convention for presenting time states for instruction execution here
@@ -434,7 +442,6 @@ module core_6502 #(
         case (Tstate)
             T0: begin
                 inc_pc = !single_byte;
-                write_mem = mem_wr;
                 end
             T1: begin
                 exec = !mem_wr;
@@ -704,8 +711,8 @@ module core_6502 #(
     
         endcase
 
-        push = |stack_push;
-        pull = |stack_pull;
+        push = stack_push != 0;
+        pull = stack_pull != 0;
 
         if (push & !jsr_push) begin
             {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
@@ -728,15 +735,18 @@ module core_6502 #(
             src = src_result;
         end
 
-        if((exec & mem_wr) | push_r) write_mem = 1;
+        // RMW writeback or push 
+        // if((exec & mem_wr) | push_r) write_mem = 1;
     end
+
+    assign write_mem = push | write_back | ( mem_wr & Tlast );
 
     //instruction pointer: pc of current opcode
     //unused by core, but helpful for debug
     (* mark_debug = "true" *)  logic [15:0] ip;
     always @(posedge clk ) begin
         if (rst)                ip <= RST_VECTOR;
-        else if (sync && rdy)   ip <= addr;
+        else if (sync && rdy)   ip <= addr_next;
     end
 
     int cycle /*verilator public*/;
@@ -744,5 +754,15 @@ module core_6502 #(
         if (rst) cycle <= 0;
         else cycle <= cycle+1;
     end
+
+    // logic [15:0] addr;
+    // logic [7:0] dor;
+    // logic RW
+    // always @(posedge clk ) begin
+    //     addr <= addr_next;
+    //     dor <= data_o_next;
+    //      RW <= RW_next;
+    // end
+
 
 endmodule

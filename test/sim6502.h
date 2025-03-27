@@ -20,7 +20,11 @@ private:
     Vcore_6502* top;
     VerilatedFstC* tfp;
 
-    uint16_t latch_addr_bus;
+    // Verilog model uses synchronous memory, so memory bus outputs are one clock early
+    // Register a delayed copy here for comparison to "normal" 6502 behavioral model
+    uint16_t addr;
+    uint8_t data_o;
+    bool rw;
 
 public:
     Verilated6502(std::string romfile = std::string(), uint16_t interrupt_port = 0);

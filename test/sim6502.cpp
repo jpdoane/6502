@@ -7,7 +7,7 @@
 #include "sim6502.h"
 
 Verilated6502::Verilated6502(std::string romfile, uint16_t interrupt_port)
-:interrupt_port(interrupt_port), tfp(nullptr), latch_addr_bus(0)
+:interrupt_port(interrupt_port), tfp(nullptr)
 {
     mem = new uint8_t[MEMSIZE];
 
@@ -41,22 +41,36 @@ void Verilated6502::clock( int clk)
             top->NMI = (mem[interrupt_port] >> 1) & 1;
         }
 
+        if (top->rst)
+        {
+            addr = 0;
+            data_o = 0;
+            rw = true;
+        }
+        else if (clk)
+        {
+            // latch memory bus outputs before rising edge
+            addr = top->addr_next;    
+            rw = top->RW_next;        
+            data_o = top->data_o_next;
+            // if (rw) std::cout << std::hex << "before re: rd [" << (int) addr << "] rd " << std::endl;
+            // else  std::cout << std::hex << "before re: wr [" << (int) addr << "] <- " << (int) data_o << std::endl;
+        }
+
         top->clk = clk;
         top->contextp()->timeInc(1);
-
         top->eval();
 
         if (clk)
         {
-            latch_addr_bus = top->addr;    // latch addr to read on 2nd half of cycle
-            if(!top->RW) mem[latch_addr_bus] = top->dor;
-            top->data_i = 0xff;             // read mem is invalid for 1st half of cycle
-        }
-        else
-        {
-            top->data_i = mem[latch_addr_bus];
-        }
+            if(!rw) mem[addr] = data_o;
+            top->data_i = mem[addr];
+            top->eval();
 
+            // if (rw) std::cout << std::hex << "after re: rd [" << (int) addr << "] -> " << (int) mem[addr] << std::endl;
+            // else  std::cout << std::hex << "after re: wr [" << (int) addr << "] <- " << (int) mem[addr] << std::endl;
+        }
+        
         if (tfp) tfp->dump(Verilated::time());         
 }
 
@@ -92,7 +106,6 @@ void  Verilated6502::setState(const state6502& state)
     top->core_6502->p =  state.p;
     top->core_6502->cycle =  state.cycle;    
 
-
 }
 
 void Verilated6502::reset()
@@ -121,10 +134,10 @@ void Verilated6502::jump(uint16_t pc)
 state6502 Verilated6502::getState() const
 {
     state6502 state;
-    state.addr = top->core_6502->addr;
+    state.addr = addr;
     state.pc = top->core_6502->pc;
     state.ir = top->core_6502->ir;
-    state.data = top->RW ? top->data_i : top->dor,
+    state.data = rw ? top->data_i : data_o,
 	state.alu = top->core_6502->add;
     state.a = top->core_6502->a;
     state.s = top->core_6502->s;
@@ -133,7 +146,7 @@ state6502 Verilated6502::getState() const
     state.p = top->core_6502->p;
     state.tstate = top->core_6502->Tstate;
     state.clk = top->clk;
-    state.rw = top->RW;
+    state.rw = rw;
     state.sync = top->sync;
     state.cycle = top->core_6502->cycle;
     return state;

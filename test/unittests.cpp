@@ -48,6 +48,21 @@ int check_state(Abstract6502* sim, const UnitTestState &test_state, int verbose=
     if(test_state.pc != sim_state.pc)       
         { rv=4;  if(verbose) std::cout << std::hex << "Expected pc="<< (int) test_state.pc << " but observed " << (int) sim_state.pc << std::endl; }
 
+
+    for (int i=0; i<test_state.ram.size(); i++)
+    {
+        int addr = test_state.ram[i].addr;
+        int data =test_state.ram[i].data;
+        if(sim->mem[addr] != data)
+            {
+                if(verbose) std::cout << std::hex << "Expected [" << addr << "] " << data <<
+                            " but observed " << (int) sim->mem[addr] << std::endl;
+                rv=10;
+            }
+
+    }
+        
+    
     // registers need another clock to register
     sim->cycle();
     sim_state = sim->getState();
@@ -62,18 +77,7 @@ int check_state(Abstract6502* sim, const UnitTestState &test_state, int verbose=
     if(test_state.p != sim_state.p)
         { rv=9;  if(verbose) std::cout << std::hex << "Expected p=" << (int) test_state.p << " but observed " <<  (int) sim_state.p << std::endl; }
     
-    for (int i=0; i<test_state.ram.size(); i++)
-    {
-        int addr = test_state.ram[i].addr;
-        int data =test_state.ram[i].data;
-        if(sim->mem[addr] != data)
-            {
-                if(verbose) std::cout << std::hex << "Expected [" << addr << "] " << data <<
-                            " but observed " << (int) sim->mem[addr] << std::endl;
-                rv=10;
-            }
 
-    }
     return rv;
 }
 
