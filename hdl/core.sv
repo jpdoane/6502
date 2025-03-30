@@ -20,9 +20,7 @@ module core #(
     output logic [15:0] addr,
     output logic [7:0] data_o,
     output logic rw,
-
     input  logic [7:0] data_i,
-
     input  logic ready,
     input  logic so,
     input  logic nmi,
@@ -31,8 +29,6 @@ module core #(
     output logic jam
     );
 
-   
-    // ready signal
     wire rdy = ready | ~rw; //ignore not ready when writing
 
     // registers
@@ -44,16 +40,8 @@ module core #(
     logic [7:0] y /*verilator public*/;
     logic [7:0] p /*verilator public*/;
 
-   // control signals
-    logic [2:0] adl_src,adh_src;
-    logic inc_pc;
-    logic write_mem;
-    logic jump, handle_int;
-    logic hold_alu;
-
     // ADDRESS BUS
-    logic [7:0] adl,adh;
-    logic [7:0] adl_r,adh_r;
+    logic [7:0] adl, adh, adl_r, adh_r;
     assign addr = {adh,adl};
 
     always @(posedge clk ) begin
@@ -74,7 +62,7 @@ module core #(
                               IRQ_VECTOR[7:0];
             ADDR_STACK: adl = s;
             ADDR_HOLD:  adl = adl_r;
-            default:    adl = pcl; //ADDR_PC
+            default:    adl = pcl;
         endcase
         case(adh_src)
             ADDR_DATA:  adh = db;
@@ -85,7 +73,7 @@ module core #(
                               IRQ_VECTOR[15:8];
             ADDR_STACK: adh = STACKPAGE;
             ADDR_HOLD:  adh = adh_r;
-            default:    adh = pch; //ADDR_PC
+            default:    adh = pch;
         endcase
     end
 
@@ -170,22 +158,18 @@ module core #(
     // verilator lint_off SYMRSVDWORD
     wire interrupt = nmi_event || irq_event;
     // verilator lint_on SYMRSVDWORD
-
-    logic fetch_intr;
-    wire IRQ_masked = irq && !p[2];
     always @(posedge clk ) begin
         if (rst) begin
             nmi_event <= 0;
             irq_event <= 0;
             rst_event <= 1;
             nmi_handled <= 0;
-            // fetch_intr <= 0;
         end else begin
 
             nmi_event <= nmi && !nmi_handled;
-            if (IRQ_masked)
+            if (irq && !p[2])
                 irq_event <= 1;
-            
+
             if(handle_int) begin
                 nmi_handled <= nmi_event;
                 nmi_event <= 0;
@@ -193,17 +177,14 @@ module core #(
                 rst_event <= 0;
             end
 
-            if(!nmi) nmi_handled <= 0;
-
+            if(!nmi)
+                nmi_handled <= 0;
         end
     end
 
-    // set ir to BRK (0) rather than fetched instruction
-    assign fetch_intr = sync && interrupt;
-
     // opcode fetch and interrupt injection
     always @(posedge clk ) begin
-        if (rst || rst_event || fetch_intr) ir <= 0;  //break from RESET_VECTOR
+        if (rst || rst_event || (sync && interrupt)) ir <= 0;  //break from RESET_VECTOR
         else if (sync && rdy) ir <= db;
     end
 
@@ -295,9 +276,13 @@ module core #(
     end
     wire [7:0] p_push = interrupt ? p : p | FL_BU; // set break flag on push unless irq
 
-
     // state machine
     logic [7:0] Tstate /*verilator public*/;
+    logic [2:0] adl_src,adh_src;
+    logic inc_pc;
+    logic write_mem;
+    logic jump, handle_int;
+    logic hold_alu;    
     control u_control(
         .clk            (clk),
         .rst            (rst),
