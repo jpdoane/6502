@@ -7,11 +7,11 @@ module decode (
     output logic [4:0] op_type,
     output logic [5:0] src, dst,
     output logic [5:0] alu_op,
-    output logic alu_en, upNZ, upV, upC,            // alu ctl
+    output logic alu_en,                            // alu ctl
     output logic single_byte,                       // single byte opcode
     output logic idx_XY,                            // index on X vs Y
     output logic stack_ap,
-    output logic [7:0] set_mask, clear_mask         // set/clear flags
+    output logic [7:0] alu_mask, set_mask, clear_mask         // set/clear flags
     );
 
     logic [17:0] ctl_flags;
@@ -20,6 +20,8 @@ module decode (
     // special case flags
     logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op, bit_op, take_branch, stack;
     
+    logic upV, upNZ, upC;
+
     // decode datapath and alu opcode
      /* verilator lint_off CASEOVERLAP */
     always_comb begin
@@ -76,7 +78,6 @@ module decode (
         stack = opcode ==? 8'b0??_010_00;
         stack_ap = opcode[6]; // high for PHA,PLA, low for PHP,PLP
 
-
         // update status flags (BIT opcodes are special case handled elsewhere...)
         // update N&Z bits on any write to a,x,y regs and all alu ops
         case(dst)
@@ -89,9 +90,7 @@ module decode (
         upV = adc_sbc_op | bit_op;
         // set c flag on ADC,SBC, and rotate/shift ops
         upC = adc_sbc_op | cmp_op | shift_op | rot_op;
-
-        // // set carry bit on cmp & inc ops, and set to p[0] on ADC,SBC, and rotate ops
-        // alu_cin = inc_op | cmp_op | ((adc_sbc_op | rot_op) & pstatus[0]);
+        alu_mask = {upNZ, upV, 4'b0, upNZ, upC};
 
         // set and clear masks
         clear_mask = 0;

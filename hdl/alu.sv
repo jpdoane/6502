@@ -8,7 +8,7 @@ module alu (
     input  logic [7:0] ai, bi,
     input  logic ci,
     output logic [7:0] out,
-    output logic N,Z,V,C
+    output logic [7:0] status
     );
 
     logic [7:0] a,b, result;
@@ -62,16 +62,13 @@ module alu (
 
     always @(posedge clk ) begin
         if(rst) begin
-            C <= 0;
-            V <= 0;
-            N <= 0;
-            Z <= 0;
+            status <= 0;
             out <= 0;
         end else begin
-            C <= aluC;
-            V <= aluV;
-            Z <= result == 0;
-            N <= bit_op ? bi[7] : result[7];
+            status[7] <= bit_op ? bi[7] : result[7];    // N
+            status[6] <= aluV;                          // V
+            status[1] <= result == 0;                   // Z
+            status[0] <= aluC;                          // C
             out <= result;
         end
     end
