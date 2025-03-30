@@ -6,8 +6,8 @@
 #include <memory>
 #include "common6502.h"
 
-#include "build/Vcore_6502.h"
-#include "build/Vcore_6502_core_6502.h"
+#include "build/Vcore.h"
+#include "build/Vcore_core.h"
 #include "verilated.h"
 #include "verilated_fst_c.h"
 
@@ -17,7 +17,7 @@ class Verilated6502 : public Abstract6502
 private:
     uint16_t interrupt_port;
     VerilatedContext* context;
-    Vcore_6502* top;
+    Vcore* top;
     VerilatedFstC* tfp;
 
     // Verilog model uses synchronous memory, so memory bus outputs are one clock early

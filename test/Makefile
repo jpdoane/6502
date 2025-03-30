@@ -1,6 +1,6 @@
 include ../inc/make.inc
 
-TOP=core_6502
+TOP=core
 VERILATE_TOP=
 HDL_SOURCE = $(CPU_SOURCE)
 VERILATOR_FLAGS += -DDEBUG_REG=1

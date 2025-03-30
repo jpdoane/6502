@@ -69,11 +69,12 @@ parameter ALU_NOP   = 6'b000000;
 parameter ALU_AND   = 6'b000001;
 parameter ALU_ORA   = 6'b000010;
 parameter ALU_SR    = 6'b000100;
+parameter ALU_BIT   = 6'b000111;
 parameter ALU_SUM   = 6'b001000;
 parameter ALU_CIP   = 6'b010000; // use carry in from p[0], else carry in zero
 parameter ALU_OPB   = 6'b100000; // swtich active port to b for unary ops (inc/dec/sr/sl)
 
-parameter ALU_ALT   = 6'b000001;        // alt flag for xor, sub, & left sifts
+parameter ALU_ALT   = 6'b000001;         // alt flag for xor, sub, & left sifts
 parameter ALU_XOR   = ALU_ORA | ALU_ALT;
 parameter ALU_SUB   = ALU_SUM | ALU_ALT; // invert port b to perform subtraction
 

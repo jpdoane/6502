@@ -7,7 +7,7 @@ module decode (
     output logic [4:0] op_type,
     output logic [5:0] src, dst,
     output logic [5:0] alu_op,
-    output logic alu_en, upNZ, upV, upC, bit_op,   // alu ctl
+    output logic alu_en, upNZ, upV, upC,            // alu ctl
     output logic single_byte,                       // single byte opcode
     output logic idx_XY,                            // index on X vs Y
     output logic stack_ap,
@@ -18,7 +18,7 @@ module decode (
     assign {dst, src, alu_op} = ctl_flags;
 
     // special case flags
-    logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op, take_branch, stack;
+    logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op, bit_op, take_branch, stack;
     
     // decode datapath and alu opcode
      /* verilator lint_off CASEOVERLAP */
@@ -31,7 +31,7 @@ module decode (
             8'b110_010_00:  ctl_flags = {REG_Y, REG_Y, ALU_INC};       // INY
             8'b110_010_10:  ctl_flags = {REG_X, REG_X, ALU_DEC};       // DEX
             8'b100_010_00:  ctl_flags = {REG_Y, REG_Y, ALU_DEC};       // DEY
-            8'b001_0?1_00:  ctl_flags = {REG_Z, REG_A, ALU_AND};       // BIT
+            8'b001_0?1_00:  ctl_flags = {REG_Z, REG_A, ALU_BIT};       // BIT
             8'b100_110_00:  ctl_flags = {REG_A, REG_Y, ALU_NOP};       // TYA
             8'b100_010_10:  ctl_flags = {REG_A, REG_X, ALU_NOP};       // TXA
             8'b100_110_10:  ctl_flags = {REG_S, REG_X, ALU_NOP};       // TXS
@@ -72,7 +72,6 @@ module decode (
         rot_op = opcode ==? 8'b0?1_???_10;
         shift_op = opcode ==? 8'b0?0_???_10;
         bit_op = opcode ==? 8'b001_0?1_00;
-        // inc_op = opcode ==? 8'b11?_010_00 || opcode ==? 8'b111_???_10;
 
         stack = opcode ==? 8'b0??_010_00;
         stack_ap = opcode[6]; // high for PHA,PLA, low for PHP,PLP
@@ -86,8 +85,8 @@ module decode (
             REG_Y:      upNZ=1;
             default:    upNZ=alu_en & !stack;
         endcase
-        // set v flag on ADC and SBC
-        upV = adc_sbc_op;
+        // set v flag on ADC, SBC and BIT
+        upV = adc_sbc_op | bit_op;
         // set c flag on ADC,SBC, and rotate/shift ops
         upC = adc_sbc_op | cmp_op | shift_op | rot_op;
 
