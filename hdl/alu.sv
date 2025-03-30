@@ -8,7 +8,8 @@ module alu (
     input  logic [7:0] ai, bi,
     input  logic ci,
     output logic [7:0] out,
-    output logic [7:0] status
+    output logic [7:0] status,
+    output logic bpage
     );
 
     logic [7:0] a,b, result;
@@ -60,16 +61,23 @@ module alu (
 
     end
 
+    // special logic used used for branch page fault detection
+    logic bpage_up, bpage_down;
+    assign bpage_up = a[7] & !b[7] & !result[7]; // crossed to next page if base>127, offset>0, and result <= 127
+    assign bpage_down = !a[7] & b[7] & result[7]; // crossed to prev page if base<=127, offset<0, and result > 127
+
     always @(posedge clk ) begin
         if(rst) begin
             status <= 0;
             out <= 0;
+            bpage <= 0;
         end else begin
             status[7] <= bit_op ? bi[7] : result[7];    // N
             status[6] <= aluV;                          // V
             status[1] <= result == 0;                   // Z
             status[0] <= aluC;                          // C
             out <= result;
+            bpage <= bpage_up | bpage_down;
         end
     end
 

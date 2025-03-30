@@ -99,7 +99,10 @@ module core #(
     logic dummy_write;
     assign db = data_i;
     assign data_o = db_result;
+    assign rw = !write_mem | rst | rst_event;
+    logic [3:0] stack_push, stack_read; // one-hot control for push/pull registers
     always_comb begin
+
         // sb "source" bus
         case(1'b1)
             sb_src[0] : sb = a;
@@ -120,29 +123,18 @@ module core #(
             sb_src_exec[1] : sb_result = x;
             sb_src_exec[2] : sb_result = y;
             sb_src_exec[3] : sb_result = s;
-            default       : sb_result = 0;
+            default        : sb_result = 0;
         endcase
         
         // data write bus
         case(1'b1)
             stack_push[0]:  db_result = a;
-            stack_push[1]:  db_result = interrupt ? p : p | FL_BU; // set break flags unless irq
+            stack_push[1]:  db_result = p_push;
             stack_push[2]:  db_result = pcl;
             stack_push[3]:  db_result = pch;
-            dummy_write:    db_result = db;
+            dummy_write:    db_result = db;         // bit of a hack to match RMW behavior
             default         db_result = sb_result;
         endcase
-    end
-
-    // i/o data registers
-    assign rw = !write_mem | rst | rst_event;
-    logic [7:0] data_r;
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            data_r <= 0;
-        end else begin
-            data_r <= data_i;
-        end
     end
 
     // PC
@@ -241,27 +233,24 @@ module core #(
     );
 
     //alu
-    logic [7:0] alu_ai, alu_bi, alu_status;
-    logic adl_add, adh_add;
-
-    // in real 6502, adl is routed to alu_bi and adh is routed to alu_ai via sb, controlled at subcycle
-    // we are also cheating here a bit by using the registered addr than adl/adh bus, but this accomplishes the same effect
+    logic [7:0] alu_ai, alu_status;
+    logic adl_add, adh_add, bpage;
     assign  alu_ai = adl_add ? adl :
                      adh_add ? adh :
                      sb;
-    assign alu_bi = db; 
     alu u_alu(
         .clk    (clk),
         .rst    (rst),
         .op     (alu_op  ),
         .ai     (alu_ai  ),
-        .bi     (alu_bi  ),
+        .bi     (db  ),
         .ci     (p[0]),
         .out    (add),
-        .status (alu_status)
+        .status (alu_status),
+        .bpage  (bpage)
     );
 
-    //update registers
+    //registers
     logic so_r, exec, exec_r, up_s;
     always @(posedge clk ) begin
         if (rst) begin
@@ -304,15 +293,11 @@ module core #(
         p[4] <= 0;                                              //bit 4 doesnt exist but always reports low
         p[5] <= 1;                                              //bit 5 doesnt exist but always reports high
     end
+    wire [7:0] p_push = interrupt ? p : p | FL_BU; // set break flag on push unless irq
 
-    logic bpage, bpage_up, bpage_down;
-    assign bpage_up = pc[7] & !data_r[7] & !alu_status[7]; // crossed to next page if base>127, offset>0, and result <= 127
-    assign bpage_down = !pc[7] & data_r[7] & alu_status[7]; // crossed to prev page if base<=127, offset<0, and result > 127
-    assign bpage = bpage_up || bpage_down;
 
-    // state
+    // state machine
     logic [7:0] Tstate /*verilator public*/;
-    logic [3:0] stack_push, stack_read;
     control u_control(
         .clk            (clk),
         .rst            (rst),
