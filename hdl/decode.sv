@@ -3,7 +3,6 @@
 
 module decode (
     input  logic [7:0] opcode,
-    input  logic [7:0] pstatus,
     output logic [4:0] op_type,
     output logic [5:0] src, dst,
     output logic [5:0] alu_op,
@@ -112,14 +111,6 @@ module decode (
         // X vs Y indexing
         idx_XY = (opcode ==? 8'b???_1?0_?1 || opcode ==? 8'b10?_1?1_1?) ? 1'b0 : 1'b1;
 
-        // branch logic
-        case(opcode[7:6])
-            2'h0:   take_branch = pstatus[7] ^ !opcode[5]; // BPL, BMI
-            2'h1:   take_branch = pstatus[6] ^ !opcode[5]; // BVC, BVS
-            2'h2:   take_branch = pstatus[0] ^ !opcode[5]; // BCC, BCS
-            2'h3:   take_branch = pstatus[1] ^ !opcode[5]; // BNE, BEQ
-        endcase
-
         // decode control flow and memory access pattern types
         // https://www.masswerk.at/6502/6502_instruction_set.html#layout
         casez(opcode)
@@ -137,7 +128,7 @@ module decode (
             8'b010_011_00:  op_type = OP_JUM;         
             8'b011_011_00:  op_type = OP_JIN;
             8'b???_011_??:  op_type = OP_ABS;          
-            8'b???_100_00:  op_type = take_branch ? OP_BRA : OP_BNT;           
+            8'b???_100_00:  op_type = OP_BRA;           
             8'b???_100_?1:  op_type = OP_INY;         
             8'b???_101_??:  op_type = OP_ZXY;        
             8'b???_110_?1,

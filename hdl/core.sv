@@ -32,16 +32,17 @@ module core #(
     wire rdy = ready | ~rw; //ignore not ready when writing
 
     // registers
-    logic [7:0] ir /*verilator public*/;
-    logic [7:0] add /*verilator public*/;
-    logic [7:0] a /*verilator public*/;
-    logic [7:0] s /*verilator public*/;
-    logic [7:0] x /*verilator public*/;
-    logic [7:0] y /*verilator public*/;
-    logic [7:0] p /*verilator public*/;
+    (* mark_debug = "true" *) logic [7:0] ir /*verilator public*/;
+    (* mark_debug = "true" *) logic [7:0] add /*verilator public*/;
+    (* mark_debug = "true" *) logic [7:0] a /*verilator public*/;
+    (* mark_debug = "true" *) logic [7:0] s /*verilator public*/;
+    (* mark_debug = "true" *) logic [7:0] x /*verilator public*/;
+    (* mark_debug = "true" *) logic [7:0] y /*verilator public*/;
+    (* mark_debug = "true" *) logic [7:0] p /*verilator public*/;
 
     // ADDRESS BUS
-    logic [7:0] adl, adh, adl_r, adh_r;
+    (* mark_debug = "true" *) logic [7:0] adl, adh;
+    logic [7:0] adl_r, adh_r;
     assign addr = {adh,adl};
 
     always @(posedge clk ) begin
@@ -126,9 +127,9 @@ module core #(
     end
 
     // PC
-    logic [15:0] pc /*verilator public*/;
+    (* mark_debug = "true" *) logic [15:0] pc /*verilator public*/;
     logic [15:0] pc_next = pc + 1;
-    logic [7:0] pch, pcl;   // low and high byte of next pc
+    (* mark_debug = "true" *) logic [7:0] pch, pcl;   // low and high byte of next pc
     always_comb begin
         {pch, pcl} = pc;
         case(1'b1)
@@ -192,14 +193,12 @@ module core #(
     logic [4:0] op_type;
     logic [5:0] sb_src, sb_src_exec, dst;
     logic alu_en;
-    logic [5:0] alu_op, alu_op_exec;
-    logic upNZ, upV, upC;
+    logic [5:0] alu_op_exec;
     logic single_byte, idx_XY;
     logic stack_ap;
     logic [7:0] alu_mask, set_mask, clear_mask;
     decode u_decode(
         .opcode         (ir),
-        .pstatus        (p),
         .op_type        (op_type ),
         .src            (sb_src_exec),
         .dst            (dst),
@@ -214,22 +213,49 @@ module core #(
     );
 
     //alu
-    logic [7:0] alu_ai, alu_status;
-    logic adl_add, adh_add, bpage;
-    assign  alu_ai = adl_add ? adl :
-                     adh_add ? adh :
-                     sb;
+    logic [5:0] alu_op, alu_op_sel;
+    logic [7:0] alu_ai, alu_bi, alu_status;
+    logic alu_ci;
+    logic adl_add, adh_add;
+
+    always @(posedge clk ) begin
+        if (rst) begin
+            alu_op <= ALU_NOP;
+            alu_ai <= 0;
+            alu_bi <= 0;
+            alu_ci <= 0;
+        end else begin 
+            alu_op <= alu_op_sel;
+            alu_ai <= adl_add ? adl :
+                        adh_add ? adh :
+                        sb;
+            alu_bi <= db;
+            alu_ci <= p[0];
+        end
+    end
+    
     alu u_alu(
         .clk    (clk),
         .rst    (rst),
-        .op     (alu_op  ),
-        .ai     (alu_ai  ),
-        .bi     (db  ),
-        .ci     (p[0]),
+        .op     (alu_op),
+        .ai     (alu_ai),
+        .bi     (alu_bi),
+        .ci     (alu_ci),
         .out    (add),
-        .status (alu_status),
-        .bpage  (bpage)
+        .status (alu_status)
     );
+
+    // branch logic
+    logic take_branch, bpage;
+    always_comb begin
+        case(ir[7:6])
+            2'h0:   take_branch = p[7] ^ !ir[5]; // BPL, BMI
+            2'h1:   take_branch = p[6] ^ !ir[5]; // BVC, BVS
+            2'h2:   take_branch = p[0] ^ !ir[5]; // BCC, BCS
+            2'h3:   take_branch = p[1] ^ !ir[5]; // BNE, BEQ
+        endcase
+    end
+    assign bpage = (alu_bi[7] == add[7]) && (alu_bi[7] ^ alu_ai[7]); // branch crosses page?
 
     //registers
     logic so_r, exec, exec_r, up_s;
@@ -277,12 +303,12 @@ module core #(
     wire [7:0] p_push = interrupt ? p : p | FL_BU; // set break flag on push unless irq
 
     // state machine
-    logic [7:0] Tstate /*verilator public*/;
-    logic [2:0] adl_src,adh_src;
-    logic inc_pc;
-    logic write_mem;
-    logic jump, handle_int;
-    logic hold_alu;    
+    (* mark_debug = "true" *) logic [7:0] Tstate /*verilator public*/;
+    (* mark_debug = "true" *) logic [2:0] adl_src,adh_src;
+    (* mark_debug = "true" *) logic inc_pc;
+    (* mark_debug = "true" *) logic write_mem;
+    (* mark_debug = "true" *) logic jump, handle_int;
+    (* mark_debug = "true" *) logic hold_alu;    
     control u_control(
         .clk            (clk),
         .rst            (rst),
@@ -298,10 +324,11 @@ module core #(
         .sb_src_exec    (sb_src_exec),
         .idx_XY         (idx_XY),
         .bpage          (bpage),
+        .take_branch    (take_branch),
         .Tstate         (Tstate),
         .sync           (sync),
         .exec           (exec),
-        .alu_op         (alu_op),
+        .alu_op         (alu_op_sel),
         .sb_src         (sb_src),
         .inc_pc         (inc_pc),
         .adl_src        (adl_src),

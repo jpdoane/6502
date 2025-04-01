@@ -18,6 +18,7 @@ module control (
     input logic [5:0] sb_src_exec,
     input logic idx_XY,
     input logic bpage,
+    input logic take_branch,
 
     output logic [7:0] Tstate,
     output logic sync,
@@ -40,26 +41,32 @@ module control (
     );
 
     //state machine
-    logic Tlast, skipT0, toTrmw;
+    logic Tlast, T0T2, toTrmw;
     always @(posedge clk ) begin
         if (rst) begin
             Tstate <= T1;
         end
         else if (rdy) begin
-            Tstate <=   Tlast ? skipT0 ? T1 : T0 :
-                        toTrmw ? TRMW1 : 
-                        Tstate >> 1;
+
+            if (T0T2 || jump)
+                Tstate <= T1;
+            else if (Tlast)
+                Tstate <= T0;
+            else if (toTrmw)
+                Tstate <= TRMW1;
+            else
+                Tstate <= Tstate >> 1;
         end
     end
 
-    assign jam = !|Tstate; //if Tstate reaches all zeros we have a jam
+    assign jam = Tstate==0; //if Tstate reaches all zeros we have a jam
 
     wire rmw = wr_op & alu_en;
     logic push_no_update;
     logic [5:0] idx;
     always_comb begin
         Tlast       = 0;
-        skipT0      = 0;
+        T0T2        = 0;
         toTrmw      = 0;
         adl_src     = ADDR_PC;
         adh_src     = ADDR_PC;
@@ -120,6 +127,7 @@ module control (
                     OP_BRA: begin       
                         inc_pc = 1;            
                         adl_add = 1;                                    // compute branch addr: PC+2+offset
+                        T0T2 = !take_branch;                            // branch not taken
                     end
                     OP_BRK: begin
                         stack_push = STACK_PCH;                         // push pch
@@ -132,12 +140,10 @@ module control (
                     OP_RTS: stack_pull = STACK_PCL;
                     OP_RTI: stack_pull = STACK_P;
                     OP_IMM,
-                    OP_IMP,
-                    OP_BNT: begin                                       // effectively the T0 state for 2-cycle insts.
+                    OP_IMP: begin                                       // effectively the T0 state for 2-cycle insts.
                         inc_pc = !single_byte;
                         exec = 1;
-                        Tlast = 1;
-                        skipT0 = 1;
+                        T0T2 = 1;
                     end
                     OP_AXY: begin
                         sb_src = idx;                                   // read BAL, compute BAL+X/Y
@@ -338,11 +344,6 @@ module control (
         if (exec) begin
             alu_op = alu_op_exec;
             sb_src = sb_src_exec;
-        end
-
-        if (jump) begin
-            skipT0 = 1;
-            Tlast = 1;
         end
 
         write_mem = ( wr_op & Tlast ) | push_no_update | push | dummy_write;
