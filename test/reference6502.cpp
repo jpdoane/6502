@@ -51,18 +51,6 @@ void Reference6502::reset()
 
 void Reference6502::jump(uint16_t pc)
 {
-	// uint8_t rvl = mem[0xFFFC]; // save current reset vector
-	// uint8_t rvh = mem[0xFFFD];
-	// mem[0xFFFC] = pc & 0xFF;
-	// mem[0xFFFD] = pc >> 8;
-	// reset();
-	// for (int cnt=0; cnt<8;cnt++)
-	// {
-	// 	cycle();
-	// 	printState(getState());
-	// }
-	// mem[0xFFFC] = rvl; //restore RV
-	// mem[0xFFFD] = rvh;
 	state6502 state = getState();
 	state.pc = pc;
 	setState(state);
@@ -100,19 +88,18 @@ void  Reference6502::setState(const state6502& state)
 	mem[addr++] = 0xA9; //lda
 	mem[addr++] = state.a;
 	mem[addr++] = 0xA2; //ldx
-	mem[addr++] = state.s;
-	mem[addr++] = 0x9A; //lxs
+	mem[addr++] = state.s-1;
+	mem[addr++] = 0x9A; //txs
 	mem[addr++] = 0xA2; //ldx
 	mem[addr++] = state.x;
 	mem[addr++] = 0xA0; //ldy
 	mem[addr++] = state.y;
-	mem[0x101 + state.s] = state.p; // store p on stack
+	mem[0x100 + state.s] = state.p; // store p on stack
 	mem[addr++] = 0x28; //plp: pop stack to p
-	mem[addr++] = 0x08; //php: restore stack pointer
 	mem[addr++] = 0x4C; // jump to test program
 	mem[addr++] = state.pc & 0xFF;
 	mem[addr++] = state.pc >> 8;
-	int init_cnt = 28;			// number of clocks to complete
+	int init_cnt = 26;			// number of clocks to complete
 
 	// run init program
 	reset();
@@ -123,7 +110,6 @@ void  Reference6502::setState(const state6502& state)
 	}
 	memcpy(mem, memsave, 0x200); //restore stack and ZP
 	cycle_cnt = 0;
-
 }
 
 bool Reference6502::jammed() const

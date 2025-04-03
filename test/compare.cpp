@@ -25,110 +25,82 @@ std::string emptyLOC(uint16_t pc);
 void printLOC(uint16_t pc, const std::vector<std::string>& listing);
 std::vector<std::string> loadListing(std::string listfile);
 
-void inspectMem(const Abstract6502* sim)
-{
-    uint16_t memaddr;
-    std::string input;
-    while(true)
-    {
-        std::cout << "Hex Addr: ";
-        std::getline(std::cin, input);
-        try {
-            memaddr = std::stoul(input, nullptr, 16);
-            for(int i=0;i<4;i++)
-                std::cout << std::hex << "[0x" << memaddr << "] = 0x" << (int) sim->mem[memaddr++] << std::endl;       
-        }
-        catch (std::invalid_argument)
-        {
-            break; // anything other than a hex number
-        } 
-   }
-}
 
-void debug(Abstract6502* sim,
+void compare_sims(Abstract6502* sim1,
+            Abstract6502* sim2,
             std::vector<uint16_t> bps,
             std::vector<std::string> listing,
-            bool verbose,
-            bool stepping = false)
+            bool verbose)
 {
-    state6502 simState;
-    std::vector<state6502> history;
+    state6502 sim1State;
+    state6502 sim2State;
+    std::vector<state6502> history1;
+    std::vector<state6502> history2;
     size_t cnt=0;
     while(true) {
-        simState = sim->getState();
+        cnt++;
 
-        // user interrupt - break and step
-        if(caught_int) stepping = true;
-        caught_int = 0;
+        sim1State = sim1->getState();
+        sim2State = sim2->getState();
 
         bool prtstate = verbose;
 
-        if (simState.sync) // new instruction
-        { 
-            cnt++;
-            history.push_back(simState);
-
-            if(detect_trap(history))
-            {
-                printTrace(history, listing);
-                printf("Trap at PC 0x%x\n", simState.pc);
-                break;
-            }
-            else if(std::find(bps.begin(), bps.end(), simState.pc) != bps.end())
-            {
-                // encountered breakpoint
-                printTrace(history, listing);
-                printf("hit breakpoint\n");
-                stepping = true;
-            }
-            else if (stepping)
-                prtstate = true;
-            else if (cnt % 1000 == 0)
-                printf("processed %ld instructions...\n",cnt);
-        }
         
-        if(prtstate)
+        // user interrupt - break and step
+        if(sim1State.cycle > 1 && sim1State != sim2State)
         {
-            printLOC(simState.pc, listing);
-            printState(simState);
-        }
+            printTrace(history1, listing);
+            std::cout << "States diverge: " << std::endl;
+            std::cout << "HW:  ";
+            printState(sim1State);
+            std::cout << "Ref: ";
+            printState(sim2State);
 
-        int cmd = 0;
-        if(stepping && simState.sync)
-        {
-            do{
-                printf("[S]tep, [c]ontinue, [m]emory or [q]uit\n");
-                cmd = getchar();
-                if (cmd != '\n')
-                {
-                    while(getchar() != '\n') {};
-                
-                    if (cmd == 'm' || cmd == 'M')
-                        inspectMem(sim);
-                }    
-            }
-            while( cmd == 'm' || cmd == 'M' );
+            sim1->cycle();
+            sim2->cycle();
+            sim1State = sim1->getState();
+            sim2State = sim2->getState();
+            std::cout << "HW:  ";
+            printState(sim1State);
+            std::cout << "Ref: ";
+            printState(sim2State);
 
-            if (cmd == 's' || cmd == 'S')
-                stepping = true;
+            sim1->cycle();
+            sim2->cycle();
+            sim1State = sim1->getState();
+            sim2State = sim2->getState();
+            std::cout << "HW:  ";
+            printState(sim1State);
+            std::cout << "Ref: ";
+            printState(sim2State);
 
-            if (cmd == 'c' || cmd == 'C')
-                stepping = false;
-
-            if (cmd == 'q' || cmd == 'Q')
-                break;
-
-        }
-
-        if(sim->jammed())
-        {
-            printf("CPU is jammed!\n");
-            printTrace(history, listing);
             break;
         }
 
-        sim->cycle();
+        caught_int = 0;
+        history1.push_back(sim1State);
+        history2.push_back(sim2State);
 
+        if (cnt % 1000 == 0)
+            printf("processed %ld cycles...\n",cnt);
+        
+        if(prtstate)
+        {
+            printLOC(sim1State.pc, listing);
+            printState(sim1State);
+            printLOC(sim2State.pc, listing);
+            printState(sim2State);
+        }
+
+        if(sim1->jammed() || sim2->jammed())
+        {
+            printf("CPU is jammed!\n");
+            printTrace(history1, listing);
+            break;
+        }
+
+        sim1->cycle();
+        sim2->cycle();
     }
 }
 
@@ -148,7 +120,6 @@ int main(int argc, char** argv, char** env) {
     uint16_t startvec = 0x0;
     bool startvec_en = false;
     bool verbose = 0;
-    bool stepping = false;
     bool refdesign = false;
     bool compare = false;
     
@@ -179,11 +150,11 @@ int main(int argc, char** argv, char** env) {
         case 'w':
             wavefile = optarg;
             break;
-        case 's':
-            stepping = true;
-            break;
         case 'p':
             refdesign = true;
+            break;
+        case 'd':
+            compare = true;
             break;
         case '?':
             if (optopt == 'b' || optopt == 'l')
@@ -205,29 +176,28 @@ int main(int argc, char** argv, char** env) {
         exit(EXIT_FAILURE);
     }
 
-    Abstract6502* sim;
-    if(refdesign)
-    {
-        sim = new Reference6502(romfile, intport);
-    }
-    else
-    {
-        Verilated6502* vsim = new Verilated6502(romfile, intport);
-        vsim->openWaveTrace(wavefile);
-        sim = vsim;
-    }
+    Verilated6502* vsim = new Verilated6502(romfile, intport);
+    vsim->openWaveTrace(wavefile);
+    Abstract6502* sim1 = vsim;
+    Abstract6502* sim2 = new Reference6502(romfile, intport);
 
     if (startvec_en)
-        sim->jump(startvec);
+    {
+        sim1->jump(startvec);
+        sim2->jump(startvec);
+    }
 
-    std::cout << "Debugging " << romfile << "..." << std::endl;
-    debug(sim, bps, listing, verbose, stepping);
+    state6502 initstate = sim1->getState();
+    sim1->setState(initstate);
+    sim2->setState(initstate);
 
-    delete sim;
+    std::cout << "Comparing HW and reference sims using ROM  " << romfile << "..." << std::endl;
+    compare_sims(sim1, sim2, bps, listing, verbose);
+
+    delete sim1;
+    delete sim2;
     return 0;
 }
-
-
 
 // return 1 if we are jumping to same pc as previous
 int detect_trap(const std::vector<state6502> &history)

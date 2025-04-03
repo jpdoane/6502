@@ -1,0 +1,24 @@
+     cycle 96302: AB:0018 D:00  PC:1B76  IR:24 ALU:18 A:FF S:FF X:00 Y:FF P:nv-bdizc(20) T:10000000
+States diverge: 
+HW:  cycle 96303: AB:1B77 D:08  PC:1B77* IR:24 ALU:00 A:FF S:FF X:00 Y:FF P:nv-bdizc(20) T:01000000
+Ref: cycle 96303: AB:1B77 D:08  PC:1B77* IR:24 ALU:00 A:FF S:FF X:00 Y:FF P:nv-BdiZc(12) T:00101111
+HW:  cycle 96304: AB:1B78 D:C9  PC:1B78  IR:08 ALU:08 A:FF S:FF X:00 Y:FF P:nv-bdiZc(22) T:00100000
+Ref: cycle 96304: AB:1B78 D:C9  PC:1B78  IR:08 ALU:00 A:FF S:FF X:00 Y:FF P:nv-BdiZc(12) T:00110111
+HW:  cycle 96305: AB:01FF D:32  PC:1B78  IR:08 ALU:FE A:FF S:FF X:00 Y:FF P:nv-bdiZc(22) T:10000000
+Ref: cycle 96305: AB:01FF D:32  PC:1B78  IR:08 ALU:FE A:FF S:FF X:00 Y:FF P:nv-BdiZc(12) T:00011111
+
+
+     cycle 96374: AB:0016 D:82  PC:1B9E  IR:24 ALU:16 A:01 S:FF X:00 Y:FF P:nv-bdizc(20) T:10000000
+HW:  cycle 96375: AB:1B9F D:08  PC:1B9F* IR:24 ALU:00 A:01 S:FF X:00 Y:FF P:Nv-bdiZc(A2) T:01000000
+Ref: cycle 96375: AB:1B9F D:08  PC:1B9F* IR:24 ALU:00 A:01 S:FF X:00 Y:FF P:Nv-Bdizc(90) T:00101111
+
+
+PLA in: BIT T0 72 -> PLA out 29: a_sb  (A -> sb)
+PLA in: BIT T0 122 -> PLA out 57: bit0   (set db6 -> v)
+    vis net: 303, 1476
+
+PLA in: BIT T1 118 -> PLA out 54: bit1   (set dbZ -> Z, db7 -> N)
+    vis 1646
+
+BIT T3: 
+    vis net: 1031

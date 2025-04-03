@@ -27,6 +27,8 @@ typedef struct
     bool rw;    
 } state6502;
 
+bool operator==(const state6502& lhs, const state6502& rhs);
+bool operator!=(const state6502& lhs, const state6502& rhs);
 
 void printState(const state6502 &state);
 

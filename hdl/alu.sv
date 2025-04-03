@@ -8,82 +8,69 @@ module alu (
     input  logic [7:0] ai, bi,
     input  logic ci,
     output logic [7:0] out,
-    output logic [7:0] status
+    output logic shiftC, sumC, sumV
     );
 
-    logic [7:0] a,b, result;
-    logic c, aluC, aluV, bit_op;
+    // op[5] activates port b for unary ops (inc/dec/sr/sl)
+    wire [7:0] a_sel = op[5] ? bi : ai;
 
-    always @(*) begin
-        aluC = 0;
-        bit_op = 0;
+    // shift carry bit is updated immediately (not registered)
+    assign shiftC = op[0] ? a_sel[7] : a_sel[0];
 
-        // op[5] activates port b for unary ops (inc/dec/sr/sl)
-        a = op[5] ? bi : ai;
-        b = bi;
-        c = op[4] & ci;
-
-        if (op[3]) begin // sum ops        
-
-            if (op[1]) begin // inc/dec commands
-                b = 0;
-                c = !op[0];     // set carry on inc, not on dec
-            end
-                else if(op[2]) c = 1; // op[2] sets carry in to 1
-
-            if (op[0]) b = ~b;   // invert port b for sub/dec
-
-            // verilator lint_off WIDTH
-            {aluC, result} = a + b + c;
-            // verilator lint_on WIDTH
-
-            //https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-            aluV = (a[7] ^ result[7]) && (b[7] ^ result[7]);
-
-        end else begin
-
-            case(op[2:0])
-                ALU_AND[2:0]:   result = ai & bi;
-                ALU_ORA[2:0]:   result = ai | bi;
-                ALU_XOR[2:0]:   result = ai ^ bi;
-                ALU_LSR[2:0]:   {result, aluC} = {c, a};
-                ALU_ASL[2:0]:   {aluC, result} = {a, c};
-                ALU_BIT[2:0]:   begin
-                                    result = ai & bi;
-                                    bit_op = 1;
-                                end
-                default:        result = ai;
-            endcase    
-
-            aluV = b[6];        // only used by BIT
+    logic [5:0] op_r;
+    logic [7:0] a_r,b_r;
+    logic c_r;
+    always @(posedge clk ) begin
+        if (rst) begin
+            op_r <= ALU_NOP;
+            a_r <= 0;
+            b_r <= 0;
+            c_r <= 0;
+        end else begin 
+            op_r <= op;
+            a_r <= a_sel;
+            b_r <= bi;
+            c_r <= op[4] & ci;
         end
-
     end
 
+    // adder logic
+    logic [7:0] a,b, sum;
+    logic c;
+    always_comb begin
+        a = a_r;
+        b = b_r;
+        c = c_r;
+        
+        if (op_r[1]) begin // inc/dec commands
+            b = 0;
+            c = !op_r[0];     // set carry on inc, not on dec
+        end
+            else if(op_r[2]) c = 1; // op[2] sets carry in to 1
 
+        if (op_r[0]) b = ~b;   // invert port b for sub/dec
 
+        // verilator lint_off WIDTH
+        {sumC, sum} = a + b + c;
+        // verilator lint_on WIDTH
 
-    // always @(posedge clk ) begin
-    //     if(rst) begin
-    //         status <= 0;
-    //         out <= 0;
-    //         bpage <= 0;
-    //     end else begin
-    //         status[7] <= bit_op ? bi[7] : result[7];    // N
-    //         status[6] <= aluV;                          // V
-    //         status[1] <= result == 0;                   // Z
-    //         status[0] <= aluC;                          // C
-    //         out <= result;
-    //         bpage <= bpage_up | bpage_down;
-    //     end
-    // end
+        //https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+        sumV = (a[7] ^ sum[7]) && (b[7] ^ sum[7]);
+    end
 
-    logic aluN, aluZ;
-    assign aluN = bit_op ? bi[7] : result[7];
-    assign aluZ = result == 0;
-    assign status = {aluN, aluV, 4'b0, aluZ, aluC};
-    assign out = result;
-    // assign bpage = bpage_up | bpage_down;
+    // other logic
+    logic [7:0] out_logical;
+    always_comb begin
+        case(op_r[2:0])
+            ALU_AND[2:0]:   out_logical = a_r & b_r;
+            ALU_ORA[2:0]:   out_logical = a_r | b_r;
+            ALU_XOR[2:0]:   out_logical = a_r ^ b_r;
+            ALU_LSR[2:0]:   out_logical = {c_r, a_r[7:1]};
+            ALU_ASL[2:0]:   out_logical = {a_r[6:0], c_r};
+            default:        out_logical = a_r;
+        endcase    
+    end
 
+    assign out = op_r[3] ? sum : out_logical;
 
 endmodule

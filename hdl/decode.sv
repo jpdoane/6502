@@ -4,20 +4,23 @@
 module decode (
     input  logic [7:0] opcode,
     output logic [4:0] op_type,
-    output logic [5:0] src, dst,
+    output logic [6:0] src, dst,
     output logic [5:0] alu_op,
     output logic alu_en,                            // alu ctl
     output logic single_byte,                       // single byte opcode
     output logic idx_XY,                            // index on X vs Y
     output logic stack_ap,
-    output logic [7:0] alu_mask, set_mask, clear_mask         // set/clear flags
+    output logic bit_op,
+    output logic shift_op,
+    output logic clc, cli, clv, cld, sec, sei, sed,
+    output logic [7:0] result_mask                  // set/clear flags
     );
 
-    logic [17:0] ctl_flags;
+    logic [19:0] ctl_flags;
     assign {dst, src, alu_op} = ctl_flags;
 
     // special case flags
-    logic adc_sbc_op, cmp_op, rot_op, shift_op, inc_op, bit_op, take_branch, stack;
+    logic adc_sbc_op, cmp_op, rot_op, inc_op, take_branch, stack;
     
     logic upV, upNZ, upC;
 
@@ -26,13 +29,13 @@ module decode (
     always_comb begin
         casez(opcode)     //ctl_flags = {dst, src,  alu_op}
             8'b0??_000_00:  ctl_flags = {REG_Z, REG_Z, ALU_NOP};       // control flow and special ops
-            8'b0??_010_00:  ctl_flags = {REG_Z, REG_Z, ALU_NOP};       // PUS
+            8'b0??_010_00:  ctl_flags = {REG_Z, REG_ADD, ALU_NOP};       // PUS/PUL
             8'b101_010_00:  ctl_flags = {REG_Y, REG_A, ALU_NOP};       // TAY
             8'b111_010_00:  ctl_flags = {REG_X, REG_X, ALU_INC};       // INX
             8'b110_010_00:  ctl_flags = {REG_Y, REG_Y, ALU_INC};       // INY
             8'b110_010_10:  ctl_flags = {REG_X, REG_X, ALU_DEC};       // DEX
             8'b100_010_00:  ctl_flags = {REG_Y, REG_Y, ALU_DEC};       // DEY
-            8'b001_0?1_00:  ctl_flags = {REG_Z, REG_A, ALU_BIT};       // BIT
+            // 8'b001_0?1_00:  ctl_flags = {REG_Z, REG_Z, ALU_BIT};       // BIT
             8'b100_110_00:  ctl_flags = {REG_A, REG_Y, ALU_NOP};       // TYA
             8'b100_010_10:  ctl_flags = {REG_A, REG_X, ALU_NOP};       // TXA
             8'b100_110_10:  ctl_flags = {REG_S, REG_X, ALU_NOP};       // TXS
@@ -70,8 +73,7 @@ module decode (
         alu_en = (alu_op != ALU_NOP);
         adc_sbc_op = &alu_op[4:3];
         cmp_op = (alu_op == ALU_CMP);
-        rot_op = opcode ==? 8'b0?1_???_10;
-        shift_op = opcode ==? 8'b0?0_???_10;
+        shift_op = opcode ==? 8'b0??_???_10;
         bit_op = opcode ==? 8'b001_0?1_00;
 
         stack = opcode ==? 8'b0??_010_00;
@@ -86,24 +88,20 @@ module decode (
             default:    upNZ=alu_en & !stack;
         endcase
         // set v flag on ADC, SBC and BIT
-        upV = adc_sbc_op | bit_op;
+        upV = adc_sbc_op;
         // set c flag on ADC,SBC, and rotate/shift ops
-        upC = adc_sbc_op | cmp_op | shift_op | rot_op;
-        alu_mask = {upNZ, upV, 4'b0, upNZ, upC};
+        upC = adc_sbc_op | cmp_op; // shift carries are handled differently
+        // upC = adc_sbc_op | cmp_op | shift_op | rot_op;
+        result_mask = {upNZ, upV, 4'b0, upNZ, upC};
 
         // set and clear masks
-        clear_mask = 0;
-        set_mask = 0;
-        casez(opcode)
-            8'b000_110_00: clear_mask = FL_C; // CLC
-            8'b010_110_00: clear_mask = FL_I; // CLI
-            8'b101_110_00: clear_mask = FL_V; // CLV
-            8'b110_110_00: clear_mask = FL_D; // CLD
-            8'b001_110_00: set_mask = FL_C;   // SEC
-            8'b011_110_00: set_mask = FL_I;   // SEI
-            8'b111_110_00: set_mask = FL_D;   // SED
-            default:    begin end
-        endcase
+        clc = opcode == 8'b000_110_00;
+        cli = opcode == 8'b010_110_00;
+        clv = opcode == 8'b101_110_00;
+        cld = opcode == 8'b110_110_00;
+        sec = opcode == 8'b001_110_00;
+        sei = opcode == 8'b011_110_00;
+        sed = opcode == 8'b111_110_00;
 
         // single byte opcodes: b = 2 or 6 && c = 0 or 2
         single_byte = (opcode == 8'h0) || (opcode ==? 8'b???_?10_?0);
@@ -135,8 +133,6 @@ module decode (
             8'b???_111_??:  op_type = OP_AXY;        
             default:        op_type = OP_JAM;
         endcase
-
-
 
     end
     /* verilator lint_on CASEOVERLAP */

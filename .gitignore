@@ -1,4 +1,5 @@
 build
+.Xil
 .*#
 *.log
 dxa*

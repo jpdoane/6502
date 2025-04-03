@@ -86,13 +86,15 @@ module core #(
     // in order to represent the same timing with a single clock, we implement two sets of busses
     logic [7:0] sb, sb_result, db, db_result;
     logic dummy_write;
-    assign db = data_i;
     assign data_o = db_result;
     assign rw = !write_mem | rst | rst_event;
     logic [3:0] stack_push, stack_read; // one-hot control for push/pull registers
-    always_comb begin
 
-        // sb "source" bus
+    // db read bus
+    assign db = data_i;
+
+    // sb "source" bus
+    always_comb begin
         case(1'b1)
             sb_src[0] : sb = a;
             sb_src[1] : sb = x;
@@ -100,22 +102,26 @@ module core #(
             sb_src[3] : sb = s;
             sb_src[4] : sb = add;
             sb_src[5] : sb = db;
+            sb_src[6] : sb = adh;
             default: sb = 0;
         endcase
+    end
 
-        // sb "result" bus
+    // sb "result" bus
+    always_comb begin
         case(1'b1)
             alu_en,
-            sb_src_exec[5],
             sb_src_exec[4] : sb_result = add;
             sb_src_exec[0] : sb_result = a;
             sb_src_exec[1] : sb_result = x;
             sb_src_exec[2] : sb_result = y;
             sb_src_exec[3] : sb_result = s;
-            default        : sb_result = 0;
+            sb_src_exec[5] : sb_result = db;
+            default: sb_result = 0;
         endcase
-        
-        // data write bus
+    end        
+    // db write bus
+    always_comb begin
         case(1'b1)
             stack_push[0]:  db_result = a;
             stack_push[1]:  db_result = p_push;
@@ -191,12 +197,13 @@ module core #(
 
     // decode instruction
     logic [4:0] op_type;
-    logic [5:0] sb_src, sb_src_exec, dst;
+    logic [6:0] sb_src, sb_src_exec, sb_src_ctrl, dst;
     logic alu_en;
-    logic [5:0] alu_op_exec;
+    logic [5:0] alu_op_exec, alu_op_ctrl;
     logic single_byte, idx_XY;
-    logic stack_ap;
-    logic [7:0] alu_mask, set_mask, clear_mask;
+    logic stack_ap, bit_op, shift_op;
+    logic clc, cli, clv, cld, sec, sei, sed;
+    logic [7:0] result_mask;
     decode u_decode(
         .opcode         (ir),
         .op_type        (op_type ),
@@ -207,33 +214,29 @@ module core #(
         .single_byte    (single_byte),
         .idx_XY         (idx_XY),
         .stack_ap       (stack_ap),
-        .alu_mask       (alu_mask),
-        .set_mask       (set_mask),
-        .clear_mask     (clear_mask)
+        .bit_op         (bit_op),
+        .shift_op       (shift_op),
+        .clc            (clc),
+        .cli            (cli),
+        .clv            (clv),
+        .cld            (cld),
+        .sec            (sec),
+        .sei            (sei),
+        .sed            (sed),
+        .result_mask    (result_mask)
     );
 
     //alu
-    logic [5:0] alu_op, alu_op_sel;
-    logic [7:0] alu_ai, alu_bi, alu_status;
+    logic [5:0] alu_op;
+    logic [7:0] alu_ai, alu_bi;
     logic alu_ci;
     logic adl_add, adh_add;
+    logic shiftC, sumC, sumV;
+    assign alu_ai = adl_add ? adl : sb;
+                    // adh_add ? adh :
+    assign alu_bi = db;
+    assign alu_ci = p[0];
 
-    always @(posedge clk ) begin
-        if (rst) begin
-            alu_op <= ALU_NOP;
-            alu_ai <= 0;
-            alu_bi <= 0;
-            alu_ci <= 0;
-        end else begin 
-            alu_op <= alu_op_sel;
-            alu_ai <= adl_add ? adl :
-                        adh_add ? adh :
-                        sb;
-            alu_bi <= db;
-            alu_ci <= p[0];
-        end
-    end
-    
     alu u_alu(
         .clk    (clk),
         .rst    (rst),
@@ -242,7 +245,9 @@ module core #(
         .bi     (alu_bi),
         .ci     (alu_ci),
         .out    (add),
-        .status (alu_status)
+        .shiftC (shiftC),
+        .sumC   (sumC),
+        .sumV   (sumV)
     );
 
     // branch logic
@@ -255,10 +260,62 @@ module core #(
             2'h3:   take_branch = p[1] ^ !ir[5]; // BNE, BEQ
         endcase
     end
-    assign bpage = (alu_bi[7] == add[7]) && (alu_bi[7] ^ alu_ai[7]); // branch crosses page?
+    logic [7:0] db_r;  //TODO clean up?
+    always @(posedge clk ) db_r <= db;
+    assign bpage = (db_r[7] == add[7]) && (db_r[7] ^ adl_r[7]); // branch crosses page?
 
     //registers
-    logic so_r, exec, exec_r, up_s;
+    logic so_r, exec, alu_rdy, sb_s;
+    logic [7:0] a_next, x_next, y_next, s_next, p_next, p_push, result_status;
+    always_comb begin
+        a_next = a;
+        x_next = x;
+        y_next = y;
+        s_next = sb_s ? sb : s;
+        p_next = p;
+
+        result_status = p;
+        if(result_mask[7]) result_status[7] = sb_result[7];
+        if(result_mask[6]) result_status[6] = sumV;
+        if(result_mask[1]) result_status[1] = sb_result==0;
+        if(result_mask[0]) result_status[0] = sumC;
+        if ( exec && !alu_en || alu_rdy ) begin
+            if(dst[0]) a_next = sb_result;
+            if(dst[1]) x_next = sb_result;
+            if(dst[2]) y_next = sb_result;
+            if(dst[3]) s_next = sb_result;
+            p_next = result_status;
+        end
+
+        // some special cases with fussy visual6502 timing...
+        if (exec) begin
+            if(bit_op) begin
+                p_next[7:6] = db[7:6];
+                p_next[1] = (db==0);
+            end
+            if(shift_op) begin
+                p_next[0] = shiftC;
+            end
+        end
+        if(bit_op & sync) p_next[1] = (db_r & a)==0;
+
+
+        if (so & !so_r) p_next[6] = 1;  //set overflow on so rising edge
+        if (stack_read[0]) begin        //pull a from stack
+            a_next = db;
+            p_next[1] = db == 0;
+            p_next[7] = db[7];
+        end
+        if (stack_read[1]) begin        //pull p from stack
+            p_next = db;
+        end
+        if (handle_int) p_next[2] = 1;  // set interrupt bit
+        p_next[4] = 0;                  //bit 4 doesnt exist but always reports low
+        p_next[5] = 1;                  //bit 5 doesnt exist but always reports high
+
+        p_push = interrupt ? p : p | FL_BU; // set break flag on push unless irq
+    end
+
     always @(posedge clk ) begin
         if (rst) begin
             a <= A_RST;
@@ -267,40 +324,29 @@ module core #(
             s <= S_RST;
             p <= P_RST;
             so_r <= 0;
-            exec_r <= 0;
+            alu_rdy <= 0;
         end else if(rdy) begin
 
-            exec_r <= exec;
+            alu_rdy <= exec & alu_en;
+            a <= a_next;
+            x <= x_next;
+            y <= y_next;
+            s <= s_next;
+            p <= p_next;
 
-            if (exec_r) begin
-                if(dst[0]) a <= sb_result;
-                if(dst[1]) x <= sb_result;
-                if(dst[2]) y <= sb_result;
-                if(dst[3]) s <= sb_result;
-                p <= ~clear_mask & (set_mask | (~alu_mask & p) | (alu_mask & alu_status));
+            if (exec) begin
+                if (clc) p[0] <= 0;
+                if (cli) p[2] <= 0;
+                if (clv) p[6] <= 0;
+                if (cld) p[3] <= 0;
+                if (sec) p[0] <= 1;
+                if (sei) p[2] <= 1;
+                if (sed) p[3] <= 1;
             end
 
             so_r <= so;
-            if (so & !so_r) p[6] <= 1; //set overflow on so rising edge
-
-            if (up_s) s <= add;
-            if (stack_read[0]) begin //pull a from stack
-                a <= db;
-                p[1] <= ~|db;
-                p[7] <= db[7];
-            end
-            if (stack_read[1]) begin //pull p from stack
-                p <= db;
-                p[4] <= p[4]; //ignore break flag
-            end
-
-            if (handle_int) p[2] <= 1;   // set interrupt bit
         end
-
-        p[4] <= 0;                                              //bit 4 doesnt exist but always reports low
-        p[5] <= 1;                                              //bit 5 doesnt exist but always reports high
     end
-    wire [7:0] p_push = interrupt ? p : p | FL_BU; // set break flag on push unless irq
 
     // state machine
     (* mark_debug = "true" *) logic [7:0] Tstate /*verilator public*/;
@@ -319,17 +365,16 @@ module core #(
         .single_byte    (single_byte),
         .stack_ap       (stack_ap),
         .interrupt      (interrupt),
-        .alu_status     (alu_status),
-        .alu_op_exec    (alu_op_exec),
-        .sb_src_exec    (sb_src_exec),
+        .aluC           (sumC),
+        .aluN           (add[7]),
         .idx_XY         (idx_XY),
         .bpage          (bpage),
         .take_branch    (take_branch),
         .Tstate         (Tstate),
         .sync           (sync),
         .exec           (exec),
-        .alu_op         (alu_op_sel),
-        .sb_src         (sb_src),
+        .alu_op         (alu_op_ctrl),
+        .sb_src         (sb_src_ctrl),
         .inc_pc         (inc_pc),
         .adl_src        (adl_src),
         .adh_src        (adh_src),
@@ -338,12 +383,15 @@ module core #(
         .jump           (jump),
         .handle_int     (handle_int),
         .adl_add        (adl_add),
-        .adh_add        (adh_add),
+        // .adh_add        (adh_add),
         .stack_push     (stack_push),
         .stack_read     (stack_read),
-        .up_s           (up_s),
+        .sb_s           (sb_s),
         .jam            (jam)
     );
+
+    assign sb_src = exec ? sb_src_exec : sb_src_ctrl;
+    assign alu_op = exec ? alu_op_exec : alu_op_ctrl;
 
     //below are unused but helpful for debug
 
