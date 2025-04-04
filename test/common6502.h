@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <string>
 #include <vector>
+#include <iostream>
 
 #define MEMSIZE 0x10000
 
@@ -30,7 +31,7 @@ typedef struct
 bool operator==(const state6502& lhs, const state6502& rhs);
 bool operator!=(const state6502& lhs, const state6502& rhs);
 
-void printState(const state6502 &state);
+void printState(const state6502 &state, std::ostream& os = std::cout);
 
 
 class Abstract6502{

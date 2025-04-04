@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdio.h>
+#include <format>
 
 
 bool operator==(const state6502& lhs, const state6502& rhs)
@@ -49,7 +50,7 @@ int Abstract6502::loadROM(std::string romfile)
 	return 0;
 }
 
-void printState(const state6502 &state)
+void printState(const state6502 &state, std::ostream& os)
 {
 	char pstr[] = "nv-bdizc";
 	for(int i=0; i<8; i++)
@@ -59,10 +60,12 @@ void printState(const state6502 &state)
 	for(int i=0; i<8; i++)
 		tstr[7-i] = (state.tstate>>i) & 0x1 ? '1' : '0';
 
-	printf("cycle %ld: AB:%04X D:%02X%c PC:%04X%c IR:%02X ALU:%02X A:%02X S:%02X X:%02X Y:%02X P:%s(%02X) T:%s\n",
+	char buf[1024];
+	sprintf(buf, "cycle %ld: AB:%04X(%c) D:%02X PC:%04X%c IR:%02X ALU:%02X A:%02X S:%02X X:%02X Y:%02X P:%s(%02X) T:%s\n",
 		   state.cycle,
 		   state.addr,
-		   state.data, (state.clk && !state.rw) ? '*' : ' ', //print asterisk on write
+		   (state.rw) ? 'R' : 'W',
+		   state.data,
 		   state.pc, state.sync ? '*' : ' ', //print asterisk on sync
 		   state.ir,
 		   state.alu,
@@ -73,4 +76,6 @@ void printState(const state6502 &state)
 		   pstr, state.p,
 		   tstr
 		   );
+	os << buf;
+
 }

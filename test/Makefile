@@ -9,7 +9,7 @@ DEBUG_SRC=debugger.cpp common6502.cpp sim6502.cpp reference6502.cpp
 DEBUG_TARGET=$(BUILD_PATH)/debugger
 
 COMPARE_SRC=compare.cpp common6502.cpp sim6502.cpp reference6502.cpp
-COMPARE_TARGET=$(BUILD_PATH)/compare
+COMPARE_TARGET=$(BUILD_PATH)/comparer
 
 PERFECT_PATH=perfect6502
 PERFECT_OBJS=$(BUILD_PATH)/perfect6502.o $(BUILD_PATH)/netlist_sim.o

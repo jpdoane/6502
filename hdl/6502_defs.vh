@@ -6,19 +6,17 @@ localparam ASCII_a = 8'h61;
 parameter STACKPAGE = 8'h01;
 
 //states
-parameter T0      =8'b10000000;
-parameter T1      =8'b01000000;
-parameter T2      =8'b00100000;
-parameter T3      =8'b00010000;
-parameter T4      =8'b00001000;
-parameter T5      =8'b00000100;
-parameter T6      =8'b00000010;
-parameter T7      =8'b00000001;
-parameter T0T2    =8'b10100000;
-parameter T_JAM   =8'b00000000;
-// parameter T_DEBUG =8'b11111111;
-parameter TRMW1   =8'b00010010;
-parameter TRMW2   =8'b00001001;
+parameter T0      =10'b0000000001;
+parameter T1      =10'b0000000010;
+parameter T2      =10'b0000000100;
+parameter T3      =10'b0000001000;
+parameter T4      =10'b0000010000;
+parameter T5      =10'b0000100000;
+parameter T6      =10'b0001000000;
+parameter T7      =10'b0010000000;
+parameter TRMW1   =10'b0100000000;
+parameter TRMW2   =10'b1000000000;
+parameter TJAM    =10'b0;
 
 parameter OP_BRK      = 5'h00;   // BRK
 parameter OP_JSR      = 5'h01;   // JSR
@@ -57,7 +55,7 @@ parameter REG_Y =    7'b0000100;  // Y
 parameter REG_S =    7'b0001000;  // stack ptr
 parameter REG_ADD =  7'b0010000;  // alu register
 parameter REG_D =    7'b0100000;  // sb<=db
-parameter REG_ADH =  7'b100000;   // sb<=adh
+parameter REG_ADH =  7'b1000000;   // sb<=adh
 
 
 parameter STACK_A   = 4'b0001;
@@ -66,34 +64,27 @@ parameter STACK_PCL = 4'b0100;
 parameter STACK_PCH = 4'b1000;
 
 
-parameter ALU_NOP   = 6'b000000;
-parameter ALU_AND   = 6'b000001;
-parameter ALU_ORA   = 6'b000010;
-parameter ALU_SR    = 6'b000100;
-parameter ALU_BIT   = 6'b000111;
-parameter ALU_SUM   = 6'b001000;
-parameter ALU_CIP   = 6'b010000; // use carry in from p[0], else carry in zero
-parameter ALU_OPB   = 6'b100000; // swtich active port to b for unary ops (inc/dec/sr/sl)
+parameter ALU_NOP   = 5'b00000;
+parameter ALU_AND   = 5'b00001;
+parameter ALU_ORA   = 5'b00010;
+parameter ALU_LSR   = 5'b00100;
+parameter ALU_SUM   = 5'b01000;
 
-parameter ALU_ALT   = 6'b000001;         // alt flag for xor, sub, & left sifts
+parameter ALU_CIP   = 5'b10000; // use carry in from p[0], else carry in zero
+parameter ALU_ALT   = 5'b00001;         // alt flag for xor, sub, & left sifts
 parameter ALU_XOR   = ALU_ORA | ALU_ALT;
 parameter ALU_SUB   = ALU_SUM | ALU_ALT; // invert port b to perform subtraction
+parameter ALU_ROR   = ALU_LSR | ALU_CIP; // rotate: shift + carry in
 
-// build shift/rot ops
-parameter ALU_LSR   = ALU_SR;
-parameter ALU_ROR   = ALU_LSR | ALU_CIP;
-parameter ALU_ASL   = ALU_LSR | ALU_ALT;
-parameter ALU_ROL   = ALU_ROR | ALU_ALT;
 
 // sum-specific flags
-parameter ALU_ADZ   = 6'b001010;    // set port b to zero (or -1 with inv)
-parameter ALU_CI1   = 6'b001100;    // force carry in=1
+parameter ALU_ADZ   = 5'b01010;    // set port b to zero (or -1 with inv)
+parameter ALU_CI1   = 5'b01100;    // force carry in=1
 parameter ALU_ADC   = ALU_SUM | ALU_CIP; // sum + carry in p[0]
 parameter ALU_SBC   = ALU_SUB | ALU_CIP; // sub + carry in p[0]
 parameter ALU_CMP   = ALU_SUB | ALU_CI1; // sub + carry in 1
 parameter ALU_INC   = ALU_SUM | ALU_ADZ | ALU_CI1; // sum + zero b + carry in 1
 parameter ALU_DEC   = ALU_SUB | ALU_ADZ; // sub w/ inv zero
-parameter ALU_INB   = ALU_INC | ALU_OPB; // increment db
 
 
 parameter FL_N = 8'b10000000;   // Negative

@@ -124,7 +124,7 @@ module core #(
     always_comb begin
         case(1'b1)
             stack_push[0]:  db_result = a;
-            stack_push[1]:  db_result = p_push;
+            stack_push[1]:  db_result = interrupt ? p : p | FL_BU; // set break flag on push unless irq
             stack_push[2]:  db_result = pcl;
             stack_push[3]:  db_result = pch;
             dummy_write:    db_result = db;         // bit of a hack to match RMW behavior
@@ -177,7 +177,7 @@ module core #(
             if (irq && !p[2])
                 irq_event <= 1;
 
-            if(handle_int) begin
+            if(brk_int) begin
                 nmi_handled <= nmi_event;
                 nmi_event <= 0;
                 irq_event <= 0;
@@ -199,13 +199,13 @@ module core #(
     logic [4:0] op_type;
     logic [6:0] sb_src, sb_src_exec, sb_src_ctrl, dst;
     logic alu_en;
-    logic [5:0] alu_op_exec, alu_op_ctrl;
+    logic [4:0] alu_op_exec, alu_op_ctrl;
     logic single_byte, idx_XY;
-    logic stack_ap, bit_op, shift_op;
+    logic stack_ap, and_op, bit_op, sl_op, sr_op;
     logic clc, cli, clv, cld, sec, sei, sed;
     logic [7:0] result_mask;
     decode u_decode(
-        .opcode         (ir),
+        .op         (ir),
         .op_type        (op_type ),
         .src            (sb_src_exec),
         .dst            (dst),
@@ -214,8 +214,10 @@ module core #(
         .single_byte    (single_byte),
         .idx_XY         (idx_XY),
         .stack_ap       (stack_ap),
+        .and_op         (and_op),
         .bit_op         (bit_op),
-        .shift_op       (shift_op),
+        .sl_op          (sl_op),
+        .sr_op          (sr_op),
         .clc            (clc),
         .cli            (cli),
         .clv            (clv),
@@ -227,15 +229,14 @@ module core #(
     );
 
     //alu
-    logic [5:0] alu_op;
+    logic [4:0] alu_op;
     logic [7:0] alu_ai, alu_bi;
-    logic alu_ci;
-    logic adl_add, adh_add;
-    logic shiftC, sumC, sumV;
-    assign alu_ai = adl_add ? adl : sb;
-                    // adh_add ? adh :
-    assign alu_bi = db;
-    assign alu_ci = p[0];
+    logic adl_add, adh_add, alu_az, sb_db;
+    logic sumC, sumV;
+    assign alu_ai = adl_add ? adl :
+                    alu_az ? 0 :
+                    sb;
+    assign alu_bi = sb_db ? sb : db;
 
     alu u_alu(
         .clk    (clk),
@@ -243,11 +244,11 @@ module core #(
         .op     (alu_op),
         .ai     (alu_ai),
         .bi     (alu_bi),
-        .ci     (alu_ci),
+        .ci     (p[0]),
         .out    (add),
-        .shiftC (shiftC),
         .sumC   (sumC),
-        .sumV   (sumV)
+        .sumV   (sumV),
+        .bpage  (bpage)
     );
 
     // branch logic
@@ -260,60 +261,60 @@ module core #(
             2'h3:   take_branch = p[1] ^ !ir[5]; // BNE, BEQ
         endcase
     end
-    logic [7:0] db_r;  //TODO clean up?
-    always @(posedge clk ) db_r <= db;
-    assign bpage = (db_r[7] == add[7]) && (db_r[7] ^ adl_r[7]); // branch crosses page?
 
     //registers
     logic so_r, exec, alu_rdy, sb_s;
-    logic [7:0] a_next, x_next, y_next, s_next, p_next, p_push, result_status;
+    logic [7:0] a_next, x_next, y_next, s_next;
+    wire result_rdy = (exec && !alu_en) || alu_rdy;
+    // update registers
     always_comb begin
-        a_next = a;
-        x_next = x;
-        y_next = y;
-        s_next = sb_s ? sb : s;
-        p_next = p;
+        a_next = (result_rdy & dst[0]) ? sb_result :
+                    stack_read[0] ? db : a;
+        x_next = (result_rdy & dst[1]) ? sb_result : x;
+        y_next = (result_rdy & dst[2]) ? sb_result : y;
+        s_next = (result_rdy & dst[3]) ? sb_result :
+                    sb_s ? sb : s;
+    end
 
-        result_status = p;
-        if(result_mask[7]) result_status[7] = sb_result[7];
-        if(result_mask[6]) result_status[6] = sumV;
-        if(result_mask[1]) result_status[1] = sb_result==0;
-        if(result_mask[0]) result_status[0] = sumC;
-        if ( exec && !alu_en || alu_rdy ) begin
-            if(dst[0]) a_next = sb_result;
-            if(dst[1]) x_next = sb_result;
-            if(dst[2]) y_next = sb_result;
-            if(dst[3]) s_next = sb_result;
-            p_next = result_status;
+    // update p status register
+    logic [7:0] p_next;
+    wire dbz = (db==0);
+    wire sbz = (sb_result==0);
+    always_comb begin
+        p_next = stack_read[1] ? db : p;
+
+        if ( result_rdy ) begin
+            if(result_mask[7]) p_next[7] = sb_result[7];
+            if(result_mask[6]) p_next[6] = sumV;
+            if(result_mask[1]) p_next[1] = sbz;
+            if(result_mask[0]) p_next[0] = sumC;
         end
 
-        // some special cases with fussy visual6502 timing...
         if (exec) begin
-            if(bit_op) begin
-                p_next[7:6] = db[7:6];
-                p_next[1] = (db==0);
-            end
-            if(shift_op) begin
-                p_next[0] = shiftC;
-            end
-        end
-        if(bit_op & sync) p_next[1] = (db_r & a)==0;
+            if (clc) p_next[0] = 0;
+            if (cli) p_next[2] = 0;
+            if (clv) p_next[6] = 0;
+            if (cld) p_next[3] = 0;
+            if (sec) p_next[0] = 1;
+            if (sei) p_next[2] = 1;
+            if (sed) p_next[3] = 1;
 
+            // there are a few other special cases where alu status is
+            // not updated with alu result (result_rdy) but
+            // directly with alu input (exec):
+            if(and_op | bit_op | stack_read[0]) begin
+                p_next[1] = dbz;
+                p_next[7] = db[7];
+            end
+            if(bit_op) p_next[6] = db[6];
+            if(sr_op) p_next[0] = sb[0]; // shift-right carry out
+        end
 
-        if (so & !so_r) p_next[6] = 1;  //set overflow on so rising edge
-        if (stack_read[0]) begin        //pull a from stack
-            a_next = db;
-            p_next[1] = db == 0;
-            p_next[7] = db[7];
-        end
-        if (stack_read[1]) begin        //pull p from stack
-            p_next = db;
-        end
-        if (handle_int) p_next[2] = 1;  // set interrupt bit
+        if (so & !so_r) p_next[6] = 1;  //set overflow on re of SO pin
+        if (brk_int) p_next[2] = 1;     //set interrupt bit on BRK
+
         p_next[4] = 0;                  //bit 4 doesnt exist but always reports low
         p_next[5] = 1;                  //bit 5 doesnt exist but always reports high
-
-        p_push = interrupt ? p : p | FL_BU; // set break flag on push unless irq
     end
 
     always @(posedge clk ) begin
@@ -333,27 +334,15 @@ module core #(
             y <= y_next;
             s <= s_next;
             p <= p_next;
-
-            if (exec) begin
-                if (clc) p[0] <= 0;
-                if (cli) p[2] <= 0;
-                if (clv) p[6] <= 0;
-                if (cld) p[3] <= 0;
-                if (sec) p[0] <= 1;
-                if (sei) p[2] <= 1;
-                if (sed) p[3] <= 1;
-            end
-
             so_r <= so;
         end
     end
 
-    // state machine
-    (* mark_debug = "true" *) logic [7:0] Tstate /*verilator public*/;
+    // control state machine
     (* mark_debug = "true" *) logic [2:0] adl_src,adh_src;
     (* mark_debug = "true" *) logic inc_pc;
     (* mark_debug = "true" *) logic write_mem;
-    (* mark_debug = "true" *) logic jump, handle_int;
+    (* mark_debug = "true" *) logic jump, brk_int;
     (* mark_debug = "true" *) logic hold_alu;    
     control u_control(
         .clk            (clk),
@@ -370,7 +359,7 @@ module core #(
         .idx_XY         (idx_XY),
         .bpage          (bpage),
         .take_branch    (take_branch),
-        .Tstate         (Tstate),
+        .sl_op          (sl_op),
         .sync           (sync),
         .exec           (exec),
         .alu_op         (alu_op_ctrl),
@@ -381,12 +370,13 @@ module core #(
         .write_mem      (write_mem),
         .dummy_write    (dummy_write),
         .jump           (jump),
-        .handle_int     (handle_int),
+        .brk_int     (brk_int),
         .adl_add        (adl_add),
-        // .adh_add        (adh_add),
+        .alu_az        (alu_az),
         .stack_push     (stack_push),
         .stack_read     (stack_read),
         .sb_s           (sb_s),
+        .sb_db          (sb_db),
         .jam            (jam)
     );
 
@@ -407,5 +397,8 @@ module core #(
         if (rst) cycle <= 0;
         else cycle <= cycle+1;
     end
+
+    (* mark_debug = "true" *) logic [9:0] Tstate /*verilator public*/;
+    assign Tstate = u_control.Tstate;
 
 endmodule

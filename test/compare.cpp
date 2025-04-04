@@ -37,16 +37,13 @@ void compare_sims(Abstract6502* sim1,
     std::vector<state6502> history1;
     std::vector<state6502> history2;
     size_t cnt=0;
+    bool prtstate = verbose;
     while(true) {
         cnt++;
 
         sim1State = sim1->getState();
         sim2State = sim2->getState();
 
-        bool prtstate = verbose;
-
-        
-        // user interrupt - break and step
         if(sim1State.cycle > 1 && sim1State != sim2State)
         {
             printTrace(history1, listing);
@@ -76,6 +73,15 @@ void compare_sims(Abstract6502* sim1,
 
             break;
         }
+
+
+        if(sim1State.sync && detect_trap(history1))
+        {
+            printTrace(history1, listing);
+            printf("Trap at PC 0x%x\n", sim1State.pc);
+            break;
+        }
+
 
         caught_int = 0;
         history1.push_back(sim1State);

@@ -48,6 +48,7 @@ void inspectMem(const Abstract6502* sim)
 void debug(Abstract6502* sim,
             std::vector<uint16_t> bps,
             std::vector<std::string> listing,
+            std::ofstream& logfile,
             bool verbose,
             bool stepping = false)
 {
@@ -56,6 +57,9 @@ void debug(Abstract6502* sim,
     size_t cnt=0;
     while(true) {
         simState = sim->getState();
+
+        if (logfile.is_open())
+            printState(simState, logfile);
 
         // user interrupt - break and step
         if(caught_int) stepping = true;
@@ -141,6 +145,7 @@ int main(int argc, char** argv, char** env) {
     int opt;
     std::string romfile;
     std::string wavefile;
+    std::string logfile;
     std::vector<uint16_t> bps;
     std::vector<std::string> listing;
 
@@ -154,7 +159,7 @@ int main(int argc, char** argv, char** env) {
     
     char c;
     opterr = 0;
-    while ((c = getopt(argc, argv, "r:b:l:j:i:w:svp")) != -1)
+    while ((c = getopt(argc, argv, "r:b:l:j:i:w:k:svp")) != -1)
         switch (c)
         {
         case 'r': // rom file
@@ -178,6 +183,9 @@ int main(int argc, char** argv, char** env) {
             break;
         case 'w':
             wavefile = optarg;
+            break;
+        case 'k':
+            logfile = optarg;
             break;
         case 's':
             stepping = true;
@@ -220,8 +228,15 @@ int main(int argc, char** argv, char** env) {
     if (startvec_en)
         sim->jump(startvec);
 
+    std::ofstream lf;
+    if (!logfile.empty())
+        lf.open(logfile);
+
     std::cout << "Debugging " << romfile << "..." << std::endl;
-    debug(sim, bps, listing, verbose, stepping);
+    debug(sim, bps, listing, lf, verbose, stepping);
+
+    if (lf.is_open())
+        lf.close();
 
     delete sim;
     return 0;

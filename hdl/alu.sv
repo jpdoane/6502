@@ -4,20 +4,14 @@
 
 module alu (
     input  logic clk, rst,
-    input  logic [5:0] op,
+    input  logic [4:0] op,
     input  logic [7:0] ai, bi,
     input  logic ci,
     output logic [7:0] out,
-    output logic shiftC, sumC, sumV
+    output logic sumC, sumV, bpage
     );
 
-    // op[5] activates port b for unary ops (inc/dec/sr/sl)
-    wire [7:0] a_sel = op[5] ? bi : ai;
-
-    // shift carry bit is updated immediately (not registered)
-    assign shiftC = op[0] ? a_sel[7] : a_sel[0];
-
-    logic [5:0] op_r;
+    logic [4:0] op_r;
     logic [7:0] a_r,b_r;
     logic c_r;
     always @(posedge clk ) begin
@@ -28,7 +22,7 @@ module alu (
             c_r <= 0;
         end else begin 
             op_r <= op;
-            a_r <= a_sel;
+            a_r <= ai;
             b_r <= bi;
             c_r <= op[4] & ci;
         end
@@ -56,6 +50,9 @@ module alu (
 
         //https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
         sumV = (a[7] ^ sum[7]) && (b[7] ^ sum[7]);
+
+        // branch crosses page (a+b>0xff or a+b<0x00?)
+        bpage = (b[7] == sum[7]) && (b[7] ^ a[7]);
     end
 
     // other logic
@@ -66,7 +63,6 @@ module alu (
             ALU_ORA[2:0]:   out_logical = a_r | b_r;
             ALU_XOR[2:0]:   out_logical = a_r ^ b_r;
             ALU_LSR[2:0]:   out_logical = {c_r, a_r[7:1]};
-            ALU_ASL[2:0]:   out_logical = {a_r[6:0], c_r};
             default:        out_logical = a_r;
         endcase    
     end

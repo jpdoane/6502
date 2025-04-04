@@ -142,6 +142,7 @@ state6502 Verilated6502::getState() const
     state.s = top->core->s;
     state.x = top->core->x;
     state.y = top->core->y;
+    // state.p = 0xdf & top->core->p | 0x10;
     state.p = top->core->p;
     state.tstate = top->core->Tstate;
     state.clk = top->clk;
