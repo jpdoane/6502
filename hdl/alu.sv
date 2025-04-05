@@ -4,69 +4,56 @@
 
 module alu (
     input  logic clk, rst,
-    input  logic [4:0] op,
+    input  logic [8:0] op,
     input  logic [7:0] ai, bi,
     input  logic ci,
     output logic [7:0] out,
     output logic sumC, sumV, bpage
     );
 
-    logic [4:0] op_r;
-    logic [7:0] a_r,b_r;
-    logic c_r;
-    always @(posedge clk ) begin
-        if (rst) begin
-            op_r <= ALU_NOP;
-            a_r <= 0;
-            b_r <= 0;
-            c_r <= 0;
-        end else begin 
-            op_r <= op;
-            a_r <= ai;
-            b_r <= bi;
-            c_r <= op[4] & ci;
-        end
-    end
-
-    // adder logic
-    logic [7:0] a,b, sum;
+    logic [7:0] a,b;
     logic c;
-    always_comb begin
-        a = a_r;
-        b = b_r;
-        c = c_r;
-        
-        if (op_r[1]) begin // inc/dec commands
-            b = 0;
-            c = !op_r[0];     // set carry on inc, not on dec
+    wire [3:0] flags = op[8:5];             // flags: {invert b, zero b, carry 1, carry p}
+    wire [7:0] bz = flags[2] ? 8'b0 : bi;   // bi possibly zeroed
+    wire [7:0] bzi = flags[3] ? ~bz : bz;   // bi possibly inverted and/or zeroed
+
+    logic [4:0] alu_op=0;                     // ops: {sum, shiftr,  xor, or, and}
+
+    always @(posedge clk ) begin
+        // $display("alu: %x", op[4:0]);
+        if (rst) begin
+            alu_op <= ALU_NOP;
+            a <= 0;
+            b <= 0;
+            c <= 0;
+        end else begin 
+            alu_op <= op[4:0];
+            a <= ai;
+            b <= bzi;
+            c <= (flags[0] & ci) | flags[1];
         end
-            else if(op_r[2]) c = 1; // op[2] sets carry in to 1
-
-        if (op_r[0]) b = ~b;   // invert port b for sub/dec
-
-        // verilator lint_off WIDTH
-        {sumC, sum} = a + b + c;
-        // verilator lint_on WIDTH
-
-        //https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-        sumV = (a[7] ^ sum[7]) && (b[7] ^ sum[7]);
-
-        // branch crosses page (a+b>0xff or a+b<0x00?)
-        bpage = (b[7] == sum[7]) && (b[7] ^ a[7]);
     end
 
-    // other logic
-    logic [7:0] out_logical;
+    logic [7:0] sum;
+    // verilator lint_off WIDTH
+    assign {sumC, sum} = a + b + c;
+    // verilator lint_on WIDTH
+
+    //https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+    assign sumV = (a[7] ^ sum[7]) && (b[7] ^ sum[7]);
+
+    // branch crosses page (a+b>0xff or a+b<0x00?)
+    assign bpage = (b[7] == sum[7]) && (b[7] ^ a[7]);
+
     always_comb begin
-        case(op_r[2:0])
-            ALU_AND[2:0]:   out_logical = a_r & b_r;
-            ALU_ORA[2:0]:   out_logical = a_r | b_r;
-            ALU_XOR[2:0]:   out_logical = a_r ^ b_r;
-            ALU_LSR[2:0]:   out_logical = {c_r, a_r[7:1]};
-            default:        out_logical = a_r;
-        endcase    
+        unique case(1'b1)
+            alu_op[0]:  out = a & b;
+            alu_op[1]:  out = a | b;
+            alu_op[2]:  out = a ^ b;
+            alu_op[3]:  out = {c, a[7:1]};
+            alu_op[4]:  out = sum;
+            default:    out = a;
+        endcase 
     end
-
-    assign out = op_r[3] ? sum : out_logical;
 
 endmodule

@@ -44,7 +44,6 @@ module core #(
     (* mark_debug = "true" *) logic [7:0] adl, adh;
     logic [7:0] adl_r, adh_r;
     assign addr = {adh,adl};
-
     always @(posedge clk ) begin
         if (rst) begin
             adl_r <= 0;
@@ -55,29 +54,31 @@ module core #(
         end
     end
     always @(*) begin
-        case(adl_src)
-            ADDR_DATA:  adl = db;
-            ADDR_ALU:   adl = add;
-            ADDR_INT:   adl = rst_event ? RST_VECTOR[7:0] :
+        unique case(1'b1)
+            adl_src[0]: adl = pcl;  // ADDR_PC
+            adl_src[1]: adl = db;   // ADDR_DATA
+            adl_src[2]: adl = add;  // ADDR_ALU
+            adl_src[3]: adl = rst_event ? RST_VECTOR[7:0] :
                               nmi_event ? NMI_VECTOR[7:0] :
-                              IRQ_VECTOR[7:0];
-            ADDR_STACK: adl = s;
-            ADDR_HOLD:  adl = adl_r;
-            default:    adl = pcl;
-        endcase
-        case(adh_src)
-            ADDR_DATA:  adh = db;
-            ADDR_ALU:   adh = add;
-            ADDR_Z:     adh = 8'b0;
-            ADDR_INT:   adh = rst_event ? RST_VECTOR[15:8] :
-                              nmi_event ? NMI_VECTOR[15:8] :
-                              IRQ_VECTOR[15:8];
-            ADDR_STACK: adh = STACKPAGE;
-            ADDR_HOLD:  adh = adh_r;
-            default:    adh = pch;
+                              IRQ_VECTOR[7:0]; // ADDR_INT
+            adl_src[4]: adl = s;    // ADDR_STACK
+            adl_src[5]: adl = adl_r;// ADDR_HOLD
+            default:    adl = 0;    // ADDR_Z
         endcase
     end
-
+    always @(*) begin
+        unique case(1'b1)
+            adh_src[0]: adh = pch;  // ADDR_PC
+            adh_src[1]: adh = db;   // ADDR_DATA
+            adh_src[2]: adh = add;  // ADDR_ALU
+            adh_src[3]: adh = rst_event ? RST_VECTOR[15:8] :
+                              nmi_event ? NMI_VECTOR[15:8] :
+                              IRQ_VECTOR[15:8]; // ADDR_INT
+            adh_src[4]: adh = STACKPAGE; // ADDR_STACK
+            adh_src[5]: adh = adh_r;// ADDR_HOLD
+            default:    adh = 0;    // ADDR_Z
+        endcase
+    end
 
     // internal buses
     // the real 6502 updates bus states on subcycles using out of phase clocks m1,m2)
@@ -95,7 +96,7 @@ module core #(
 
     // sb "source" bus
     always_comb begin
-        case(1'b1)
+        unique case(1'b1)
             sb_src[0] : sb = a;
             sb_src[1] : sb = x;
             sb_src[2] : sb = y;
@@ -103,7 +104,7 @@ module core #(
             sb_src[4] : sb = add;
             sb_src[5] : sb = db;
             sb_src[6] : sb = adh;
-            default: sb = 0;
+            default:    sb = 0;
         endcase
     end
 
@@ -117,18 +118,18 @@ module core #(
             sb_src_exec[2] : sb_result = y;
             sb_src_exec[3] : sb_result = s;
             sb_src_exec[5] : sb_result = db;
-            default: sb_result = 0;
+            default:         sb_result = 0;
         endcase
     end        
     // db write bus
     always_comb begin
-        case(1'b1)
+        unique case(1'b1)
             stack_push[0]:  db_result = a;
             stack_push[1]:  db_result = interrupt ? p : p | FL_BU; // set break flag on push unless irq
             stack_push[2]:  db_result = pcl;
             stack_push[3]:  db_result = pch;
             dummy_write:    db_result = db;         // bit of a hack to match RMW behavior
-            default         db_result = sb_result;
+            default:        db_result = sb_result;
         endcase
     end
 
@@ -138,11 +139,11 @@ module core #(
     (* mark_debug = "true" *) logic [7:0] pch, pcl;   // low and high byte of next pc
     always_comb begin
         {pch, pcl} = pc;
-        case(1'b1)
+        unique case(1'b1)
             inc_pc:         {pch, pcl} = pc_next;
             stack_read[2]:  pcl = db;   // pull pcl from stack
             stack_read[3]:  pch = db;   // pull pch from stack
-            default         begin end
+            default: ;
         endcase
     end
 
@@ -199,7 +200,8 @@ module core #(
     logic [4:0] op_type;
     logic [6:0] sb_src, sb_src_exec, sb_src_ctrl, dst;
     logic alu_en;
-    logic [4:0] alu_op_exec, alu_op_ctrl;
+    logic [8:0] alu_op_exec;
+    logic [3:0] alu_flags_ctrl;
     logic single_byte, idx_XY;
     logic stack_ap, and_op, bit_op, sl_op, sr_op;
     logic clc, cli, clv, cld, sec, sei, sed;
@@ -229,7 +231,7 @@ module core #(
     );
 
     //alu
-    logic [4:0] alu_op;
+    logic [8:0] alu_op;
     logic [7:0] alu_ai, alu_bi;
     logic adl_add, adh_add, alu_az, sb_db;
     logic sumC, sumV;
@@ -254,11 +256,11 @@ module core #(
     // branch logic
     logic take_branch, bpage;
     always_comb begin
-        case(ir[7:6])
-            2'h0:   take_branch = p[7] ^ !ir[5]; // BPL, BMI
-            2'h1:   take_branch = p[6] ^ !ir[5]; // BVC, BVS
-            2'h2:   take_branch = p[0] ^ !ir[5]; // BCC, BCS
-            2'h3:   take_branch = p[1] ^ !ir[5]; // BNE, BEQ
+        unique case(ir[7:6])
+            2'b00:   take_branch = p[7] ^ !ir[5]; // BPL, BMI
+            2'b01:   take_branch = p[6] ^ !ir[5]; // BVC, BVS
+            2'b10:   take_branch = p[0] ^ !ir[5]; // BCC, BCS
+            2'b11:   take_branch = p[1] ^ !ir[5]; // BNE, BEQ
         endcase
     end
 
@@ -339,7 +341,7 @@ module core #(
     end
 
     // control state machine
-    (* mark_debug = "true" *) logic [2:0] adl_src,adh_src;
+    (* mark_debug = "true" *) logic [5:0] adl_src,adh_src;
     (* mark_debug = "true" *) logic inc_pc;
     (* mark_debug = "true" *) logic write_mem;
     (* mark_debug = "true" *) logic jump, brk_int;
@@ -362,7 +364,7 @@ module core #(
         .sl_op          (sl_op),
         .sync           (sync),
         .exec           (exec),
-        .alu_op         (alu_op_ctrl),
+        .alu_flags      (alu_flags_ctrl),
         .sb_src         (sb_src_ctrl),
         .inc_pc         (inc_pc),
         .adl_src        (adl_src),
@@ -376,12 +378,11 @@ module core #(
         .stack_push     (stack_push),
         .stack_read     (stack_read),
         .sb_s           (sb_s),
-        .sb_db          (sb_db),
-        .jam            (jam)
+        .sb_db          (sb_db)
     );
 
     assign sb_src = exec ? sb_src_exec : sb_src_ctrl;
-    assign alu_op = exec ? alu_op_exec : alu_op_ctrl;
+    assign alu_op = exec ? alu_op_exec : {alu_flags_ctrl, ALU_SUM};
 
     //below are unused but helpful for debug
 
@@ -400,5 +401,6 @@ module core #(
 
     (* mark_debug = "true" *) logic [9:0] Tstate /*verilator public*/;
     assign Tstate = u_control.Tstate;
+    assign jam = Tstate==0; //if Tstate reaches all zeros we have a jam
 
 endmodule

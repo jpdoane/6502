@@ -38,14 +38,13 @@ parameter OP_BRA      = 5'h10;   // conditional branch, taken
 parameter OP_BNT      = 5'h11;   // conditional branch, not taken
 parameter OP_JAM      = 5'h1f;
 
-parameter ADDR_PC   = 3'h0;
-parameter ADDR_DATA   = 3'h1;
-parameter ADDR_RES  = 3'h2;
-parameter ADDR_ALU  = 3'h3;
-parameter ADDR_Z    = 3'h4;
-parameter ADDR_INT = 3'h5;
-parameter ADDR_STACK = 3'h6;
-parameter ADDR_HOLD = 3'h7;
+parameter ADDR_Z      = 6'b000000;
+parameter ADDR_PC     = 6'b000001;
+parameter ADDR_DATA   = 6'b000010;
+parameter ADDR_ALU    = 6'b000100;
+parameter ADDR_INT    = 6'b001000;
+parameter ADDR_STACK  = 6'b010000;
+parameter ADDR_HOLD   = 6'b100000;
 
 
 parameter REG_Z =    7'b0000000;
@@ -57,35 +56,43 @@ parameter REG_ADD =  7'b0010000;  // alu register
 parameter REG_D =    7'b0100000;  // sb<=db
 parameter REG_ADH =  7'b1000000;   // sb<=adh
 
-
 parameter STACK_A   = 4'b0001;
 parameter STACK_P   = 4'b0010;
 parameter STACK_PCL = 4'b0100;
 parameter STACK_PCH = 4'b1000;
 
-
+// basic ALU ops
 parameter ALU_NOP   = 5'b00000;
 parameter ALU_AND   = 5'b00001;
 parameter ALU_ORA   = 5'b00010;
-parameter ALU_LSR   = 5'b00100;
-parameter ALU_SUM   = 5'b01000;
+parameter ALU_XOR   = 5'b00100;
+parameter ALU_SHR   = 5'b01000;
+parameter ALU_SUM   = 5'b10000;
 
-parameter ALU_CIP   = 5'b10000; // use carry in from p[0], else carry in zero
-parameter ALU_ALT   = 5'b00001;         // alt flag for xor, sub, & left sifts
-parameter ALU_XOR   = ALU_ORA | ALU_ALT;
-parameter ALU_SUB   = ALU_SUM | ALU_ALT; // invert port b to perform subtraction
-parameter ALU_ROR   = ALU_LSR | ALU_CIP; // rotate: shift + carry in
+// ALU flags
+parameter ALU_NOF  = 4'b0000;   // 
+parameter ALU_CIP  = 4'b0001;   // carry in p[0]
+parameter ALU_CI1  = 4'b0010;   // carry in 1
+parameter ALU_BIZ  = 4'b0100;   // zero bi
+parameter ALU_BIN  = 4'b1000;   // invert bi
 
+parameter ALU_INC  = ALU_BIZ | ALU_CI1; // a + 0
+parameter ALU_DEC  = ALU_BIZ | ALU_BIN; // a + -1
 
-// sum-specific flags
-parameter ALU_ADZ   = 5'b01010;    // set port b to zero (or -1 with inv)
-parameter ALU_CI1   = 5'b01100;    // force carry in=1
-parameter ALU_ADC   = ALU_SUM | ALU_CIP; // sum + carry in p[0]
-parameter ALU_SBC   = ALU_SUB | ALU_CIP; // sub + carry in p[0]
-parameter ALU_CMP   = ALU_SUB | ALU_CI1; // sub + carry in 1
-parameter ALU_INC   = ALU_SUM | ALU_ADZ | ALU_CI1; // sum + zero b + carry in 1
-parameter ALU_DEC   = ALU_SUB | ALU_ADZ; // sub w/ inv zero
-
+// ALU mnumonics: ops + flags
+parameter OP_AND = {ALU_NOF, ALU_AND};
+parameter OP_ORA = {ALU_NOF, ALU_ORA};
+parameter OP_XOR = {ALU_NOF, ALU_XOR};
+parameter OP_NOP = {ALU_NOF, ALU_NOP};
+parameter OP_ADC = {ALU_CIP, ALU_SUM};
+parameter OP_SBC = {ALU_BIN | ALU_CIP, ALU_SUM};
+parameter OP_CMP = {ALU_BIN | ALU_CI1, ALU_SUM};
+parameter OP_INC = {ALU_INC, ALU_SUM};
+parameter OP_DEC = {ALU_DEC, ALU_SUM};
+parameter OP_LSR = {ALU_NOF, ALU_SHR};
+parameter OP_ROR = {ALU_CIP, ALU_SHR};
+parameter OP_ASL = {ALU_NOF, ALU_SUM}; // implemented as M+M
+parameter OP_ROL = {ALU_CIP, ALU_SUM}; // implemented as M+M+C
 
 parameter FL_N = 8'b10000000;   // Negative
 parameter FL_V = 8'b01000000;   // Overflow

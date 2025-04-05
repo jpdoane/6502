@@ -1,248 +1,61 @@
 [*]
 [*] GTKWave Analyzer v3.3.116 (w)1999-2023 BSI
-[*] Sat Mar 29 18:53:18 2025
+[*] Sat Apr  5 02:45:54 2025
 [*]
 [dumpfile] "/home/jpdoane/6502/test/build/logs/core.fst"
-[dumpfile_mtime] "Sat Mar 29 18:46:38 2025"
-[dumpfile_size] 3330
+[dumpfile_mtime] "Sat Apr  5 02:35:47 2025"
+[dumpfile_size] 3870
 [savefile] "/home/jpdoane/6502/inc/wave.sav"
-[timestart] 31
-[size] 1355 976
+[timestart] 173
+[size] 1355 814
 [pos] -1 -1
-*-3.048910 32 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-3.048910 196 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] core.
 [treeopen] core.core.
 [sst_width] 276
 [signals_width] 210
 [sst_expanded] 1
-[sst_vpaned_height] 271
-@800200
--cycle
-@c02022
-^1 /home/jpdoane/6502/inc/wavefilters/states.txt
-core.core.Tstate[7:0]
-@28
-(0)core.core.Tstate[7:0]
-(1)core.core.Tstate[7:0]
-(2)core.core.Tstate[7:0]
-(3)core.core.Tstate[7:0]
-(4)core.core.Tstate[7:0]
-(5)core.core.Tstate[7:0]
-(6)core.core.Tstate[7:0]
-(7)core.core.Tstate[7:0]
-@1401200
--group_end
-@24
+[sst_vpaned_height] 217
+@420
 core.core.cycle
-@28
-[color] 1
-core.core.sync
-@22
-[color] 3
-core.core.ip[15:0]
+@2028
+^1 /home/jpdoane/6502/inc/wavefilters/states.txt
+core.core.Tstate[9:0]
+@23
+core.core.pc[15:0]
 @2022
 ^2 /home/jpdoane/6502/inc/wavefilters/opcodes.txt
 core.core.ir[7:0]
-^3 /home/jpdoane/6502/inc/wavefilters/optypes.txt
-core.core.u_decode.op_type[4:0]
-@1000200
--cycle
 @800200
--addr bus
+-addr
 @22
-core.core.pc[15:0]
-@c00022
 [color] 3
 core.core.addr[15:0]
-@28
-(0)core.core.addr[15:0]
-(1)core.core.addr[15:0]
-(2)core.core.addr[15:0]
-(3)core.core.addr[15:0]
-(4)core.core.addr[15:0]
-(5)core.core.addr[15:0]
-(6)core.core.addr[15:0]
-(7)core.core.addr[15:0]
-(8)core.core.addr[15:0]
-(9)core.core.addr[15:0]
-(10)core.core.addr[15:0]
-(11)core.core.addr[15:0]
-(12)core.core.addr[15:0]
-(13)core.core.addr[15:0]
-(14)core.core.addr[15:0]
-(15)core.core.addr[15:0]
-@1401200
--group_end
-@22
-core.core.db[7:0]
+core.core.data_i[7:0]
 @28
 core.core.rw
 @22
 core.core.data_o[7:0]
 @1000200
--addr bus
+-addr
 @800200
--reg
-@22
-core.core.a[7:0]
-core.core.x[7:0]
-core.core.y[7:0]
-core.core.s[7:0]
-core.core.p[7:0]
-@1000200
--reg
-@c00200
--exec
-@22
-core.core.pc[15:0]
-@28
-core.core.exec
-@22
-core.core.stack_pull[3:0]
-core.core.stack_push[3:0]
-core.core.stack_read[3:0]
-@28
-core.core.jump
-@1401200
--exec
-@c00200
--busses
+-bus
 @22
 core.core.db[7:0]
 core.core.sb[7:0]
 core.core.sb_result[7:0]
-@1401200
--busses
-@c00200
--alu
-@28
-core.core.alu_en
-@c02028
-^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
-core.core.u_alu.op[5:0]
-@2028
-^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
-(0)core.core.u_alu.op[5:0]
-^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
-(1)core.core.u_alu.op[5:0]
-^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
-(2)core.core.u_alu.op[5:0]
-^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
-(3)core.core.u_alu.op[5:0]
-^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
-(4)core.core.u_alu.op[5:0]
-^4 /home/jpdoane/6502/inc/wavefilters/alu.txt
-(5)core.core.u_alu.op[5:0]
-@1401200
--group_end
-@c00022
-core.core.alu_ai[7:0]
-@28
-(0)core.core.alu_ai[7:0]
-(1)core.core.alu_ai[7:0]
-(2)core.core.alu_ai[7:0]
-(3)core.core.alu_ai[7:0]
-(4)core.core.alu_ai[7:0]
-(5)core.core.alu_ai[7:0]
-(6)core.core.alu_ai[7:0]
-(7)core.core.alu_ai[7:0]
-@1401200
--group_end
+core.core.db_result[7:0]
+@1000200
+-bus
 @22
-core.core.alu_bi[7:0]
-@c00022
-core.core.u_alu.a[7:0]
-@28
-(0)core.core.u_alu.a[7:0]
-(1)core.core.u_alu.a[7:0]
-(2)core.core.u_alu.a[7:0]
-(3)core.core.u_alu.a[7:0]
-(4)core.core.u_alu.a[7:0]
-(5)core.core.u_alu.a[7:0]
-(6)core.core.u_alu.a[7:0]
-(7)core.core.u_alu.a[7:0]
-@1401200
--group_end
-@22
-core.core.u_alu.b[7:0]
-@28
-core.core.u_alu.c
-@c00022
-core.core.alu_out[7:0]
-@28
-(0)core.core.alu_out[7:0]
-(1)core.core.alu_out[7:0]
-(2)core.core.alu_out[7:0]
-(3)core.core.alu_out[7:0]
-(4)core.core.alu_out[7:0]
-(5)core.core.alu_out[7:0]
-(6)core.core.alu_out[7:0]
-(7)core.core.alu_out[7:0]
-@1401200
--group_end
-@28
-core.core.u_alu.aluC
-core.core.u_alu.aluV
-@c00022
-core.core.alu_op[5:0]
-@28
-(0)core.core.alu_op[5:0]
-(1)core.core.alu_op[5:0]
-(2)core.core.alu_op[5:0]
-(3)core.core.alu_op[5:0]
-(4)core.core.alu_op[5:0]
-(5)core.core.alu_op[5:0]
-@1401200
--group_end
-@c00022
-core.core.add[7:0]
-@28
-(0)core.core.add[7:0]
-(1)core.core.add[7:0]
-(2)core.core.add[7:0]
-(3)core.core.add[7:0]
-(4)core.core.add[7:0]
-(5)core.core.add[7:0]
-(6)core.core.add[7:0]
-(7)core.core.add[7:0]
-@1401200
--group_end
--alu
-@c00200
--status_flags
-@c00022
+core.core.a[7:0]
+core.core.s[7:0]
+core.core.x[7:0]
+core.core.y[7:0]
 core.core.p[7:0]
 @28
-(0)core.core.p[7:0]
-(1)core.core.p[7:0]
-(2)core.core.p[7:0]
-(3)core.core.p[7:0]
-(4)core.core.p[7:0]
-(5)core.core.p[7:0]
-(6)core.core.p[7:0]
-(7)core.core.p[7:0]
-@1401200
--group_end
-@28
-core.core.u_decode.upC
-core.core.u_decode.upNZ
-core.core.u_decode.upV
+core.core.exec
 @22
-core.core.u_decode.set_mask[7:0]
-core.core.u_decode.clear_mask[7:0]
-@28
-core.core.u_decode.bit_op
-core.core.aluC
-core.core.aluV
-@1401200
--status_flags
-@c00200
--interrupts
-@28
-core.core.IRQ_masked
-core.core.interrupt
-core.core.handle_int
-@1401200
--interrupts
+core.core.add[7:0]
 [pattern_trace] 1
 [pattern_trace] 0

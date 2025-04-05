@@ -246,7 +246,7 @@ function string addr_name(input logic [2:0] x);
     case(x)
         ADDR_PC: addr_name = "PC ";
         ADDR_DATA: addr_name = "DAT";
-        ADDR_RES: addr_name = "RES";
+        // ADDR_RES: addr_name = "RES";
         ADDR_ALU: addr_name = "ALU";
         ADDR_Z: addr_name = "Z  ";
         ADDR_INT: addr_name = "INT"; 

@@ -22,11 +22,11 @@ module control (
 
     output logic sync,
     output logic exec,
-    output logic [4:0] alu_op,
+    output logic [3:0] alu_flags,
     output logic [6:0] sb_src,
     output logic inc_pc,
-    output logic [2:0] adl_src,
-    output logic [2:0] adh_src,
+    output logic [5:0] adl_src,
+    output logic [5:0] adh_src,
     output logic write_mem,
     output logic dummy_write,
     output logic jump,
@@ -36,8 +36,7 @@ module control (
     output logic [3:0] stack_push,
     output logic [3:0] stack_read,
     output logic sb_s,
-    output logic sb_db,
-    output logic jam
+    output logic sb_db
     );
 
     //state machine
@@ -58,8 +57,6 @@ module control (
                 Tstate <= Tstate << 1;
         end
     end
-
-    assign jam = Tstate==0; //if Tstate reaches all zeros we have a jam
 
     wire rmw = wr_op & alu_en;
     logic push_no_update;
@@ -88,7 +85,7 @@ module control (
         alu_az      = 0;
 
         // default alu behavior is to store data in alu register
-        alu_op = ALU_SUM;
+        alu_flags = ALU_NOF;
         sb_src = REG_Z;
 
         // relative to visual6502/perfect6502, the address bus is output one clock early
@@ -117,7 +114,7 @@ module control (
                     OP_INY: begin
                         {adh_src, adl_src} = {ADDR_Z, ADDR_DATA};       // fetch BAL at {0,IAL}
                         sb_src = REG_D;
-                        alu_op = ALU_INC;                               // IAL++
+                        alu_flags = ALU_INC;                                // IAL++
                     end
                     OP_PUS: begin
                         stack_push = stack_ap ? STACK_A : STACK_P;      // push a or p
@@ -173,7 +170,7 @@ module control (
                     OP_XIN: begin
                         {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};        // fetch ADL at {0,BAL+X}
                         sb_src = REG_ADD;                               // compute BAL+X+1
-                        alu_op = ALU_INC;
+                        alu_flags = ALU_INC;
                     end
                     OP_INY: begin
                         {adh_src, adl_src} = {ADDR_Z, ADDR_ALU};        // fetch BAH at {0,IAL+1}
@@ -188,14 +185,14 @@ module control (
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};     // {BAH, BAL+X/Y}
                         if (aluC) begin
                             sb_src = REG_D;
-                            alu_op = ALU_INC;            // increment BAH on carry
+                            alu_flags = ALU_INC;            // increment BAH on carry
                         end
                         else Tlast = !wr_op;
                     end
                     OP_BRA: begin                        
                         {adh_src, adl_src} = {ADDR_PC, ADDR_ALU};
                         sb_src = REG_ADH;                                    // inc or dec adh based on adl + db result
-                        alu_op = aluN ? ALU_DEC : ALU_INC;
+                        alu_flags = aluN ? ALU_DEC : ALU_INC;
                         if (!bpage) begin
                             jump = 1;                                  // jump to {adh, adl + db} if we didnt cross page boundary
                             skipT0 = 1;                                
@@ -209,7 +206,7 @@ module control (
                     OP_JIN: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};     // fetch ADL at {IAH, IAL}
                         sb_src = REG_ADD;
-                        alu_op = ALU_INC;                               // IAL++
+                        alu_flags = ALU_INC;                               // IAL++
                     end
                     OP_PUL: begin
                         {adh_src, adl_src} = {ADDR_STACK, ADDR_STACK};
@@ -224,7 +221,7 @@ module control (
                         stack_push = STACK_PCH;                         // write pch to stack
                         push_no_update = 1;                             // but dont actually update stack pointer...
                         adl_add = 1;                                    // instead, "manually" decrement stack address
-                        alu_op = ALU_DEC;
+                        alu_flags = ALU_DEC;
                     end
                     default: ;
                 endcase
@@ -242,7 +239,7 @@ module control (
                     OP_INY: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};     // fetch data at {BAH,BAL+Y}
                         if (aluC) begin
-                            alu_op = ALU_INC;                     // increment BAH on carry
+                            alu_flags = ALU_INC;                     // increment BAH on carry
                             sb_src = REG_D;
                         end
                         else Tlast = !wr_op;
@@ -262,7 +259,7 @@ module control (
                         stack_push = STACK_PCL;                         // write pcl to stack
                         push_no_update = 1;                             // dont update stack register...
                         adl_add = 1;                                    // manually decrement stack address again
-                        alu_op = ALU_DEC;
+                        alu_flags = ALU_DEC;
                     end
                     OP_RTS: begin
                         alu_az = 1;                                     // read PCL into alu (while sb used for stack)
@@ -288,12 +285,12 @@ module control (
                     OP_BRK: begin
                         {adh_src, adl_src} = {ADDR_INT, ADDR_INT};      // fetch ADL from interrupt vector
                         adl_add = 1;
-                        alu_op = ALU_INC;                               // ADDR_INT++
+                        alu_flags = ALU_INC;                               // ADDR_INT++
                         brk_int = 1;
                     end
                     OP_JSR: begin                                       // fetch ADH at [PC+2]
                         sb_src = REG_ADD;                               // maintain stack in alu
-                        alu_op = ALU_NOP;                               
+                        alu_flags = ALU_BIZ;                               
                     end
                     OP_RTS: begin
                         {adh_src, adl_src} = {ADDR_DATA, ADDR_ALU};     // point at {PCH, PCL} (dummy fetch)
@@ -352,7 +349,7 @@ module control (
         push = (stack_push != 0) & !push_no_update;
         pull = stack_pull != 0;
         if (push | pull) begin    // calc new stack ptr
-            alu_op = push ? ALU_DEC : ALU_INC;
+            alu_flags = push ? ALU_DEC : ALU_INC;
             adh_src = ADDR_STACK;
             sb_src = REG_S;
             adl_src = stack_r ? ADDR_ALU : ADDR_STACK;
