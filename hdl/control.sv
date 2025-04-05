@@ -12,7 +12,7 @@ module control (
     input logic alu_en,
     input logic single_byte,
     input logic stack_ap,
-    input logic interrupt,
+    input logic int_event,
     input logic aluC,
     input logic aluN,
     input logic idx_XY,
@@ -130,7 +130,7 @@ module control (
                     end
                     OP_BRK: begin
                         stack_push = STACK_PCH;                         // push pch
-                        inc_pc = !interrupt;                            // increment pc on BRK but not on IRQ/NMI
+                        inc_pc = !int_event;                            // increment pc on BRK but not on IRQ/NMI
                     end
 
                     // JSR implementation is a bit covoluted, however this is based on visual 6502 behavior

@@ -125,7 +125,7 @@ module core #(
     always_comb begin
         unique case(1'b1)
             stack_push[0]:  db_result = a;
-            stack_push[1]:  db_result = interrupt ? p : p | FL_BU; // set break flag on push unless irq
+            stack_push[1]:  db_result = int_event ? p : p | FL_BU; // set break flag on push unless irq
             stack_push[2]:  db_result = pcl;
             stack_push[3]:  db_result = pch;
             dummy_write:    db_result = db;         // bit of a hack to match RMW behavior
@@ -135,36 +135,30 @@ module core #(
 
     // PC
     (* mark_debug = "true" *) logic [15:0] pc /*verilator public*/;
-    logic [15:0] pc_next = pc + 1;
     (* mark_debug = "true" *) logic [7:0] pch, pcl;   // low and high byte of next pc
+    logic [15:0] pc_next;
+    assign {pch, pcl} = pc_next;
+
     always_comb begin
-        {pch, pcl} = pc;
         unique case(1'b1)
-            inc_pc:         {pch, pcl} = pc_next;
-            stack_read[2]:  pcl = db;   // pull pcl from stack
-            stack_read[3]:  pch = db;   // pull pch from stack
-            default: ;
+            inc_pc:         pc_next = pc+1;
+            stack_read[2]:  pc_next = {pc[15:8], db};  // pull pcl from stack
+            stack_read[3]:  pc_next = {db, pc[7:0]};   // pull pch from stack
+            default:        pc_next = pc;
         endcase
     end
-
     always @(posedge clk ) begin
         if (rst) begin
             pc <= 0;
         end else begin
-            if ((nmi_event || irq_event) && sync) begin
-                pc <= pc;
-            end else if (jump) begin
-                pc <= {adh, adl};
-            end else begin
-                pc <= {pch, pcl};
-            end
+            pc <= jump ? addr : pc_next;
         end
     end
 
     // interrupt handling
     logic nmi_event, nmi_handled, irq_event, rst_event /*verilator public*/;
     // verilator lint_off SYMRSVDWORD
-    wire interrupt = nmi_event || irq_event;
+    wire int_event = nmi_event || irq_event;
     // verilator lint_on SYMRSVDWORD
     always @(posedge clk ) begin
         if (rst) begin
@@ -192,7 +186,7 @@ module core #(
 
     // opcode fetch and interrupt injection
     always @(posedge clk ) begin
-        if (rst || rst_event || (sync && interrupt)) ir <= 0;  //break from RESET_VECTOR
+        if (rst || rst_event || (sync && int_event)) ir <= 0;  //break from RESET_VECTOR
         else if (sync && rdy) ir <= db;
     end
 
@@ -355,7 +349,7 @@ module core #(
         .alu_en         (alu_en),
         .single_byte    (single_byte),
         .stack_ap       (stack_ap),
-        .interrupt      (interrupt),
+        .int_event      (int_event),
         .aluC           (sumC),
         .aluN           (add[7]),
         .idx_XY         (idx_XY),
@@ -384,7 +378,7 @@ module core #(
     assign sb_src = exec ? sb_src_exec : sb_src_ctrl;
     assign alu_op = exec ? alu_op_exec : {alu_flags_ctrl, ALU_SUM};
 
-    //below are unused but helpful for debug
+    //below are not used internally but helpful for debug
 
     //instruction pointer: pc of current opcode
     (* mark_debug = "true" *)  logic [15:0] ip;
