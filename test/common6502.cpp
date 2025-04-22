@@ -3,7 +3,15 @@
 #include <fstream>
 #include <sstream>
 #include <stdio.h>
-#include <format>
+
+#if __has_include(<format>)
+  #include <format>
+#else
+  #include <fmt/core.h>
+  namespace std {
+  using fmt::format;
+  }
+#endif
 
 
 bool operator==(const state6502& lhs, const state6502& rhs)
