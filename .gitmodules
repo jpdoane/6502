@@ -5,3 +5,6 @@
 	path = test/perfect6502
 	url = git@github.com:jpdoane/perfect6502.git
 	branch = develop
+[submodule "sdram"]
+	path = sdram
+	url = https://github.com/jpdoane/sdram.git
