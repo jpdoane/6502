@@ -33,12 +33,12 @@ module core #(
 
     // registers
     (* mark_debug = "true" *) logic [7:0] ir /*verilator public*/;
-    (* mark_debug = "true" *) logic [7:0] add /*verilator public*/;
-    (* mark_debug = "true" *) logic [7:0] a /*verilator public*/;
-    (* mark_debug = "true" *) logic [7:0] s /*verilator public*/;
-    (* mark_debug = "true" *) logic [7:0] x /*verilator public*/;
-    (* mark_debug = "true" *) logic [7:0] y /*verilator public*/;
-    (* mark_debug = "true" *) logic [7:0] p /*verilator public*/;
+    logic [7:0] add /*verilator public*/;
+    logic [7:0] a /*verilator public*/;
+    logic [7:0] s /*verilator public*/;
+    logic [7:0] x /*verilator public*/;
+    logic [7:0] y /*verilator public*/;
+    logic [7:0] p /*verilator public*/;
 
     // ADDRESS BUS
     (* mark_debug = "true" *) logic [7:0] adl, adh;
@@ -48,7 +48,7 @@ module core #(
         if (rst) begin
             adl_r <= 0;
             adh_r <= 0;
-        end else begin
+        end else if(rdy) begin
             adl_r <= adl;
             adh_r <= adh;
         end
@@ -85,7 +85,7 @@ module core #(
     // e.g. when executing an alu operation on the first subcycle the sb bus carries an operand
     // and on the second subcycle the sb bus carries the result.
     // in order to represent the same timing with a single clock, we implement two sets of busses
-    logic [7:0] sb, sb_result, db, db_result;
+    (* mark_debug = "true" *) logic [7:0] sb, sb_result, db, db_result;
     logic dummy_write;
     assign data_o = db_result;
     assign rw = !write_mem | rst | rst_event;
@@ -136,7 +136,7 @@ module core #(
     // PC
     (* mark_debug = "true" *) logic [15:0] pc /*verilator public*/;
     logic [15:0] pc_next = pc + 1;
-    (* mark_debug = "true" *) logic [7:0] pch, pcl;   // low and high byte of next pc
+    logic [7:0] pch, pcl;   // low and high byte of next pc
     always_comb begin
         {pch, pcl} = pc;
         unique case(1'b1)
@@ -151,7 +151,7 @@ module core #(
         if (rst) begin
             pc <= 0;
         end else begin
-            if ((nmi_event || irq_event) && sync) begin
+            if (!rdy || ((nmi_event || irq_event) && sync)) begin
                 pc <= pc;
             end else if (jump) begin
                 pc <= {adh, adl};
@@ -162,7 +162,7 @@ module core #(
     end
 
     // interrupt handling
-    logic nmi_event, nmi_handled, irq_event, rst_event /*verilator public*/;
+    (* mark_debug = "true" *) logic nmi_event, nmi_handled, irq_event, rst_event /*verilator public*/;
     // verilator lint_off SYMRSVDWORD
     wire interrupt = nmi_event || irq_event;
     // verilator lint_on SYMRSVDWORD
@@ -341,11 +341,11 @@ module core #(
     end
 
     // control state machine
-    (* mark_debug = "true" *) logic [5:0] adl_src,adh_src;
-    (* mark_debug = "true" *) logic inc_pc;
-    (* mark_debug = "true" *) logic write_mem;
+    logic [5:0] adl_src,adh_src;
+    logic inc_pc;
+    logic write_mem;
     (* mark_debug = "true" *) logic jump, brk_int;
-    (* mark_debug = "true" *) logic hold_alu;    
+    logic hold_alu;    
     control u_control(
         .clk            (clk),
         .rst            (rst),
@@ -393,7 +393,7 @@ module core #(
         else if (sync && rdy)   ip <= pc;
     end
 
-    int cycle /*verilator public*/;
+    (* mark_debug = "true" *) int cycle /*verilator public*/;
     always_ff @(posedge clk) begin
         if (rst) cycle <= 0;
         else cycle <= cycle+1;
