@@ -363,9 +363,15 @@ module control (
         if (pull_r)
             {adh_src, adl_src} = {ADDR_STACK, ADDR_ALU};
 
-        write_mem = ( wr_op & Tlast ) | push_no_update | push | dummy_write;
     end
 
+    always @(posedge clk ) begin
+        if (rst) begin
+            write_mem <= 0;
+        end else begin
+            write_mem <= ( wr_op & Tlast ) | push_no_update | push | dummy_write;
+        end
+    end
 
     // stack
     logic push, pull, pull_r, stack_r;

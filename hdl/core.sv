@@ -1,8 +1,9 @@
 `timescale 1ns/1ps
 `include "6502_defs.vh"
 
-// 6502 core with synchronous memory,
-// output address bus appears one clock earlier than in a real 6502
+// address is registered on rising edge of clk
+// data must arrive *before* next rising edge
+// if using synchronous memory, it should be clocked on @negedge clk
 
 module core #(
     parameter NMI_VECTOR = 16'hfffa,
@@ -42,18 +43,7 @@ module core #(
 
     // ADDRESS BUS
     (* mark_debug = "true" *) logic [7:0] adl, adh;
-    logic [7:0] adl_r, adh_r;
-    assign addr = {adh,adl};
-    always @(posedge clk ) begin
-        if (rst) begin
-            adl_r <= 0;
-            adh_r <= 0;
-        end else begin
-            adl_r <= adl;
-            adh_r <= adh;
-        end
-    end
-    always @(*) begin
+    always_comb begin
         unique case(1'b1)
             adl_src[0]: adl = pcl;  // ADDR_PC
             adl_src[1]: adl = db;   // ADDR_DATA
@@ -62,11 +52,10 @@ module core #(
                               nmi_event ? NMI_VECTOR[7:0] :
                               IRQ_VECTOR[7:0]; // ADDR_INT
             adl_src[4]: adl = s;    // ADDR_STACK
-            adl_src[5]: adl = adl_r;// ADDR_HOLD
+            adl_src[5]: adl = adl_r; // ADDR_HOLD
             default:    adl = 0;    // ADDR_Z
         endcase
-    end
-    always @(*) begin
+
         unique case(1'b1)
             adh_src[0]: adh = pch;  // ADDR_PC
             adh_src[1]: adh = db;   // ADDR_DATA
@@ -75,11 +64,26 @@ module core #(
                               nmi_event ? NMI_VECTOR[15:8] :
                               IRQ_VECTOR[15:8]; // ADDR_INT
             adh_src[4]: adh = STACKPAGE; // ADDR_STACK
-            adh_src[5]: adh = adh_r;// ADDR_HOLD
+            adh_src[5]: adh = adh_r;      // ADDR_HOLD
             default:    adh = 0;    // ADDR_Z
         endcase
     end
 
+    // register addr and data_o
+    logic [7:0] adl_r, adh_r;
+    always @(posedge clk ) begin
+        adl_r <= adl;
+        adh_r <= adh;
+        data_o <= db_result;
+
+        if(rst) begin
+            adl_r <= '0;
+            adh_r <= '0;
+            data_o <= '0;
+        end
+    end
+    assign addr = {adh_r,adl_r};
+ 
     // internal buses
     // the real 6502 updates bus states on subcycles using out of phase clocks m1,m2)
     // e.g. when executing an alu operation on the first subcycle the sb bus carries an operand
@@ -87,7 +91,6 @@ module core #(
     // in order to represent the same timing with a single clock, we implement two sets of busses
     logic [7:0] sb, sb_result, db, db_result;
     logic dummy_write;
-    assign data_o = db_result;
     assign rw = !write_mem | rst | rst_event;
     logic [3:0] stack_push, stack_read; // one-hot control for push/pull registers
 
@@ -140,7 +143,7 @@ module core #(
     assign {pch, pcl} = pc_next;
 
     always_comb begin
-        unique case(1'b1)
+        case(1'b1)
             inc_pc:         pc_next = pc+1;
             stack_read[2]:  pc_next = {pc[15:8], db};  // pull pcl from stack
             stack_read[3]:  pc_next = {db, pc[7:0]};   // pull pch from stack
@@ -151,7 +154,7 @@ module core #(
         if (rst) begin
             pc <= 0;
         end else begin
-            pc <= jump ? addr : pc_next;
+            pc <= jump ? {adh, adl} : pc_next;
         end
     end
 
