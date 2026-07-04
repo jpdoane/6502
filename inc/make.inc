@@ -5,8 +5,8 @@ PROJ_ROOT = $(abspath $(SCRIPTS)/..)
 
 ARTYZ7_XDC =  $(SCRIPTS)/artyz7.xdc
 
-CPU_SOURCE = $(wildcard $(PROJ_ROOT)/hdl/*.sv) 
-CPU_INCLUDE = $(PROJ_ROOT)/hdl 
+CPU_SOURCE = $(wildcard $(PROJ_ROOT)/rtl/*.sv) 
+CPU_INCLUDE = $(PROJ_ROOT)/rtl 
 
 # CLOCK_XDC = $(wildcard $(MODULES)/clocks/*.xdc)
 # HDMI_XDC = $(wildcard $(MODULES)/hdmi/*.xdc)

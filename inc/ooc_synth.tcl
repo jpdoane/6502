@@ -4,11 +4,11 @@ set outDir ./build
 file mkdir $outDir
 
 # Set top level module
-set top core
+set top core6502
 
 # read verilog
-read_verilog [ glob ./hdl/*.sv ]
-read_verilog [ glob ./hdl/*.vh ]
+read_verilog [ glob ./rtl/*.sv ]
+read_verilog [ glob ./rtl/*.vh ]
 read_xdc ./inc/ooc.xdc
 
 # synthesize design

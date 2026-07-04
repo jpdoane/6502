@@ -3,8 +3,8 @@
 ifndef TOP
 	$(error TOP is not set)
 endif
-ifndef HDL_SOURCE
-	$(error HDL_SOURCE is not set)
+ifndef RTL_SOURCE
+	$(error RTL_SOURCE is not set)
 endif
 
 SIMARGS= -g2012 -Wall -Wno-timescale
@@ -22,13 +22,13 @@ WAVESAVEFILE=$(abspath .)/$(TOP).sav
 sim: $(WAVEFILE)
 
 
-$(SIMFILE):  $(abspath $(HDL_SOURCE)) $(SIMREQS)
+$(SIMFILE):  $(abspath $(RTL_SOURCE)) $(SIMREQS)
 	@mkdir -p $(SIM_PATH);
 	cd $(SIM_PATH) && \
 	$(SIM) $(SIMARGS) -o $@ -s $(TOP) \
 	-D'DUMP_WAVE_FILE="$(WAVEFILE)"' \
 	-I $(HDL_INCLUDE) \
-	$(CUSTOMSIMARGS) $(abspath $(HDL_SOURCE))
+	$(CUSTOMSIMARGS) $(abspath $(RTL_SOURCE))
 
 
 .PHONY: view

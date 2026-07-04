@@ -1,8 +1,8 @@
 include ../inc/make.inc
 
-TOP=core
+TOP=core6502
 VERILATE_TOP=
-HDL_SOURCE = $(CPU_SOURCE)
+RTL_SOURCE = $(CPU_SOURCE)
 VERILATOR_FLAGS += -DDEBUG_REG=1
 
 DEBUG_SRC=debugger.cpp common6502.cpp sim6502.cpp reference6502.cpp

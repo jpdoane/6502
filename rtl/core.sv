@@ -5,7 +5,7 @@
 // data must arrive *before* next rising edge
 // if using synchronous memory, it should be clocked on @negedge clk
 
-module core #(
+module core6502 #(
     parameter NMI_VECTOR = 16'hfffa,
     parameter RST_VECTOR = 16'hfffc,
     parameter IRQ_VECTOR = 16'hfffe,

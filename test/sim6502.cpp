@@ -16,7 +16,7 @@ Verilated6502::Verilated6502(std::string romfile, uint16_t interrupt_port)
     context->debug(0);
     context->randReset(2);
     // context->commandArgs(argc, argv);
-    top = new Vcore{context, "core"};
+    top = new Vcore6502{context, "core6502"};
 
     if(!romfile.empty())
         loadROM(romfile);
@@ -89,7 +89,7 @@ void  Verilated6502::setState(const state6502& state)
     mem[0xFFFD] = state.pc >> 8;
 
     // wait for reset process to complete
-    while(top->core->cycle<6)
+    while(top->core6502->cycle<6)
         cycle( );
 
     // restore reset vector
@@ -98,12 +98,12 @@ void  Verilated6502::setState(const state6502& state)
     cycle( );
 
     // initialize registers
-    top->core->s =  state.s;
-    top->core->a =  state.a;
-    top->core->x =  state.x;
-    top->core->y =  state.y;
-    top->core->p =  state.p;
-    top->core->cycle =  state.cycle;    
+    top->core6502->s =  state.s;
+    top->core6502->a =  state.a;
+    top->core6502->x =  state.x;
+    top->core6502->y =  state.y;
+    top->core6502->p =  state.p;
+    top->core6502->cycle =  state.cycle;    
 
 }
 
@@ -134,21 +134,21 @@ state6502 Verilated6502::getState() const
 {
     state6502 state;
     state.addr = top->addr;
-    state.pc = top->core->pc;
-    state.ir = top->core->ir;
+    state.pc = top->core6502->pc;
+    state.ir = top->core6502->ir;
     state.data = top->rw ? top->data_i : top->data_o,
-	state.alu = top->core->add;
-    state.a = top->core->a;
-    state.s = top->core->s;
-    state.x = top->core->x;
-    state.y = top->core->y;
-    // state.p = 0xdf & top->core->p | 0x10;
-    state.p = top->core->p;
-    state.tstate = top->core->Tstate;
+	state.alu = top->core6502->add;
+    state.a = top->core6502->a;
+    state.s = top->core6502->s;
+    state.x = top->core6502->x;
+    state.y = top->core6502->y;
+    // state.p = 0xdf & top->core6502->p | 0x10;
+    state.p = top->core6502->p;
+    state.tstate = top->core6502->Tstate;
     state.clk = top->clk;
     state.rw = top->rw;
     state.sync = top->sync;
-    state.cycle = top->core->cycle;
+    state.cycle = top->core6502->cycle;
     return state;
 }
 
