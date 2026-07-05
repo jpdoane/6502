@@ -23,7 +23,7 @@ module control (
     output logic sync,
     output logic exec,
     output logic [3:0] alu_flags,
-    output logic [6:0] sb_src,
+    output logic [7:0] sb_src,
     output logic inc_pc,
     output logic [5:0] adl_src,
     output logic [5:0] adh_src,
@@ -62,11 +62,11 @@ module control (
 
     wire rmw = wr_op & alu_en;
     // logic push_no_update;
-    logic [6:0] idx;
+    logic [7:0] idx;
 
     // stack
     // logic push, pull, pull_r, stack_r;
-    logic [3:0] pull_reg_init;
+    // logic [3:0] pull_reg_init;
     always_comb begin
         Tlast       = 0;
         skipT0      = 0;
@@ -85,7 +85,7 @@ module control (
         idx         = idx_XY ? REG_X : REG_Y;
         stack_push_reg = 0;
         stack_pull_reg = 0;
-        pull_reg_init  = 0;
+        // pull_reg_init  = 0;
         // push        = 0;
         // pull        = 0;
         // push_no_update = 0;
@@ -143,7 +143,9 @@ module control (
                         alu_flags = ALU_DEC;                                // decrement sp
                         sb_src = REG_S;
                     end
-                    OP_PUL: begin
+                    OP_PUL,
+                    OP_RTI,
+                    OP_RTS: begin
                         adh_src[ADDR_STACK] = 1;                            // dummy read from old sp
                         adl_src[ADDR_STACK] = 1;                        
                         alu_flags = ALU_INC;                                // inc sp
@@ -177,8 +179,6 @@ module control (
                         sb_s = 1;                                       
                         inc_pc = 1;                                     // pc++
                     end
-                    OP_RTS: pull_reg_init = STACK_PCL;
-                    OP_RTI: pull_reg_init = STACK_P;
                     OP_IMM,
                     OP_IMP: begin                                       // effectively the T0 state for 2-cycle insts.
                         adl_src[ADDR_PC] = 1;
@@ -266,29 +266,22 @@ module control (
                         sb_s = 1;
                         Tlast = 1;
                     end
+                    OP_RTI,
                     OP_RTS: begin
                         adh_src[ADDR_STACK] = 1;                        
                         adl_src[ADDR_ALU] = 1;                          // pull from incremented sp
                         sb_src = REG_ADD;                               // update sp
                         sb_s = 1;
-                        pull_reg_init = STACK_PCH;
+                        alu_flags = ALU_INC;                            // inc sp
                         end
                     OP_BRK: begin
                         stack_push_reg = STACK_PCL;                     // push PCL
                         adh_src[ADDR_STACK] = 1;
                         adl_src[ADDR_ALU] = 1;
-                        sb_src = REG_ADD;                               // update sp
-                        sb_s = 1;
                         alu_flags = ALU_DEC;                            // dec sp
-                        sb_src = REG_S;
-                        end
-                    OP_RTI: begin
-                        adh_src[ADDR_STACK] = 1;                        
-                        adl_src[ADDR_ALU] = 1;                          // pull from incremented sp
-                        sb_src = REG_ADD;                               // update sp
                         sb_s = 1;
-                        pull_reg_init = STACK_PCL;
-                    end
+                        sb_src = REG_ADD;
+                        end
                     OP_JSR: begin                                       
                         adh_src[ADDR_HOLD] = 1;
                         adl_src[ADDR_HOLD] = 1;                         // hold address at stack
@@ -334,17 +327,25 @@ module control (
                         stack_push_reg = STACK_P;                       // push P
                         adh_src[ADDR_STACK] = 1;
                         adl_src[ADDR_ALU] = 1;
-                        sb_src = REG_ADD;                               // update sp
-                        sb_s = 1;
                         alu_flags = ALU_DEC;                            // dec sp
-                        sb_src = REG_S;
+                        sb_s = 1;
+                        sb_src = REG_ADD;
                     end
                     OP_RTI: begin
-                        adh_src[ADDR_STACK] = 1;                        
-                        adl_src[ADDR_ALU] = 1;                          // pull from incremented sp
+                        stack_pull_reg = STACK_P;                       // read stack into P (1st pull)
+                        adh_src[ADDR_STACK] = 1;                        // pull again from incremented sp
+                        adl_src[ADDR_ALU] = 1;                          
                         sb_src = REG_ADD;                               // update sp
                         sb_s = 1;
-                        pull_reg_init = STACK_PCH;
+                        alu_flags = ALU_INC;                            // inc sp
+                    end
+                    OP_RTS: begin
+                        stack_pull_reg = STACK_PCL;                     // read stack into PCL (1st pull)
+                        adh_src[ADDR_STACK] = 1;                        // pull again from incremented sp
+                        adl_src[ADDR_ALU] = 1;                          
+                        sb_src = REG_ADD;                               // update sp
+                        sb_s = 1;
+                        alu_az = 1;                                     // store PCL in alu (bus is still being used for stack)
                     end
                     OP_JSR: begin                                       // push PCL "manually" while stack reg is holding ADL:
                         adh_src[ADDR_HOLD] = 1;
@@ -353,13 +354,6 @@ module control (
                         // push_no_update = 1;                             // dont update stack register...
                         adl_add = 1;                                    // manually decrement stack address again
                         alu_flags = ALU_DEC;
-                    end
-                    OP_RTS: begin
-                        adh_src[ADDR_STACK] = 1;                        
-                        adl_src[ADDR_ALU] = 1;                          // pull from incremented sp
-                        alu_az = 1;                                     // read PCL into alu (while sb used for stack)
-                        sb_src = REG_ADD;                               // update sp
-                        sb_s = 1;
                     end
                     default: ;
                 endcase
@@ -398,18 +392,20 @@ module control (
                         alu_flags = ALU_BIZ;                               
                     end
                     OP_RTS: begin
-                        adh_src[ADDR_DATA] = 1;
-                        adl_src[ADDR_ALU] = 1;                          // point at {PCH, PCL} (dummy fetch)
-                        jump = 1;
+                        stack_pull_reg = STACK_PCH;                     // read from stack into PCH (2nd pull)
+                        adh_src[ADDR_DATA] = 1;                         // point at {PCH, PCL} (dummy fetch)
+                        adl_src[ADDR_ALU] = 1;                          // PCL was stored in ALU in previous stage
+                        jump = 1;                                       // 
                         Tlast = 1;                                      // unlike all other jumps we *dont* skip T0
                                                                         // so next instruction will be at {PCH, PCL}++
                     end
                     OP_RTI: begin
-                        adh_src[ADDR_STACK] = 1;                        
-                        adl_src[ADDR_ALU] = 1;                          // pull from incremented sp
-                        alu_az = 1;                                     // read ADH into alu
+                        adh_src[ADDR_STACK] = 1;                        // pull again from incremented sp
+                        adl_src[ADDR_ALU] = 1;                          
                         sb_src = REG_ADD;                               // update sp
                         sb_s = 1;
+                        stack_pull_reg = STACK_PCL;                     // read stack into PCL (2nd pull)
+                        alu_az = 1;                                     // store PCL in alu (bus is still being used for stack)
                     end
                     default: ;
                 endcase
@@ -421,10 +417,11 @@ module control (
                         adl_src[ADDR_ALU] = 1;                          // fetch ADH from interrupt vector+1
                     end
                     OP_RTI: begin
-                        adh_src[ADDR_DATA] = 1;
-                        adl_src[ADDR_ALU] = 1;                          // jump to {ADH, ADL}
-                        jump = 1;
-                        skipT0 = 1;                                
+                        stack_pull_reg = STACK_PCH;                     // read from stack into ADH (3rd pull)
+                        adh_src[ADDR_DATA] = 1;                         // jump to {ADH, ADL}
+                        adl_src[ADDR_ALU] = 1;                          // ADL was stored in ALU in previous stage
+                        jump = 1;                                       // 
+                        skipT0 = 1;                                     //
                     end
                     OP_JSR: begin
                         sb_src = REG_ADD;                               // restore stack reg from alu

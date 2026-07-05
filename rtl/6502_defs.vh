@@ -48,14 +48,15 @@ parameter ADDR_STACK  = 4;
 parameter ADDR_HOLD   = 5;
 
 
-parameter REG_Z =    7'b0000000;
-parameter REG_A =    7'b0000001;  // accumulator
-parameter REG_X =    7'b0000010;  // X
-parameter REG_Y =    7'b0000100;  // Y
-parameter REG_S =    7'b0001000;  // stack ptr
-parameter REG_ADD =  7'b0010000;  // alu register
-parameter REG_D =    7'b0100000;  // sb<=db
-parameter REG_ADH =  7'b1000000;   // sb<=adh
+parameter REG_Z =    8'b00000000;
+parameter REG_A =    8'b00000001;  // accumulator
+parameter REG_X =    8'b00000010;  // X
+parameter REG_Y =    8'b00000100;  // Y
+parameter REG_S =    8'b00001000;  // stack ptr
+parameter REG_ADD =  8'b00010000;  // alu register
+parameter REG_D =    8'b00100000;  // sb<=db
+parameter REG_ADH =  8'b01000000;   // sb<=adh
+parameter REG_P  =   8'b10000000;   // status reg
 
 parameter STACK_A   = 4'b0001;
 parameter STACK_P   = 4'b0010;

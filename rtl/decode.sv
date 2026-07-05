@@ -4,7 +4,7 @@
 module decode (
     input  logic [7:0] op,
     output logic [4:0] op_type,
-    output logic [6:0] src, dst,
+    output logic [7:0] src, dst,
     output logic [8:0] alu_op,
     output logic alu_en,                            // alu ctl
     output logic single_byte,                       // single byte op
@@ -17,7 +17,7 @@ module decode (
     output logic [7:0] result_mask                  // set/clear flags
     );
 
-    logic [22:0] ctl_flags;
+    logic [24:0] ctl_flags;
     assign {dst, src, alu_op} = ctl_flags;
 
     // special case flags
@@ -29,11 +29,11 @@ module decode (
      /* verilator lint_off CASEOVERLAP */
     always_comb begin
         unique casez(op)     //ctl_flags = {dst, src,  alu_op}
-            8'b0??_010_00:  ctl_flags = {REG_Z, REG_ADD, OP_NOP};     // PUS,PUL
-            // 8'b0??_010_00:  ctl_flags = {REG_D, REG_A, OP_NOP};     // PHA
-            // 8'b0??_010_00:  ctl_flags = {REG_D, REG_P, OP_NOP};     // PHP
-            // 8'b0??_010_00:  ctl_flags = {REG_A, REG_D, OP_NOP};       // PLA
-            // 8'b0??_010_00:  ctl_flags = {REG_P, REG_D, OP_NOP};       // PLP
+            // 8'b0??_010_00:  ctl_flags = {REG_Z, REG_ADD, OP_NOP};     // PUS,PUL
+            8'b010_010_00:  ctl_flags = {REG_D, REG_A, OP_NOP};       // PHA
+            8'b000_010_00:  ctl_flags = {REG_D, REG_P, OP_NOP};       // PHP
+            8'b011_010_00:  ctl_flags = {REG_A, REG_D, OP_NOP};       // PLA
+            8'b001_010_00:  ctl_flags = {REG_P, REG_D, OP_NOP};       // PLP
             8'b101_010_00:  ctl_flags = {REG_Y, REG_A, OP_NOP};       // TAY
             8'b111_010_00:  ctl_flags = {REG_X, REG_X, OP_INC};       // INX
             8'b110_010_00:  ctl_flags = {REG_Y, REG_Y, OP_INC};       // INY

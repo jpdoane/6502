@@ -196,7 +196,7 @@ module core6502 #(
 
     // decode instruction
     logic [4:0] op_type;
-    logic [6:0] sb_src, sb_src_exec, sb_src_ctrl, dst;
+    logic [7:0] sb_src, sb_src_exec, sb_src_ctrl, dst;
     logic alu_en;
     logic [8:0] alu_op_exec;
     logic [3:0] alu_flags_ctrl;
