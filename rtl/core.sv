@@ -44,6 +44,7 @@ module core6502 #(
     // ADDRESS BUS
     (* mark_debug = "true" *) logic [7:0] adl, adh;
     always_comb begin
+        // $display("adh_src: %b, adl: %b", adh_src, adl_src); 
         unique case(1'b1)
             adl_src[0]: adl = pcl;  // ADDR_PC
             adl_src[1]: adl = db;   // ADDR_DATA
@@ -71,7 +72,7 @@ module core6502 #(
 
     // register addr and data_o
     logic [7:0] adl_r, adh_r;
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         adl_r <= adl;
         adh_r <= adh;
         data_o <= db_result;
@@ -92,7 +93,7 @@ module core6502 #(
     logic [7:0] sb, sb_result, db, db_result;
     logic dummy_write;
     assign rw = !write_mem | rst | rst_event;
-    logic [3:0] stack_push, stack_read; // one-hot control for push/pull registers
+    logic [3:0] stack_push_reg, stack_pull_reg; // one-hot control for push/pull registers
 
     // db read bus
     assign db = data_i;
@@ -127,10 +128,10 @@ module core6502 #(
     // db write bus
     always_comb begin
         unique case(1'b1)
-            stack_push[0]:  db_result = a;
-            stack_push[1]:  db_result = int_event ? p : p | FL_BU; // set break flag on push unless irq
-            stack_push[2]:  db_result = pcl;
-            stack_push[3]:  db_result = pch;
+            stack_push_reg[0]:  db_result = a;
+            stack_push_reg[1]:  db_result = int_event ? p : p | FL_BU; // set break flag on push unless irq
+            stack_push_reg[2]:  db_result = pcl;
+            stack_push_reg[3]:  db_result = pch;
             dummy_write:    db_result = db;         // bit of a hack to match RMW behavior
             default:        db_result = sb_result;
         endcase
@@ -145,12 +146,12 @@ module core6502 #(
     always_comb begin
         case(1'b1)
             inc_pc:         pc_next = pc+1;
-            stack_read[2]:  pc_next = {pc[15:8], db};  // pull pcl from stack
-            stack_read[3]:  pc_next = {db, pc[7:0]};   // pull pch from stack
+            stack_pull_reg[2]:  pc_next = {pc[15:8], db};  // pull pcl from stack
+            stack_pull_reg[3]:  pc_next = {db, pc[7:0]};   // pull pch from stack
             default:        pc_next = pc;
         endcase
     end
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst) begin
             pc <= 0;
         end else begin
@@ -163,7 +164,7 @@ module core6502 #(
     // verilator lint_off SYMRSVDWORD
     wire int_event = nmi_event || irq_event;
     // verilator lint_on SYMRSVDWORD
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst) begin
             nmi_event <= 0;
             irq_event <= 0;
@@ -188,7 +189,7 @@ module core6502 #(
     end
 
     // opcode fetch and interrupt injection
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst || rst_event || (sync && int_event)) ir <= 0;  //break from RESET_VECTOR
         else if (sync && rdy) ir <= db;
     end
@@ -268,7 +269,7 @@ module core6502 #(
     // update registers
     always_comb begin
         a_next = (result_rdy & dst[0]) ? sb_result :
-                    stack_read[0] ? db : a;
+                    stack_pull_reg[0] ? db : a;
         x_next = (result_rdy & dst[1]) ? sb_result : x;
         y_next = (result_rdy & dst[2]) ? sb_result : y;
         s_next = (result_rdy & dst[3]) ? sb_result :
@@ -280,7 +281,7 @@ module core6502 #(
     wire dbz = (db==0);
     wire sbz = (sb_result==0);
     always_comb begin
-        p_next = stack_read[1] ? db : p;
+        p_next = stack_pull_reg[1] ? db : p;
 
         if ( result_rdy ) begin
             if(result_mask[7]) p_next[7] = sb_result[7];
@@ -301,7 +302,7 @@ module core6502 #(
             // there are a few other special cases where alu status is
             // not updated with alu result (result_rdy) but
             // directly with alu input (exec):
-            if(and_op | bit_op | stack_read[0]) begin
+            if(and_op | bit_op | stack_pull_reg[0]) begin
                 p_next[1] = dbz;
                 p_next[7] = db[7];
             end
@@ -316,7 +317,7 @@ module core6502 #(
         p_next[5] = 1;                  //bit 5 doesnt exist but always reports high
     end
 
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst) begin
             a <= A_RST;
             x <= X_RST;
@@ -372,8 +373,8 @@ module core6502 #(
         .brk_int     (brk_int),
         .adl_add        (adl_add),
         .alu_az        (alu_az),
-        .stack_push     (stack_push),
-        .stack_read     (stack_read),
+        .stack_push_reg     (stack_push_reg),
+        .stack_pull_reg     (stack_pull_reg),
         .sb_s           (sb_s),
         .sb_db          (sb_db)
     );
@@ -385,7 +386,7 @@ module core6502 #(
 
     //instruction pointer: pc of current opcode
     (* mark_debug = "true" *)  logic [15:0] ip;
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst)                ip <= RST_VECTOR;
         else if (sync && rdy)   ip <= pc;
     end

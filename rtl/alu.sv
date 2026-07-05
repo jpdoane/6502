@@ -19,7 +19,7 @@ module alu (
 
     logic [4:0] alu_op=0;                     // ops: {sum, shiftr,  xor, or, and}
 
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         // $display("alu: %x", op[4:0]);
         if (rst) begin
             alu_op <= ALU_NOP;
@@ -34,10 +34,11 @@ module alu (
         end
     end
 
+    logic [8:0] sum_result;
     logic [7:0] sum;
-    // verilator lint_off WIDTH
-    assign {sumC, sum} = a + b + c;
-    // verilator lint_on WIDTH
+    assign sum_result = {1'b0,a} + {1'b0,b} + {8'b0,c};
+    assign sum = sum_result[7:0];
+    assign sumC = sum_result[8];
 
     //https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
     assign sumV = (a[7] ^ sum[7]) && (b[7] ^ sum[7]);

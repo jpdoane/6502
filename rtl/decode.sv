@@ -30,6 +30,10 @@ module decode (
     always_comb begin
         unique casez(op)     //ctl_flags = {dst, src,  alu_op}
             8'b0??_010_00:  ctl_flags = {REG_Z, REG_ADD, OP_NOP};     // PUS,PUL
+            // 8'b0??_010_00:  ctl_flags = {REG_D, REG_A, OP_NOP};     // PHA
+            // 8'b0??_010_00:  ctl_flags = {REG_D, REG_P, OP_NOP};     // PHP
+            // 8'b0??_010_00:  ctl_flags = {REG_A, REG_D, OP_NOP};       // PLA
+            // 8'b0??_010_00:  ctl_flags = {REG_P, REG_D, OP_NOP};       // PLP
             8'b101_010_00:  ctl_flags = {REG_Y, REG_A, OP_NOP};       // TAY
             8'b111_010_00:  ctl_flags = {REG_X, REG_X, OP_INC};       // INX
             8'b110_010_00:  ctl_flags = {REG_Y, REG_Y, OP_INC};       // INY

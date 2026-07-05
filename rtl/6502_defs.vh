@@ -38,13 +38,14 @@ parameter OP_BRA      = 5'h10;   // conditional branch, taken
 parameter OP_BNT      = 5'h11;   // conditional branch, not taken
 parameter OP_JAM      = 5'h1f;
 
-parameter ADDR_Z      = 6'b000000;
-parameter ADDR_PC     = 6'b000001;
-parameter ADDR_DATA   = 6'b000010;
-parameter ADDR_ALU    = 6'b000100;
-parameter ADDR_INT    = 6'b001000;
-parameter ADDR_STACK  = 6'b010000;
-parameter ADDR_HOLD   = 6'b100000;
+// one-hot bits
+// parameter ADDR_Z   nobits sets
+parameter ADDR_PC     = 0;
+parameter ADDR_DATA   = 1;
+parameter ADDR_ALU    = 2;
+parameter ADDR_INT    = 3;
+parameter ADDR_STACK  = 4;
+parameter ADDR_HOLD   = 5;
 
 
 parameter REG_Z =    7'b0000000;
