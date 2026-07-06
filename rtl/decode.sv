@@ -6,6 +6,7 @@ module decode (
     output logic [4:0] op_type,
     output logic [7:0] src, dst,
     output logic [8:0] alu_op,
+    output logic wr_op,
     output logic alu_en,                            // alu ctl
     output logic single_byte,                       // single byte op
     output logic idx_XY,                            // index on X vs Y
@@ -18,8 +19,6 @@ module decode (
     );
 
     logic [24:0] ctl_flags;
-    assign {dst, src, alu_op} = ctl_flags;
-
     // special case flags
     logic sum_op, cmp_op, rot_op, inc_op, take_branch;
     
@@ -29,11 +28,11 @@ module decode (
      /* verilator lint_off CASEOVERLAP */
     always_comb begin
         unique casez(op)     //ctl_flags = {dst, src,  alu_op}
-            // 8'b0??_010_00:  ctl_flags = {REG_Z, REG_ADD, OP_NOP};     // PUS,PUL
-            8'b010_010_00:  ctl_flags = {REG_D, REG_A, OP_NOP};       // PHA
-            8'b000_010_00:  ctl_flags = {REG_D, REG_P, OP_NOP};       // PHP
-            8'b011_010_00:  ctl_flags = {REG_A, REG_D, OP_NOP};       // PLA
-            8'b001_010_00:  ctl_flags = {REG_P, REG_D, OP_NOP};       // PLP
+            8'b0??_010_00:  ctl_flags = {REG_Z, REG_ADD, OP_NOP};     // PUS,PUL
+            // 8'b010_010_00:  ctl_flags = {REG_D, REG_A, OP_NOP};       // PHA
+            // 8'b000_010_00:  ctl_flags = {REG_D, REG_P, OP_NOP};       // PHP
+            // 8'b011_010_00:  ctl_flags = {REG_A, REG_D, OP_NOP};       // PLA
+            // 8'b001_010_00:  ctl_flags = {REG_P, REG_D, OP_NOP};       // PLP
             8'b101_010_00:  ctl_flags = {REG_Y, REG_A, OP_NOP};       // TAY
             8'b111_010_00:  ctl_flags = {REG_X, REG_X, OP_INC};       // INX
             8'b110_010_00:  ctl_flags = {REG_Y, REG_Y, OP_INC};       // INY
@@ -52,10 +51,10 @@ module decode (
             8'b101_000_10:  ctl_flags = {REG_X, REG_D, OP_NOP};       // LDX
             8'b100_???_?1:  ctl_flags = {REG_D, REG_A, OP_NOP};       // STA
             8'b101_???_?1:  ctl_flags = {REG_A, REG_D, OP_NOP};       // LDA
-            8'b11?_011_00,
-            8'b11?_00?_00:  ctl_flags = {REG_Z,
-                                                op[5]? REG_X : REG_Y,
-                                                       OP_CMP};       // CPX, CPY
+            8'b110_011_00,
+            8'b110_00?_00:  ctl_flags = {REG_Z, REG_Y, OP_CMP};       // CPY
+            8'b111_011_00,
+            8'b111_00?_00:  ctl_flags = {REG_Z, REG_X, OP_CMP};       // CPX
             8'b110_???_?1:  ctl_flags = {REG_Z, REG_A, OP_CMP};       // CMP
             8'b000_???_?1:  ctl_flags = {REG_A, REG_A, OP_ORA};       // ORA
             8'b001_???_?1:  ctl_flags = {REG_A, REG_A, OP_AND};       // AND
@@ -66,9 +65,8 @@ module decode (
             8'b001_010_10:  ctl_flags = {REG_A, REG_A, OP_ROL};       // ROL, A
             8'b010_010_10:  ctl_flags = {REG_A, REG_A, OP_LSR};       // LSR, A  
             8'b011_010_10:  ctl_flags = {REG_A, REG_A, OP_ROR};       // ROR, A  
-            8'b110_???_10:  ctl_flags = {op[2]? REG_D : REG_X,
-                                                op[2]? REG_D : REG_X,
-                                                       OP_DEC};       // DEX, DEC rmw
+            8'b110_??0_10:  ctl_flags = {REG_X, REG_X, OP_DEC};       // DEX
+            8'b110_??1_10:  ctl_flags = {REG_D, REG_D, OP_DEC};       // DEC rmw
             8'b111_??1_10:  ctl_flags = {REG_D, REG_D, OP_INC};       // INC rmw
             8'b000_??1_10:  ctl_flags = {REG_D, REG_D, OP_ASL};       // ASL rmw
             8'b001_??1_10:  ctl_flags = {REG_D, REG_D, OP_ROL};       // ROL rmw
@@ -76,7 +74,10 @@ module decode (
             8'b011_??1_10:  ctl_flags = {REG_D, REG_D, OP_ROR};       // ROR rmw
             default:        ctl_flags = {REG_Z, REG_Z, OP_NOP};       // ctrl flow, set/clear, NOP
         endcase
+    end
+    assign {dst, src, alu_op} = ctl_flags;
 
+    always_comb begin
         alu_en = alu_op[4:0] != ALU_NOP;
         sum_op = op ==? 8'b?11_???_?1; // adc or sbc
         cmp_op = (op ==? 8'b11?_011_00) || (op ==? 8'b11?_00?_00) || (op ==? 8'b110_???_?1);
@@ -86,6 +87,7 @@ module decode (
         bit_op = op ==? 8'b001_0?1_00;
 
         stack_ap = op[6]; // high for PHA,PLA, low for PHP,PLP
+        wr_op = (dst == REG_D);
 
         // update status flags (BIT opcodes are special case handled elsewhere...)
         // update N&Z bits on any write to a,x,y regs and all alu ops

@@ -38,14 +38,14 @@ parameter OP_BRA      = 5'h10;   // conditional branch, taken
 parameter OP_BNT      = 5'h11;   // conditional branch, not taken
 parameter OP_JAM      = 5'h1f;
 
-// one-hot bits
 // parameter ADDR_Z   nobits sets
-parameter ADDR_PC     = 0;
-parameter ADDR_DATA   = 1;
-parameter ADDR_ALU    = 2;
-parameter ADDR_INT    = 3;
-parameter ADDR_STACK  = 4;
-parameter ADDR_HOLD   = 5;
+parameter ADDR_PC     = 6'h0;
+parameter ADDR_DATA   = 6'h1;
+parameter ADDR_ALU    = 6'h2;
+parameter ADDR_INT    = 6'h3;
+parameter ADDR_STACK  = 6'h4;
+parameter ADDR_HOLD   = 6'h5;
+parameter ADDR_Z      = 6'h6;
 
 
 parameter REG_Z =    8'b00000000;
@@ -55,8 +55,16 @@ parameter REG_Y =    8'b00000100;  // Y
 parameter REG_S =    8'b00001000;  // stack ptr
 parameter REG_ADD =  8'b00010000;  // alu register
 parameter REG_D =    8'b00100000;  // sb<=db
-parameter REG_ADH =  8'b01000000;   // sb<=adh
-parameter REG_P  =   8'b10000000;   // status reg
+parameter REG_PCH =  8'b01000000;   // sb<=adh
+// parameter REG_P  =   8'b10000000;   // status reg
+
+parameter DB_Z   =   6'h0;   // 
+parameter DB_DATA   =   6'h1;   // 
+parameter DB_A   =   6'h2;   // 
+parameter DB_P   =   6'h3;   // 
+parameter DB_PCL =   6'h4;   // 
+parameter DB_PCH =   6'h5;   // 
+parameter DB_SB  =   6'h6;   // 
 
 parameter STACK_A   = 4'b0001;
 parameter STACK_P   = 4'b0010;
@@ -78,19 +86,16 @@ parameter ALU_CI1  = 4'b0010;   // carry in 1
 parameter ALU_BIZ  = 4'b0100;   // zero bi
 parameter ALU_BIN  = 4'b1000;   // invert bi
 
-parameter ALU_INC  = ALU_BIZ | ALU_CI1; // a + 0
-parameter ALU_DEC  = ALU_BIZ | ALU_BIN; // a + -1
-
 // ALU mnumonics: ops + flags
+parameter OP_NOP = {ALU_NOF, ALU_NOP};
 parameter OP_AND = {ALU_NOF, ALU_AND};
 parameter OP_ORA = {ALU_NOF, ALU_ORA};
 parameter OP_XOR = {ALU_NOF, ALU_XOR};
-parameter OP_NOP = {ALU_NOF, ALU_NOP};
 parameter OP_ADC = {ALU_CIP, ALU_SUM};
 parameter OP_SBC = {ALU_BIN | ALU_CIP, ALU_SUM};
 parameter OP_CMP = {ALU_BIN | ALU_CI1, ALU_SUM};
-parameter OP_INC = {ALU_INC, ALU_SUM};
-parameter OP_DEC = {ALU_DEC, ALU_SUM};
+parameter OP_INC = {ALU_BIZ | ALU_CI1, ALU_SUM};
+parameter OP_DEC = {ALU_BIZ | ALU_BIN, ALU_SUM};
 parameter OP_LSR = {ALU_NOF, ALU_SHR};
 parameter OP_ROR = {ALU_CIP, ALU_SHR};
 parameter OP_ASL = {ALU_NOF, ALU_SUM}; // implemented as M+M

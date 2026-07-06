@@ -13,7 +13,8 @@ module core6502 #(
     parameter X_RST      = 8'h0,
     parameter Y_RST      = 8'h0,
     parameter S_RST      = 8'hff,
-    parameter P_RST      = FL_I | FL_U
+    parameter P_RST      = FL_I | FL_U,
+    parameter PC_RST      = 16'h0
     )   
     (
     input  logic clk,
@@ -40,124 +41,127 @@ module core6502 #(
     (* mark_debug = "true" *) logic [7:0] x /*verilator public*/;
     (* mark_debug = "true" *) logic [7:0] y /*verilator public*/;
     (* mark_debug = "true" *) logic [7:0] p /*verilator public*/;
+    (* mark_debug = "true" *) logic [7:0] pch, pcl /*verilator public*/;
 
-    // ADDRESS BUS
+    // PC
+    (* mark_debug = "true" *) logic [15:0] pc /*verilator public*/;
+    logic [15:0] pc_next;
+    assign pc_next = inc_pc ? pc+1 : pc;
+    assign {pch, pcl} = pc;
+
+    // internal buses
+    (* mark_debug = "true" *) logic [7:0] sb, db;
+    logic [7:0] sb_src, sb_dst;
+    logic [5:0] db_src, db_dst;
+
+    // address bus
     (* mark_debug = "true" *) logic [7:0] adl, adh;
+
+    // registers
+    always_ff @(posedge clk ) begin
+        if (rst) begin
+            a <= A_RST;
+            x <= X_RST;
+            y <= Y_RST;
+            s <= S_RST;
+            p <= P_RST;
+            pc <= PC_RST;
+
+        end else if(rdy) begin
+            case(sb_dst)
+                REG_A: a <= sb;
+                REG_X: x <= sb;
+                REG_Y: y <= sb;
+                REG_S: s <= sb;
+                default: ;
+            endcase
+
+            pc <= jump ? {adh, adl} : pc_next;
+            p <= p_update;
+            case(db_dst)
+                DB_A:    a <= db;
+                DB_P:    p <= db;
+                DB_PCL:  pc[7:0] <= db;
+                DB_PCH:  pc[15:8] <= db;
+                default: ;
+            endcase
+
+            p[4] <= 0;                  //bit 4 doesnt exist but always reports low
+            p[5] <= 1;                  //bit 5 doesnt exist but always reports high
+        end
+    end
+
+    // sb bus (mainly registers and alu output)
     always_comb begin
-        // $display("adh_src: %b, adl: %b", adh_src, adl_src); 
-        unique case(1'b1)
-            adl_src[0]: adl = pcl;  // ADDR_PC
-            adl_src[1]: adl = db;   // ADDR_DATA
-            adl_src[2]: adl = add;  // ADDR_ALU
-            adl_src[3]: adl = rst_event ? RST_VECTOR[7:0] :
+        case(sb_src)
+            REG_A      : sb = a;
+            REG_X      : sb = x;
+            REG_Y      : sb = y;
+            REG_S      : sb = s;
+            REG_ADD    : sb = add;
+            REG_D      : sb = data_i;
+            REG_PCH    : sb = pc_next[15:8];
+            default    : sb = 0;
+        endcase
+    end
+
+    // db bus (mainly memory and pull/push regs)
+    always_comb begin
+        case(db_src)
+            DB_DATA   : db = data_i;
+            DB_A      : db = a;
+            DB_P      : db = int_event ? p : p | FL_BU; // set break flag on push unless irq
+            DB_PCL    : db = pcl;
+            DB_PCH    : db = pch;
+            DB_SB     : db = sb;
+            default   : db = '0;
+        endcase
+    end
+
+    // address bus
+    always_comb begin
+        case(adl_src)
+            ADDR_PC:    adl = pc_next[7:0];  
+            ADDR_DATA:  adl = db; 
+            ADDR_ALU:   adl = add; 
+            ADDR_INT:   adl = rst_event ? RST_VECTOR[7:0] :
                               nmi_event ? NMI_VECTOR[7:0] :
-                              IRQ_VECTOR[7:0]; // ADDR_INT
-            adl_src[4]: adl = s;    // ADDR_STACK
-            adl_src[5]: adl = adl_r; // ADDR_HOLD
-            default:    adl = 0;    // ADDR_Z
+                              IRQ_VECTOR[7:0];
+            ADDR_STACK: adl = s;    
+            ADDR_HOLD:  adl = addr[7:0]; 
+            default:    adl = 0;    //ADDR_Z
         endcase
 
-        unique case(1'b1)
-            adh_src[0]: adh = pch;  // ADDR_PC
-            adh_src[1]: adh = db;   // ADDR_DATA
-            adh_src[2]: adh = add;  // ADDR_ALU
-            adh_src[3]: adh = rst_event ? RST_VECTOR[15:8] :
+        case(adh_src)
+            ADDR_PC:    adh = pc_next[15:8];
+            ADDR_DATA:  adh = db; 
+            ADDR_ALU:   adh = add; 
+            ADDR_INT:   adh = rst_event ? RST_VECTOR[15:8] :
                               nmi_event ? NMI_VECTOR[15:8] :
-                              IRQ_VECTOR[15:8]; // ADDR_INT
-            adh_src[4]: adh = STACKPAGE; // ADDR_STACK
-            adh_src[5]: adh = adh_r;      // ADDR_HOLD
-            default:    adh = 0;    // ADDR_Z
+                              IRQ_VECTOR[15:8];
+            ADDR_STACK: adh = s;    
+            ADDR_HOLD:  adh = addr[15:8]; 
+            default:    adh = 0;    //ADDR_Z
         endcase
     end
 
     // register addr and data_o
-    logic [7:0] adl_r, adh_r;
     always_ff @(posedge clk ) begin
-        adl_r <= adl;
-        adh_r <= adh;
-        data_o <= db_result;
+        addr <= {adh, adl};
+        if(!wr_en | rst | rst_event) begin
+            rw <= 1;
+        end else begin        
+            rw <= 0;
+            data_o <= db;
+        end
 
         if(rst) begin
-            adl_r <= '0;
-            adh_r <= '0;
+            addr <= '0;
             data_o <= '0;
+            rw <= 1;
         end
     end
-    assign addr = {adh_r,adl_r};
  
-    // internal buses
-    // the real 6502 updates bus states on subcycles using out of phase clocks m1,m2)
-    // e.g. when executing an alu operation on the first subcycle the sb bus carries an operand
-    // and on the second subcycle the sb bus carries the result.
-    // in order to represent the same timing with a single clock, we implement two sets of busses
-    logic [7:0] sb, sb_result, db, db_result;
-    logic dummy_write;
-    assign rw = !write_mem | rst | rst_event;
-    logic [3:0] stack_push_reg, stack_pull_reg; // one-hot control for push/pull registers
-
-    // db read bus
-    assign db = data_i;
-
-    // sb "source" bus
-    always_comb begin
-        unique case(1'b1)
-            sb_src[0] : sb = a;
-            sb_src[1] : sb = x;
-            sb_src[2] : sb = y;
-            sb_src[3] : sb = s;
-            sb_src[4] : sb = add;
-            sb_src[5] : sb = db;
-            sb_src[6] : sb = adh;
-            default:    sb = 0;
-        endcase
-    end
-
-    // sb "result" bus
-    always_comb begin
-        case(1'b1)
-            alu_en,
-            sb_src_exec[4] : sb_result = add;
-            sb_src_exec[0] : sb_result = a;
-            sb_src_exec[1] : sb_result = x;
-            sb_src_exec[2] : sb_result = y;
-            sb_src_exec[3] : sb_result = s;
-            sb_src_exec[5] : sb_result = db;
-            default:         sb_result = 0;
-        endcase
-    end        
-    // db write bus
-    always_comb begin
-        unique case(1'b1)
-            stack_push_reg[0]:  db_result = a;
-            stack_push_reg[1]:  db_result = int_event ? p : p | FL_BU; // set break flag on push unless irq
-            stack_push_reg[2]:  db_result = pcl;
-            stack_push_reg[3]:  db_result = pch;
-            dummy_write:    db_result = db;         // bit of a hack to match RMW behavior
-            default:        db_result = sb_result;
-        endcase
-    end
-
-    // PC
-    (* mark_debug = "true" *) logic [15:0] pc /*verilator public*/;
-    (* mark_debug = "true" *) logic [7:0] pch, pcl;   // low and high byte of next pc
-    logic [15:0] pc_next;
-    assign {pch, pcl} = pc_next;
-
-    always_comb begin
-        case(1'b1)
-            inc_pc:         pc_next = pc+1;
-            stack_pull_reg[2]:  pc_next = {pc[15:8], db};  // pull pcl from stack
-            stack_pull_reg[3]:  pc_next = {db, pc[7:0]};   // pull pch from stack
-            default:        pc_next = pc;
-        endcase
-    end
-    always_ff @(posedge clk ) begin
-        if (rst) begin
-            pc <= 0;
-        end else begin
-            pc <= jump ? {adh, adl} : pc_next;
-        end
-    end
 
     // interrupt handling
     logic nmi_event, nmi_handled, irq_event, rst_event /*verilator public*/;
@@ -196,20 +200,19 @@ module core6502 #(
 
     // decode instruction
     logic [4:0] op_type;
-    logic [7:0] sb_src, sb_src_exec, sb_src_ctrl, dst;
-    logic alu_en;
-    logic [8:0] alu_op_exec;
-    logic [3:0] alu_flags_ctrl;
-    logic single_byte, idx_XY;
+    logic [7:0] op_src, op_dst;
+    logic [8:0] op_alu, alu_code;
+    logic wr_op, alu_en, single_byte, idx_XY;
     logic stack_ap, and_op, bit_op, sl_op, sr_op;
     logic clc, cli, clv, cld, sec, sei, sed;
     logic [7:0] result_mask;
     decode u_decode(
         .op         (ir),
         .op_type        (op_type ),
-        .src            (sb_src_exec),
-        .dst            (dst),
-        .alu_op         (alu_op_exec),
+        .src            (op_src),
+        .dst            (op_dst),
+        .alu_op         (op_alu),
+        .wr_op          (wr_op),
         .alu_en         (alu_en),
         .single_byte    (single_byte),
         .idx_XY         (idx_XY),
@@ -229,19 +232,18 @@ module core6502 #(
     );
 
     //alu
-    logic [8:0] alu_op;
     logic [7:0] alu_ai, alu_bi;
-    logic adl_add, adh_add, alu_az, sb_db;
+    logic adl_add, adh_add, db_add;
     logic sumC, sumV;
     assign alu_ai = adl_add ? adl :
-                    alu_az ? 0 :
+                    db_add ? 0 :
                     sb;
-    assign alu_bi = sb_db ? sb : db;
+    assign alu_bi = db;
 
     alu u_alu(
         .clk    (clk),
         .rst    (rst),
-        .op     (alu_op),
+        .op     (alu_code),
         .ai     (alu_ai),
         .bi     (alu_bi),
         .ci     (p[0]),
@@ -249,6 +251,93 @@ module core6502 #(
         .sumC   (sumC),
         .sumV   (sumV),
         .bpage  (bpage)
+    );
+
+    // update p status register
+    logic [7:0] p_update;
+    wire dbz = (db==0);
+    wire sbz = (sb==0);
+    always_comb begin
+        p_update = p;
+        if ( save_alu ) begin
+            if(result_mask[7]) p_update[7] = sb[7];
+            if(result_mask[6]) p_update[6] = sumV;
+            if(result_mask[1]) p_update[1] = sbz;
+            if(result_mask[0]) p_update[0] = sumC;
+        end
+
+        if (exec) begin
+            if (clc) p_update[0] = 0;
+            if (cli) p_update[2] = 0;
+            if (clv) p_update[6] = 0;
+            if (cld) p_update[3] = 0;
+            if (sec) p_update[0] = 1;
+            if (sei) p_update[2] = 1;
+            if (sed) p_update[3] = 1;
+
+            // there are a few other special cases where alu status is
+            // not updated with alu result (result_rdy) but
+            // directly with alu input (exec):
+            if(and_op | bit_op | (db_dst == DB_A) ) begin
+                p_update[1] = dbz;
+                p_update[7] = db[7];
+            end
+            if(bit_op) p_update[6] = db[6];
+            if(sr_op) p_update[0] = sb[0]; // shift-right carry out
+
+        end
+
+        if (so_re) p_update[6] = 1;       //set overflow on re of SO pin
+        if (brk_int) p_update[2] = 1;     //set interrupt bit on BRK
+
+        p_update[4] = 0;                  //bit 4 doesnt exist but always reports low
+        p_update[5] = 1;                  //bit 5 doesnt exist but always reports high
+    end
+
+    logic so_r, so_re;
+    always_ff @(posedge clk ) so_r <= rst ? 0 : so;
+    assign so_re = so & ~so_r;
+
+    // control state machine
+    (* mark_debug = "true" *) logic [5:0] adl_src, adh_src;
+    (* mark_debug = "true" *) logic inc_pc, exec, save_alu, wr_en;
+    (* mark_debug = "true" *) logic jump, brk_int;
+    (* mark_debug = "true" *) logic hold_alu;    
+    control u_control(
+        .clk            (clk),
+        .rst            (rst),
+        .rdy            (rdy),
+        .op_type        (op_type),
+        .op_alu         (op_alu),
+        .op_src         (op_src),
+        .op_dst         (op_dst),
+        .wr_op          (wr_op),
+        .alu_en         (alu_en),
+        .single_byte    (single_byte),
+        .stack_ap       (stack_ap),
+        .int_event      (int_event),
+        .aluC           (sumC),
+        .aluN           (add[7]),
+        .idx_XY         (idx_XY),
+        .bpage          (bpage),
+        .take_branch    (take_branch),
+        .sl_op          (sl_op),
+        .sync           (sync),
+        .inc_pc         (inc_pc),
+        .adl_src        (adl_src),
+        .adh_src        (adh_src),
+        .jump           (jump),
+        .brk_int        (brk_int),
+        .adl_add        (adl_add),
+        .db_add         (db_add),
+        .sb_src         (sb_src),
+        .sb_dst         (sb_dst),
+        .db_src         (db_src),
+        .db_dst         (db_dst),
+        .wr_en          (wr_en),
+        .exec           (exec),
+        .save_alu       (save_alu),
+        .alu            (alu_code)
     );
 
     // branch logic
@@ -261,126 +350,6 @@ module core6502 #(
             2'b11:   take_branch = p[1] ^ !ir[5]; // BNE, BEQ
         endcase
     end
-
-    //registers
-    logic so_r, exec, alu_rdy, sb_s;
-    logic [7:0] a_next, x_next, y_next, s_next;
-    wire result_rdy = (exec && !alu_en) || alu_rdy;
-    // update registers
-    always_comb begin
-        a_next = (result_rdy & dst[0]) ? sb_result :
-                    stack_pull_reg[0] ? db : a;
-        x_next = (result_rdy & dst[1]) ? sb_result : x;
-        y_next = (result_rdy & dst[2]) ? sb_result : y;
-        s_next = (result_rdy & dst[3]) ? sb_result :
-                    sb_s ? sb : s;
-    end
-
-    // update p status register
-    logic [7:0] p_next;
-    wire dbz = (db==0);
-    wire sbz = (sb_result==0);
-    always_comb begin
-        p_next = stack_pull_reg[1] ? db : p;
-
-        if ( result_rdy ) begin
-            if(result_mask[7]) p_next[7] = sb_result[7];
-            if(result_mask[6]) p_next[6] = sumV;
-            if(result_mask[1]) p_next[1] = sbz;
-            if(result_mask[0]) p_next[0] = sumC;
-        end
-
-        if (exec) begin
-            if (clc) p_next[0] = 0;
-            if (cli) p_next[2] = 0;
-            if (clv) p_next[6] = 0;
-            if (cld) p_next[3] = 0;
-            if (sec) p_next[0] = 1;
-            if (sei) p_next[2] = 1;
-            if (sed) p_next[3] = 1;
-
-            // there are a few other special cases where alu status is
-            // not updated with alu result (result_rdy) but
-            // directly with alu input (exec):
-            if(and_op | bit_op | stack_pull_reg[0]) begin
-                p_next[1] = dbz;
-                p_next[7] = db[7];
-            end
-            if(bit_op) p_next[6] = db[6];
-            if(sr_op) p_next[0] = sb[0]; // shift-right carry out
-        end
-
-        if (so & !so_r) p_next[6] = 1;  //set overflow on re of SO pin
-        if (brk_int) p_next[2] = 1;     //set interrupt bit on BRK
-
-        p_next[4] = 0;                  //bit 4 doesnt exist but always reports low
-        p_next[5] = 1;                  //bit 5 doesnt exist but always reports high
-    end
-
-    always_ff @(posedge clk ) begin
-        if (rst) begin
-            a <= A_RST;
-            x <= X_RST;
-            y <= Y_RST;
-            s <= S_RST;
-            p <= P_RST;
-            so_r <= 0;
-            alu_rdy <= 0;
-        end else if(rdy) begin
-
-            alu_rdy <= exec & alu_en;
-            a <= a_next;
-            x <= x_next;
-            y <= y_next;
-            s <= s_next;
-            p <= p_next;
-            so_r <= so;
-        end
-    end
-
-    // control state machine
-    (* mark_debug = "true" *) logic [5:0] adl_src,adh_src;
-    (* mark_debug = "true" *) logic inc_pc;
-    (* mark_debug = "true" *) logic write_mem;
-    (* mark_debug = "true" *) logic jump, brk_int;
-    (* mark_debug = "true" *) logic hold_alu;    
-    control u_control(
-        .clk            (clk),
-        .rst            (rst),
-        .rdy            (rdy),
-        .op_type        (op_type),
-        .wr_op          (dst[5]),
-        .alu_en         (alu_en),
-        .single_byte    (single_byte),
-        .stack_ap       (stack_ap),
-        .int_event      (int_event),
-        .aluC           (sumC),
-        .aluN           (add[7]),
-        .idx_XY         (idx_XY),
-        .bpage          (bpage),
-        .take_branch    (take_branch),
-        .sl_op          (sl_op),
-        .sync           (sync),
-        .exec           (exec),
-        .alu_flags      (alu_flags_ctrl),
-        .sb_src         (sb_src_ctrl),
-        .inc_pc         (inc_pc),
-        .adl_src        (adl_src),
-        .adh_src        (adh_src),
-        .write_mem      (write_mem),
-        .dummy_write    (dummy_write),
-        .jump           (jump),
-        .brk_int     (brk_int),
-        .adl_add        (adl_add),
-        .alu_az        (alu_az),
-        .stack_push_reg     (stack_push_reg),
-        .stack_pull_reg     (stack_pull_reg),
-        .sb_s           (sb_s),
-        .sb_db          (sb_db)
-    );
-
-    assign sb_src = exec ? sb_src_exec : sb_src_ctrl;
-    assign alu_op = exec ? alu_op_exec : {alu_flags_ctrl, ALU_SUM};
 
     //below are not used internally but helpful for debug
 
