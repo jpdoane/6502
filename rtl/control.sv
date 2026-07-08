@@ -9,8 +9,8 @@ module control (
     input  logic       rdy,
     input  logic [4:0] op_type,
     input  logic [8:0] op_alu,
-    input  logic [7:0] op_src,
-    input  logic [7:0] op_dst,
+    input  logic [2:0] op_src,
+    input  logic [2:0] op_dst,
     input  logic       wr_op,
     input  logic       alu_en,
     input  logic       single_byte,
@@ -24,14 +24,14 @@ module control (
     input  logic       sl_op,
     output logic       sync,
     output logic       inc_pc,
-    output logic [5:0] adl_src,
-    output logic [5:0] adh_src,
+    output logic [2:0] adl_src,
+    output logic [2:0] adh_src,
     output logic       jump,
     output logic       brk_int,
     output logic       adl_add,
     output logic       db_add,       // save data bus to alu
-    output logic [7:0] sb_src,       // source of data on sb
-    output logic [7:0] sb_dst,       // destiation of data on db (reg writes)
+    output logic [2:0] sb_src,       // source of data on sb
+    output logic [2:0] sb_dst,       // destiation of data on db (reg writes)
     output logic [5:0] db_src,       // source of data on db
     output logic [3:0] db_pull,      // pull data into a, p, pcl, pch
     output logic       wr_en,
@@ -58,7 +58,7 @@ module control (
     end
 
     wire rmw = wr_op & alu_en;
-    logic [7:0] idx;
+    logic [2:0] idx;
     logic push_stack, pop_stack, stack_r;
     logic save_alu;
 
@@ -74,7 +74,7 @@ module control (
         sync       = 0;
         brk_int    = 0;
         adl_add    = 0;
-        idx        = idx_XY ? REG_X : REG_Y;
+        idx        = idx_XY ? SB_X : SB_Y;
         db_add     = 0;
 
         push_stack = 0;
@@ -82,10 +82,10 @@ module control (
 
         // default alu behavior is to store data in alu register
         alu        = OP_SUM;
-        sb_src     = REG_Z;
+        sb_src     = SB_Z;
 
         db_src     = DB_DATA;
-        sb_dst     = REG_Z;
+        sb_dst     = SB_Z;
         db_pull    = '0;
         wr_en      = 0;
 
@@ -139,7 +139,7 @@ module control (
                     OP_INY: begin
                         adl_src = ADDR_DATA;  // fetch BAL at {0,IAL}
                         adh_src = ADDR_Z;
-                        sb_src  = REG_D;
+                        sb_src  = SB_DATA;
                         alu     = OP_INC;  // IAL++
                     end
                     OP_PUS: begin
@@ -172,8 +172,8 @@ module control (
                     OP_JSR: begin
                         adl_src = ADDR_STACK;
                         adh_src = ADDR_STACK;  // point addr to stack 
-                        sb_src  = REG_D;  // read ADL into stack reg...
-                        sb_dst  = REG_S;
+                        sb_src  = SB_DATA;  // read ADL into stack reg...
+                        sb_dst  = SB_S;
                         inc_pc  = 1;
                     end
                     OP_IMM, OP_IMP: begin  // effectively the T0 state for 2-cycle insts.
@@ -209,7 +209,7 @@ module control (
                     OP_XIN: begin
                         adl_src = ADDR_ALU;  // fetch ADL at {0,BAL+X}
                         adh_src = ADDR_Z;
-                        sb_src  = REG_ADD;  // compute BAL+X+1
+                        sb_src  = SB_ADD;  // compute BAL+X+1
                         alu     = OP_INC;
                     end
                     OP_INY: begin
@@ -230,14 +230,14 @@ module control (
                         adh_src = ADDR_DATA;
                         adl_src = ADDR_ALU;  // {BAH, BAL+X/Y}
                         if (aluC) begin
-                            sb_src = REG_D;
+                            sb_src = SB_DATA;
                             alu    = OP_INC;  // increment BAH on carry
                         end else Tlast = !wr_op;
                     end
                     OP_BRA: begin
                         adh_src = ADDR_PC;
                         adl_src = ADDR_ALU;
-                        sb_src  = REG_PCH;  // inc or dec adh based on adl + db result
+                        sb_src  = SB_PCH;  // inc or dec adh based on adl + db result
                         alu     = aluN ? OP_DEC : OP_INC;
                         if (!bpage) begin
                             jump = 1;  // jump to {adh, adl + db} if we didnt cross page boundary
@@ -253,7 +253,7 @@ module control (
                     OP_JIN: begin
                         adh_src = ADDR_DATA;
                         adl_src = ADDR_ALU;  // fetch ADL at {IAH, IAL}
-                        sb_src  = REG_ADD;
+                        sb_src  = SB_ADD;
                         alu     = OP_INC;  // IAL++
                     end
                     OP_PUL: begin
@@ -300,7 +300,7 @@ module control (
                         adl_src = ADDR_ALU;  // fetch data at {BAH,BAL+Y}
                         if (aluC) begin
                             alu    = OP_INC;  // increment BAH on carry
-                            sb_src = REG_D;
+                            sb_src = SB_DATA;
                         end else Tlast = !wr_op;
                     end
                     OP_BRA: begin
@@ -368,7 +368,7 @@ module control (
                     OP_JSR: begin
                         adh_src = ADDR_PC;
                         adl_src = ADDR_PC;  // fetch ADH at [PC+2] (maintain stack in alu)
-                        sb_src  = REG_ADD;  // hold alu result
+                        sb_src  = SB_ADD;  // hold alu result
                         alu     = OP_NOP;
                     end
                     OP_RTS: begin
@@ -401,8 +401,8 @@ module control (
                         sync              = 1;  //
                     end
                     OP_JSR: begin
-                        sb_src  = REG_ADD;  // restore stack from alu
-                        sb_dst  = REG_S;
+                        sb_src  = SB_ADD;  // restore stack from alu
+                        sb_dst  = SB_S;
                         adh_src = ADDR_DATA;
                         adl_src = ADDR_STACK;  // jump to subroutine
                         jump    = 1;
@@ -444,7 +444,7 @@ module control (
                 alu = op_alu;
             end else begin
                 sb_dst = op_dst;
-                if (op_dst == REG_D) begin
+                if (op_dst == SB_DATA) begin
                     db_src = DB_SB;  // write to memory
                     wr_en  = 1;
                 end
@@ -459,11 +459,11 @@ module control (
 
         // save results of alu (delayed due to latency of alu)
         if (save_alu) begin
-            sb_src = REG_ADD;
+            sb_src = SB_ADD;
             sb_dst = op_dst;
 
             // write alu result to mem
-            if (op_dst == REG_D) begin
+            if (op_dst == SB_DATA) begin
                 db_src = DB_SB;
                 wr_en  = 1;
             end
@@ -478,8 +478,8 @@ module control (
         end
         // update sp after inc/dec
         if (stack_r) begin
-            sb_src = REG_ADD;
-            sb_dst = REG_S;
+            sb_src = SB_ADD;
+            sb_dst = SB_S;
         end
 
     end

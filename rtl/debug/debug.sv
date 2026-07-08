@@ -216,13 +216,13 @@ endfunction
 
 function string reg_name(input logic [2:0] x);
     case(x)
-        REG_Z: reg_name = "Z  ";
-        REG_A: reg_name = "A  ";
-        REG_X: reg_name = "X  ";
-        REG_Y: reg_name = "Y  ";
-        REG_S: reg_name = "S  ";
-        REG_ADD: reg_name = "ADD";
-        REG_D: reg_name = "MEM";
+        SB_Z: reg_name = "Z  ";
+        SB_A: reg_name = "A  ";
+        SB_X: reg_name = "X  ";
+        SB_Y: reg_name = "Y  ";
+        SB_S: reg_name = "S  ";
+        SB_ADD: reg_name = "ADD";
+        SB_DATA: reg_name = "MEM";
         default: reg_name = "???";
     endcase
 endfunction

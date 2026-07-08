@@ -9,29 +9,33 @@ module core6502 #(
     parameter X_RST      = 8'h0,
     parameter Y_RST      = 8'h0,
     parameter S_RST      = 8'hff,
-    parameter P_RST      = FL_I | FL_U,
-    parameter PC_RST     = 16'h0
+    parameter P_RST      = FL_IU,
+    parameter PC_RST     = 16'h0,
+    parameter MEM_REG    = 1 // is data_i already registered on clk?
 ) (
-    input logic clk,
-    input logic rst,
+    input  logic        clk,
+    input  logic        rst,
     output logic [15:0] addr,
-    output logic [7:0] data_o,
-    output logic rw,
-    input logic [7:0] data_i,
-    input logic ready,
-    input logic so,
-    input logic nmi,
-    input logic irq,
-    output logic sync,
-    output logic jam
+    output logic [ 7:0] data_o,
+    output logic        rw,
+    input  logic [ 7:0] data_i,
+    input  logic        ready,
+    input  logic        so,
+    input  logic        nmi,
+    input  logic        irq,
+    output logic        sync,
+    output logic        jam
 );
 
     logic [7:0] dl;
-    // remove this for synchronous memory...
-    // always_ff @(posedge clk ) dl <= rst ? '0 : data_i;
-    assign dl = data_i;
-
-    wire rdy = ready | ~rw;  //ignore not ready when writing
+    generate
+        if (MEM_REG) begin : gen_datai_direct
+            assign dl = data_i;
+        end 
+        else begin : gen_datai_reg
+            always_ff @(posedge clk ) dl <= rst ? '0 : data_i;
+        end
+    endgenerate
 
     // registers
     (* mark_debug = "true" *) logic [7:0] ir  /*verilator public*/;
@@ -43,19 +47,23 @@ module core6502 #(
     (* mark_debug = "true" *) logic [7:0] p  /*verilator public*/;
     (* mark_debug = "true" *) logic [7:0] pch, pcl  /*verilator public*/;
 
+    logic so_r, so_re, rdy;
+    always_ff @(posedge clk) so_r <= rst ? 0 : so;
+    assign so_re = so & ~so_r; // rising edge of so
+    assign rdy = ready | ~rw;  // ignore not ready when writing
 
     // PC
-    (* mark_debug = "true" *)logic [15:0] pc  /*verilator public*/;
+    (* mark_debug = "true" *) logic [15:0] pc  /*verilator public*/;
     logic [15:0] pc_next;
     assign pc_next = inc_pc ? pc + 1 : pc;
-    assign pch = db_pull[PULL_PCH] ? dl : pc_next[15:8];
-    assign pcl = db_pull[PULL_PCL] ? dl : pc_next[7:0];
+    assign pch     = db_pull[PULL_PCH] ? dl : pc_next[15:8];
+    assign pcl     = db_pull[PULL_PCL] ? dl : pc_next[7:0];
 
     always @(posedge clk) begin
         if (rst) begin
             pc <= PC_RST;
         end else begin
-            if ((nmi_event || irq_event) && sync) begin
+            if (int_event && sync) begin
                 pc <= pc;
             end else if (jump) begin
                 pc <= {adh, adl};
@@ -67,36 +75,37 @@ module core6502 #(
 
     // internal buses
     (* mark_debug = "true" *) logic [7:0] sb, db;
-    logic [7:0] sb_src, sb_dst;
+    logic [2:0] sb_src, sb_dst;
     logic [5:0] db_src;
     logic [3:0] db_pull;
+    wire        dbz = (db == 0);
+    wire        sbz = (sb == 0);
 
     // memory bus
     (* mark_debug = "true" *) logic [7:0] adl, adh;
     (* mark_debug = "true" *) logic [15:0] addr_r;
-
-    assign rw = !wr_en | rst | rst_event;
+    assign rw     = !wr_en | rst | rst_event;
     assign data_o = rw ? '0 : db;
-    assign addr = {adh, adl};
+    assign addr   = {adh, adl};
 
     // registers
     always_ff @(posedge clk) begin
         if (rst) begin
-            a <= A_RST;
-            x <= X_RST;
-            y <= Y_RST;
-            s <= S_RST;
-            p <= P_RST;
+            a      <= A_RST;
+            x      <= X_RST;
+            y      <= Y_RST;
+            s      <= S_RST;
+            p      <= P_RST;
             addr_r <= '0;
 
         end else if (rdy) begin
             addr_r <= addr;
 
             case (sb_dst)
-                REG_A:   a <= sb;
-                REG_X:   x <= sb;
-                REG_Y:   y <= sb;
-                REG_S:   s <= sb;
+                SB_A:   a <= sb;
+                SB_X:   x <= sb;
+                SB_Y:   y <= sb;
+                SB_S:   s <= sb;
                 default: ;
             endcase
             if (db_pull[PULL_A]) a <= db;
@@ -110,13 +119,13 @@ module core6502 #(
     // sb bus (mainly registers and alu output)
     always_comb begin
         case (sb_src)
-            REG_A:   sb = a;
-            REG_X:   sb = x;
-            REG_Y:   sb = y;
-            REG_S:   sb = s;
-            REG_ADD: sb = add;
-            REG_D:   sb = dl;
-            REG_PCH: sb = pc[15:8];
+            SB_A:   sb = a;
+            SB_X:   sb = x;
+            SB_Y:   sb = y;
+            SB_S:   sb = s;
+            SB_ADD: sb = add;
+            SB_DATA:   sb = dl;
+            SB_PCH: sb = pc[15:8];
             default: sb = 0;
         endcase
     end
@@ -137,25 +146,27 @@ module core6502 #(
     // address bus
     always_comb begin
         case (adl_src)
-            ADDR_PC: adl = pcl;
-            ADDR_DATA: adl = dl;
-            ADDR_ALU: adl = add;
-            ADDR_INT:
-            adl = rst_event ? RST_VECTOR[7:0] : nmi_event ? NMI_VECTOR[7:0] : IRQ_VECTOR[7:0];
+            ADDR_PC:    adl = pcl;
+            ADDR_DATA:  adl = dl;
+            ADDR_ALU:   adl = add;
+            ADDR_INT:   adl =   rst_event ? RST_VECTOR[7:0] :
+                                nmi_event ? NMI_VECTOR[7:0] :
+                                IRQ_VECTOR[7:0];
             ADDR_STACK: adl = s;
-            ADDR_HOLD: adl = addr_r[7:0];
-            default: adl = 0;  //ADDR_Z
+            ADDR_HOLD:  adl = addr_r[7:0];
+            default:    adl = 0;  //ADDR_Z
         endcase
 
         case (adh_src)
-            ADDR_PC: adh = pch;
-            ADDR_DATA: adh = dl;
-            ADDR_ALU: adh = add;
-            ADDR_INT:
-            adh = rst_event ? RST_VECTOR[15:8] : nmi_event ? NMI_VECTOR[15:8] : IRQ_VECTOR[15:8];
+            ADDR_PC:    adh = pch;
+            ADDR_DATA:  adh = dl;
+            ADDR_ALU:   adh = add;
+            ADDR_INT:   adh =   rst_event ? RST_VECTOR[15:8] :
+                                nmi_event ? NMI_VECTOR[15:8] :
+                                IRQ_VECTOR[15:8];
             ADDR_STACK: adh = STACKPAGE;
-            ADDR_HOLD: adh = addr_r[15:8];
-            default: adh = 0;  //ADDR_Z
+            ADDR_HOLD:  adh = addr_r[15:8];
+            default:    adh = 0;  //ADDR_Z
         endcase
     end
 
@@ -188,14 +199,22 @@ module core6502 #(
     end
 
     // opcode fetch and interrupt injection
+    logic sync_r;
     always_ff @(posedge clk) begin
-        if (rst || rst_event || (sync_r && int_event)) ir <= 0;  //break from RESET_VECTOR
-        else if (sync_r && rdy) ir <= dl;
+        sync_r <= sync; // sync is opcode fetch, sync_r is opcode read
+
+        // update instruction register and inject BRK (op=0) on interrupt
+        if (sync_r) ir <= int_event ? '0 : dl; 
+
+        if (rst) begin
+            sync_r <= '0;
+            ir <= '0;
+        end
     end
 
     // decode instruction
     logic [4:0] op_type;
-    logic [7:0] op_src, op_dst;
+    logic [2:0] op_src, op_dst;
     logic [8:0] op_alu, alu_code;
     logic wr_op, alu_en, single_byte, idx_XY;
     logic stack_ap, dbNZ, bit_op, sl_op, sr_op;
@@ -247,13 +266,12 @@ module core6502 #(
         .bpage(bpage)
     );
 
-    // update p status register
+    // update status register
     logic [7:0] p_update;
-    wire dbz = (db == 0);
-    wire sbz = (sb == 0);
     always_comb begin
         p_update = p;
 
+        // update status from alu result
         if (result_rdy) begin
             if (result_mask[7]) p_update[7] = sb[7];
             if (result_mask[6]) p_update[6] = sumV;
@@ -261,6 +279,7 @@ module core6502 #(
             if (result_mask[0]) p_update[0] = sumC;
         end
 
+        // there are a few other special cases where status is updated immediately on exec:
         if (exec) begin
             if (clc) p_update[0] = 0;
             if (cli) p_update[2] = 0;
@@ -270,9 +289,6 @@ module core6502 #(
             if (sei) p_update[2] = 1;
             if (sed) p_update[3] = 1;
 
-            // there are a few other special cases where alu status is
-            // not updated with alu result but
-            // directly with alu input (exec):
             if (dbNZ) begin
                 p_update[1] = dbz;
                 p_update[7] = db[7];
@@ -288,12 +304,8 @@ module core6502 #(
         p_update[5] = 1;  //bit 5 doesnt exist but always reports high
     end
 
-    logic so_r, so_re;
-    always_ff @(posedge clk) so_r <= rst ? 0 : so;
-    assign so_re = so & ~so_r;
-
     // control state machine
-    (* mark_debug = "true" *) logic [5:0] adl_src, adh_src;
+    (* mark_debug = "true" *) logic [2:0] adl_src, adh_src;
     (* mark_debug = "true" *) logic inc_pc, exec, result_rdy, wr_en;
     (* mark_debug = "true" *) logic jump, brk_int;
     (* mark_debug = "true" *) logic hold_alu;
@@ -334,9 +346,6 @@ module core6502 #(
         .alu        (alu_code)
     );
 
-    logic sync_r;
-    always_ff @(posedge clk) sync_r <= rst ? 0 : sync;
-
     // branch logic
     logic take_branch, bpage;
     always_comb begin
@@ -368,6 +377,6 @@ module core6502 #(
 
     (* mark_debug = "true" *) logic [9:0] Tstate  /*verilator public*/;
     assign Tstate = u_control.Tstate;
-    assign jam = Tstate == 0;  //if Tstate reaches all zeros we have a jam
+    assign jam    = Tstate == 0;  //if Tstate reaches all zeros we have a jam
 
 endmodule
