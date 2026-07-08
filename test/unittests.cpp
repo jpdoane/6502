@@ -17,6 +17,8 @@ int check_cycle(Abstract6502* sim, const UnitTestCycle &cycle, int cycle_cnt, in
 {
     int rv=0;
     state6502 state = sim->getState();
+    if(verbose) 
+        printState(state);
 
     if(cycle.rw != state.rw)
     {
@@ -45,6 +47,9 @@ int check_state(Abstract6502* sim, const UnitTestState &test_state, int verbose=
     int rv=0;
     // check pc on this cycle
     state6502 sim_state = sim->getState();
+    if(verbose) 
+        printState(sim_state);
+
     if(test_state.pc != sim_state.pc)       
         { rv=4;  if(verbose) std::cout << std::hex << "Expected pc="<< (int) test_state.pc << " but observed " << (int) sim_state.pc << std::endl; }
 

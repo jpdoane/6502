@@ -11,7 +11,7 @@ module decode (
     output logic single_byte,                       // single byte op
     output logic idx_XY,                            // index on X vs Y
     output logic stack_ap,
-    output logic and_op,
+    output logic dbNZ,
     output logic bit_op,
     output logic sl_op, sr_op,
     output logic clc, cli, clv, cld, sec, sei, sed,
@@ -21,18 +21,13 @@ module decode (
     logic [24:0] ctl_flags;
     // special case flags
     logic sum_op, cmp_op, rot_op, inc_op, take_branch;
-    
     logic upV, upZ, upC;
 
     // decode datapath and alu op
      /* verilator lint_off CASEOVERLAP */
     always_comb begin
         unique casez(op)     //ctl_flags = {dst, src,  alu_op}
-            8'b0??_010_00:  ctl_flags = {REG_Z, REG_ADD, OP_NOP};     // PUS,PUL
-            // 8'b010_010_00:  ctl_flags = {REG_D, REG_A, OP_NOP};       // PHA
-            // 8'b000_010_00:  ctl_flags = {REG_D, REG_P, OP_NOP};       // PHP
-            // 8'b011_010_00:  ctl_flags = {REG_A, REG_D, OP_NOP};       // PLA
-            // 8'b001_010_00:  ctl_flags = {REG_P, REG_D, OP_NOP};       // PLP
+            8'b0??_010_00:  ctl_flags = {REG_Z, REG_Z, OP_NOP};     // PUS,PUL
             8'b101_010_00:  ctl_flags = {REG_Y, REG_A, OP_NOP};       // TAY
             8'b111_010_00:  ctl_flags = {REG_X, REG_X, OP_INC};       // INX
             8'b110_010_00:  ctl_flags = {REG_Y, REG_Y, OP_INC};       // INY
@@ -77,48 +72,8 @@ module decode (
     end
     assign {dst, src, alu_op} = ctl_flags;
 
+
     always_comb begin
-        alu_en = alu_op[4:0] != ALU_NOP;
-        sum_op = op ==? 8'b?11_???_?1; // adc or sbc
-        cmp_op = (op ==? 8'b11?_011_00) || (op ==? 8'b11?_00?_00) || (op ==? 8'b110_???_?1);
-        sl_op = op ==? 8'b00?_???_10;
-        sr_op = op ==? 8'b01?_???_10;
-        and_op = op ==? 8'b001_???_?1;
-        bit_op = op ==? 8'b001_0?1_00;
-
-        stack_ap = op[6]; // high for PHA,PLA, low for PHP,PLP
-        wr_op = (dst == REG_D);
-
-        // update status flags (BIT opcodes are special case handled elsewhere...)
-        // update N&Z bits on any write to a,x,y regs and all alu ops
-        unique case(dst)
-            REG_A:      upZ=1;
-            REG_X:      upZ=1;
-            REG_Y:      upZ=1;
-            default:    upZ=alu_en;
-        endcase
-
-        // set v flag on ADC & SBC
-        upV = sum_op & ~sl_op;
-        upC = sum_op | cmp_op | sl_op;
-        // upC = sum_op | cmp_op | shift_op | rot_op;
-        result_mask = {upZ & ~bit_op, upV, 4'b0, upZ, upC};
-
-        // set and clear masks
-        clc = op == 8'b000_110_00;
-        cli = op == 8'b010_110_00;
-        clv = op == 8'b101_110_00;
-        cld = op == 8'b110_110_00;
-        sec = op == 8'b001_110_00;
-        sei = op == 8'b011_110_00;
-        sed = op == 8'b111_110_00;
-
-        // single byte opcodes: b = 2 or 6 && c = 0 or 2
-        single_byte = (op == 8'h0) || (op ==? 8'b???_?10_?0);
-
-        // X vs Y indexing
-        idx_XY = (op ==? 8'b???_1?0_?1 || op ==? 8'b10?_1?1_1?) ? 1'b0 : 1'b1;
-
         // decode control flow and memory access pattern types
         // https://www.masswerk.at/6502/6502_instruction_set.html#layout
         casez(op)
@@ -143,9 +98,57 @@ module decode (
             8'b???_111_??:  op_type = OP_AXY;        
             default:        op_type = OP_JAM;
         endcase
+    end
+
+    logic and_op, pullA_op;
+    always_comb begin
+        alu_en = alu_op[4:0] != ALU_NOP;
+        sum_op = op ==? 8'b?11_???_?1; // adc or sbc
+        cmp_op = (op ==? 8'b11?_011_00) || (op ==? 8'b11?_00?_00) || (op ==? 8'b110_???_?1);
+        sl_op = op ==? 8'b00?_???_10;
+        sr_op = op ==? 8'b01?_???_10;
+        and_op = op ==? 8'b001_???_?1;
+        bit_op = op ==? 8'b001_0?1_00;
+
+
+        stack_ap = op[6]; // high for PHA,PLA, low for PHP,PLP
+        pullA_op = stack_ap & (op_type == OP_PUL);
+        dbNZ = and_op | bit_op | pullA_op; // on and, bit, pull A, update NZ bits from db
+        wr_op = (dst == REG_D);
+
+        // update status flags (BIT opcodes are special case handled elsewhere...)
+        // update N&Z bits on any write to a,x,y regs and all alu ops
+        unique case(dst)
+            REG_A:      upZ=1;
+            REG_X:      upZ=1;
+            REG_Y:      upZ=1;
+            default:    upZ=alu_en;
+        endcase
+
+        // set v flag on ADC & SBC
+        upV = sum_op & ~sl_op;
+        upC = sum_op | cmp_op | sl_op;
+
+        result_mask = {(upZ & ~bit_op), upV, 4'b0, upZ, upC};
+
+        // set and clear masks
+        clc = op == 8'b000_110_00;
+        cli = op == 8'b010_110_00;
+        clv = op == 8'b101_110_00;
+        cld = op == 8'b110_110_00;
+        sec = op == 8'b001_110_00;
+        sei = op == 8'b011_110_00;
+        sed = op == 8'b111_110_00;
+
+        // // single byte opcodes: b = 2 or 6 && c = 0 or 2
+        single_byte = (op == 8'h0) || (op ==? 8'b???_?10_?0);
+
+        // X vs Y indexing
+        idx_XY = (op ==? 8'b???_1?0_?1 || op ==? 8'b10?_1?1_1?) ? 1'b0 : 1'b1;
 
     end
     /* verilator lint_on CASEOVERLAP */
+
 
 
 endmodule

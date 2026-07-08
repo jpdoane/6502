@@ -1,0 +1,81 @@
+[*]
+[*] GTKWave Analyzer v3.3.116 (w)1999-2023 BSI
+[*] Mon Jul  6 20:54:25 2026
+[*]
+[dumpfile] "/home/jpdoane/6502/test/build/logs/core6502.fst"
+[dumpfile_mtime] "Mon Jul  6 20:43:32 2026"
+[dumpfile_size] 3766
+[savefile] "/home/jpdoane/6502/test/sim.gtkw"
+[timestart] 31
+[size] 1920 993
+[pos] -1 -1
+*-3.072833 48 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] core6502.
+[treeopen] core6502.core6502.
+[sst_width] 435
+[signals_width] 195
+[sst_expanded] 1
+[sst_vpaned_height] 294
+@420
+core6502.core6502.cycle
+@22
+core6502.core6502.Tstate[9:0]
+core6502.core6502.ir[7:0]
+@28
+core6502.core6502.exec
+@22
+core6502.addr[15:0]
+@28
+core6502.core6502.rw
+@22
+core6502.data_i[7:0]
+core6502.data_o[7:0]
+@28
+core6502.sync
+@22
+core6502.core6502.db[7:0]
+core6502.core6502.sb[7:0]
+core6502.core6502.adl[7:0]
+core6502.core6502.adh[7:0]
+@c00022
+core6502.core6502.pc[15:0]
+@28
+(0)core6502.core6502.pc[15:0]
+(1)core6502.core6502.pc[15:0]
+(2)core6502.core6502.pc[15:0]
+(3)core6502.core6502.pc[15:0]
+(4)core6502.core6502.pc[15:0]
+(5)core6502.core6502.pc[15:0]
+(6)core6502.core6502.pc[15:0]
+(7)core6502.core6502.pc[15:0]
+(8)core6502.core6502.pc[15:0]
+(9)core6502.core6502.pc[15:0]
+(10)core6502.core6502.pc[15:0]
+(11)core6502.core6502.pc[15:0]
+(12)core6502.core6502.pc[15:0]
+(13)core6502.core6502.pc[15:0]
+(14)core6502.core6502.pc[15:0]
+(15)core6502.core6502.pc[15:0]
+@1401200
+-group_end
+@22
+core6502.core6502.s[7:0]
+@c00023
+core6502.core6502.p[7:0]
+@28
+(0)core6502.core6502.p[7:0]
+(1)core6502.core6502.p[7:0]
+(2)core6502.core6502.p[7:0]
+(3)core6502.core6502.p[7:0]
+(4)core6502.core6502.p[7:0]
+(5)core6502.core6502.p[7:0]
+(6)core6502.core6502.p[7:0]
+(7)core6502.core6502.p[7:0]
+@1401201
+-group_end
+@28
+core6502.core6502.wr_en
+core6502.core6502.u_control.pop_stack
+core6502.core6502.u_control.push_stack
+[pattern_trace] 1
+[pattern_trace] 0

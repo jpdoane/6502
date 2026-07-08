@@ -41,21 +41,21 @@ void Verilated6502::clock( int clk)
             top->nmi = (mem[interrupt_port] >> 1) & 1;
         }
 
-        // if (top->rst)
-        // {
-        //     addr = 0;
-        //     data_o = 0;
-        //     rw = true;
-        // }
-        // else if (clk)
-        // {
-        //     // latch memory bus outputs before rising edge
-        //     addr = top->addr;    
-        //     rw = top->rw;        
-        //     data_o = top->data_o;
-        //     // if (rw) std::cout << std::hex << "before re: rd [" << (int) addr << "] rd " << std::endl;
-        //     // else  std::cout << std::hex << "before re: wr [" << (int) addr << "] <- " << (int) data_o << std::endl;
-        // }
+        if (top->rst)
+        {
+            addr = 0;
+            data_o = 0;
+            rw = true;
+        }
+        else if (clk)
+        {
+            // latch memory bus outputs before rising edge
+            addr = top->addr;    
+            rw = top->rw;        
+            data_o = top->data_o;
+            // if (rw) std::cout << std::hex << "before re: rd [" << (int) addr << "] rd " << std::endl;
+            // else  std::cout << std::hex << "before re: wr [" << (int) addr << "] <- " << (int) data_o << std::endl;
+        }
 
         top->clk = clk;
         top->contextp()->timeInc(1);
@@ -63,8 +63,8 @@ void Verilated6502::clock( int clk)
 
         if (clk)
         {
-            if(!top->rw) mem[top->addr] = top->data_o;
-            top->data_i = mem[top->addr];
+            if(!rw) mem[addr] = data_o;
+            top->data_i = mem[addr];
             top->eval();
             // if (rw) std::cout << std::hex << "after re: rd [" << (int) addr << "] -> " << (int) mem[addr] << std::endl;
             // else  std::cout << std::hex << "after re: wr [" << (int) addr << "] <- " << (int) mem[addr] << std::endl;
@@ -133,10 +133,10 @@ void Verilated6502::jump(uint16_t pc)
 state6502 Verilated6502::getState() const
 {
     state6502 state;
-    state.addr = top->addr;
+    state.addr = addr;
     state.pc = top->core6502->pc;
     state.ir = top->core6502->ir;
-    state.data = top->rw ? top->data_i : top->data_o,
+    state.data = rw ? top->data_i : data_o,
 	state.alu = top->core6502->add;
     state.a = top->core6502->a;
     state.s = top->core6502->s;
@@ -146,7 +146,7 @@ state6502 Verilated6502::getState() const
     state.p = top->core6502->p;
     state.tstate = top->core6502->Tstate;
     state.clk = top->clk;
-    state.rw = top->rw;
+    state.rw = rw;
     state.sync = top->sync;
     state.cycle = top->core6502->cycle;
     return state;

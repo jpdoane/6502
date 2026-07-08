@@ -66,6 +66,11 @@ parameter DB_PCL =   6'h4;   //
 parameter DB_PCH =   6'h5;   // 
 parameter DB_SB  =   6'h6;   // 
 
+parameter PULL_A    =   0;   // 
+parameter PULL_P    =   1;   // 
+parameter PULL_PCL  =   2;   // 
+parameter PULL_PCH  =   3;   // 
+
 parameter STACK_A   = 4'b0001;
 parameter STACK_P   = 4'b0010;
 parameter STACK_PCL = 4'b0100;
@@ -98,8 +103,11 @@ parameter OP_INC = {ALU_BIZ | ALU_CI1, ALU_SUM};
 parameter OP_DEC = {ALU_BIZ | ALU_BIN, ALU_SUM};
 parameter OP_LSR = {ALU_NOF, ALU_SHR};
 parameter OP_ROR = {ALU_CIP, ALU_SHR};
+parameter OP_SUM = {ALU_NOF, ALU_SUM};
 parameter OP_ASL = {ALU_NOF, ALU_SUM}; // implemented as M+M
 parameter OP_ROL = {ALU_CIP, ALU_SUM}; // implemented as M+M+C
+parameter OP_HOL = {ALU_BIZ, ALU_NOP};
+parameter OP_ADI = {ALU_CI1, ALU_SUM}; // add and increment
 
 parameter FL_N = 8'b10000000;   // Negative
 parameter FL_V = 8'b01000000;   // Overflow
