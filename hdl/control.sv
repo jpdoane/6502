@@ -42,7 +42,7 @@ module control (
     //state machine
     logic [9:0] Tstate=0;
     logic Tlast, skipT0, toTrmw;
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst) begin
             Tstate <= T1;
         end
@@ -370,13 +370,13 @@ module control (
     // stack
     logic push, pull, pull_r, stack_r;
     logic [3:0] stack_pull, stack_pull_r;
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst) begin
             pull_r <= 0;
             stack_r <= 0;
             stack_pull_r <= 0;
             stack_read <= 0;
-        end else begin
+        end else if(rdy) begin
             pull_r <= pull;
             stack_r <= push | pull;
             stack_pull_r <= stack_pull;

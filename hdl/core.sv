@@ -44,7 +44,7 @@ module core #(
     (* mark_debug = "true" *) logic [7:0] adl, adh;
     logic [7:0] adl_r, adh_r;
     assign addr = {adh,adl};
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst) begin
             adl_r <= 0;
             adh_r <= 0;
@@ -147,11 +147,11 @@ module core #(
         endcase
     end
 
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst) begin
             pc <= 0;
-        end else begin
-            if (!rdy || ((nmi_event || irq_event) && sync)) begin
+        end else if(rdy) begin
+            if (interrupt && sync) begin
                 pc <= pc;
             end else if (jump) begin
                 pc <= {adh, adl};
@@ -166,13 +166,13 @@ module core #(
     // verilator lint_off SYMRSVDWORD
     wire interrupt = nmi_event || irq_event;
     // verilator lint_on SYMRSVDWORD
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst) begin
             nmi_event <= 0;
             irq_event <= 0;
             rst_event <= 1;
             nmi_handled <= 0;
-        end else begin
+        end else if(rdy) begin
 
             nmi_event <= nmi && !nmi_handled;
             if (irq && !p[2])
@@ -191,9 +191,12 @@ module core #(
     end
 
     // opcode fetch and interrupt injection
-    always @(posedge clk ) begin
-        if (rst || rst_event || (sync && interrupt)) ir <= 0;  //break from RESET_VECTOR
-        else if (sync && rdy) ir <= db;
+    always_ff @(posedge clk ) begin
+        if (rdy) begin
+            if (rst_event || (sync && interrupt)) ;  //break from RESET_VECTOR
+            else if (sync && rdy) ir <= db;
+        end
+        if (rst) ir <= 0;
     end
 
     // decode instruction
@@ -243,6 +246,7 @@ module core #(
     alu u_alu(
         .clk    (clk),
         .rst    (rst),
+        .rdy    (rdy),
         .op     (alu_op),
         .ai     (alu_ai),
         .bi     (alu_bi),
@@ -319,7 +323,7 @@ module core #(
         p_next[5] = 1;                  //bit 5 doesnt exist but always reports high
     end
 
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst) begin
             a <= A_RST;
             x <= X_RST;
@@ -388,7 +392,7 @@ module core #(
 
     //instruction pointer: pc of current opcode
     (* mark_debug = "true" *)  logic [15:0] ip;
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         if (rst)                ip <= RST_VECTOR;
         else if (sync && rdy)   ip <= pc;
     end
@@ -396,7 +400,7 @@ module core #(
     (* mark_debug = "true" *) int cycle /*verilator public*/;
     always_ff @(posedge clk) begin
         if (rst) cycle <= 0;
-        else cycle <= cycle+1;
+        else if(rdy) cycle <= cycle+1;
     end
 
     (* mark_debug = "true" *) logic [9:0] Tstate /*verilator public*/;

@@ -1,0 +1,18 @@
+.org $0400
+start:
+        SEI             ; Disable interrupts
+        CLD             ; Clear decimal mode 
+        LDX #$FF        ; Load index X with top of stack
+        TXS             ; Initialize stack pointer to $FF
+        LDA #$05        ; Load hex value 5 into the accumulator
+        ADC #$03        ; Add hex value 3 and carry flag to accumulator
+        STA $0200       ; Store the result (8) into memory address $0200
+
+done:
+        JMP done
+
+.segment "VECTORS"
+.org $fffa       ;vectors
+.word   start
+.word   start
+.word   start

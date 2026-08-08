@@ -3,7 +3,7 @@
 `include "6502_defs.vh"
 
 module alu (
-    input  logic clk, rst,
+    input  logic clk, rst, rdy,
     input  logic [8:0] op,
     input  logic [7:0] ai, bi,
     input  logic ci,
@@ -19,14 +19,14 @@ module alu (
 
     logic [4:0] alu_op=0;                     // ops: {sum, shiftr,  xor, or, and}
 
-    always @(posedge clk ) begin
+    always_ff @(posedge clk ) begin
         // $display("alu: %x", op[4:0]);
         if (rst) begin
             alu_op <= ALU_NOP;
             a <= 0;
             b <= 0;
             c <= 0;
-        end else begin 
+        end else if(rdy) begin 
             alu_op <= op[4:0];
             a <= ai;
             b <= bzi;

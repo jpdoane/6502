@@ -1,9 +1,10 @@
 CA65_SRCS = \
 	6502_functional_test.ca65 \
-	6502_interrupt_test.ca65
+	6502_interrupt_test.ca65 \
+	simple.ca65
 
 ASM_SRCS = \
-	AllSuiteA.asm
+	AllSuiteA.asm 
 
 BUILDPATH = $(abspath ./build)
 
