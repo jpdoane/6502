@@ -2,16 +2,17 @@
 `include "6502_defs.vh"
 
 module core6502 #(
-    parameter NMI_VECTOR = 16'hfffa,
-    parameter RST_VECTOR = 16'hfffc,
-    parameter IRQ_VECTOR = 16'hfffe,
-    parameter A_RST      = 8'h0,
-    parameter X_RST      = 8'h0,
-    parameter Y_RST      = 8'h0,
-    parameter S_RST      = 8'hff,
-    parameter P_RST      = FL_IU,
-    parameter PC_RST     = 16'h0,
-    parameter MEM_REG    = 1 // is data_i already registered on clk?
+    parameter NMI_VECTOR      = 16'hfffa,
+    parameter RST_VECTOR      = 16'hfffc,
+    parameter IRQ_VECTOR      = 16'hfffe,
+    parameter A_RST           = 8'h0,
+    parameter X_RST           = 8'h0,
+    parameter Y_RST           = 8'h0,
+    parameter S_RST           = 8'hff,
+    parameter P_RST           = FL_IU,
+    parameter PC_RST          = 16'h0,
+    parameter MEM_REG         = 1, // is data_i already registered on clk?
+    parameter WRITE_ON_NOTRDY = 0 // real 6502 ingores rdy on write cycles. Disable this when using external mem that might stall and lose writes.
 ) (
     input  logic        clk,
     input  logic        rst,
@@ -37,6 +38,8 @@ module core6502 #(
         end
     endgenerate
 
+    assign rdy = ready | (WRITE_ON_NOTRDY & ~rw);
+
     // registers
     (* mark_debug = "true" *) logic [7:0] ir  /*verilator public*/;
     (* mark_debug = "true" *) logic [7:0] add  /*verilator public*/;
@@ -48,9 +51,8 @@ module core6502 #(
     (* mark_debug = "true" *) logic [7:0] pch, pcl  /*verilator public*/;
 
     logic so_r, so_re, rdy;
-    always_ff @(posedge clk) so_r <= rst ? 0 : so;
-    assign so_re = so & ~so_r; // rising edge of so
-    assign rdy = ready | ~rw;  // ignore not ready when writing
+    always_ff @(posedge clk) if(rdy) so_r <= so;
+    assign so_re = rdy & so & ~so_r; // rising edge of so
 
     // PC
     (* mark_debug = "true" *) logic [15:0] pc  /*verilator public*/;
@@ -59,10 +61,10 @@ module core6502 #(
     assign pch     = db_pull[PULL_PCH] ? dl : pc_next[15:8];
     assign pcl     = db_pull[PULL_PCL] ? dl : pc_next[7:0];
 
-    always @(posedge clk) begin
+    always_ff @(posedge clk) begin
         if (rst) begin
             pc <= PC_RST;
-        end else begin
+        end else if(rdy) begin
             if (int_event && sync) begin
                 pc <= pc;
             end else if (jump) begin
@@ -182,7 +184,7 @@ module core6502 #(
             irq_event   <= 0;
             rst_event   <= 1;
             nmi_handled <= 0;
-        end else begin
+        end else if(rdy) begin
 
             nmi_event <= nmi && !nmi_handled;
             if (irq && !p[2]) irq_event <= 1;
@@ -201,11 +203,11 @@ module core6502 #(
     // opcode fetch and interrupt injection
     logic sync_r;
     always_ff @(posedge clk) begin
-        sync_r <= sync; // sync is opcode fetch, sync_r is opcode read
-
-        // update instruction register and inject BRK (op=0) on interrupt
-        if (sync_r) ir <= int_event ? '0 : dl; 
-
+        if(rdy) begin
+            sync_r <= sync; // sync is opcode fetch, sync_r is opcode read
+            // update instruction register and inject BRK (op=0) on interrupt
+            if (sync_r) ir <= int_event ? '0 : dl; 
+        end
         if (rst) begin
             sync_r <= '0;
             ir <= '0;
@@ -247,24 +249,37 @@ module core6502 #(
 
 
     //alu
-    logic [7:0] alu_ai, alu_bi;
+    logic [7:0] alu_ai, alu_bi, alu_out;
     logic adl_add, adh_add, db_add;
-    logic sumC, sumV;
+    logic aluC, aluV, aluB, sumC, sumV;
     assign alu_ai = adl_add ? adl : db_add ? 0 : sb;
     assign alu_bi = db;
 
     alu u_alu (
-        .clk  (clk),
-        .rst  (rst),
         .op   (alu_code),
         .ai   (alu_ai),
         .bi   (alu_bi),
         .ci   (p[0]),
-        .out  (add),
-        .sumC (sumC),
-        .sumV (sumV),
-        .bpage(bpage)
+        .out  (alu_out),
+        .sumC (aluC),
+        .sumV (aluV),
+        .sumB (aluB)
     );
+    // register alu_outputs
+    always_ff @(posedge clk) begin
+        if(rdy) begin
+            add <= alu_out;
+            sumC <= aluC;
+            sumV <= aluV;
+            bpage <= aluB;
+        end
+        if(rst) begin
+            add <= '0;
+            sumC <=  0;
+            sumV <=  0;
+            bpage <= 0;
+        end
+    end
 
     // update status register
     logic [7:0] p_update;
@@ -372,7 +387,7 @@ module core6502 #(
     int cycle  /*verilator public*/;
     always_ff @(posedge clk) begin
         if (rst) cycle <= 0;
-        else cycle <= cycle + 1;
+        else if (rdy) cycle <= cycle + 1;
     end
 
     (* mark_debug = "true" *) logic [9:0] Tstate  /*verilator public*/;

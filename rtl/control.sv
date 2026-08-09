@@ -488,7 +488,7 @@ module control (
         if (rst) begin
             stack_r  <= 0;
             save_alu <= 0;
-        end else begin
+        end else if(rdy) begin
             stack_r  <= pop_stack | push_stack;
             save_alu <= exec & alu_en;
         end
