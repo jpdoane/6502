@@ -7,8 +7,8 @@ file mkdir $outDir
 set top core
 
 # read verilog
-read_verilog [ glob ./hdl/*.sv ]
-read_verilog [ glob ./hdl/*.vh ]
+read_verilog [ glob ./rtl/*.sv ]
+read_verilog [ glob ./rtl/*.vh ]
 read_xdc ./inc/ooc.xdc
 
 # synthesize design

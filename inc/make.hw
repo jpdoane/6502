@@ -3,8 +3,8 @@
 ifndef TOP
 	$(error TOP is not set)
 endif
-ifndef HDL_SOURCE
-	$(error HDL_SOURCE is not set)
+ifndef RTL_SOURCE
+	$(error RTL_SOURCE is not set)
 endif
 ifndef DEVICE
 	$(error DEVICE is not set)
@@ -24,10 +24,10 @@ XDC_FILE=$(BUILD_PATH)/constraints.tcl
 SRC_FILE=$(BUILD_PATH)/sources.tcl
 
 
-$(BUILD_ENV): $(HDL_SOURCE) $(CONSTRIANTS)
+$(BUILD_ENV): $(RTL_SOURCE) $(CONSTRIANTS)
 	@mkdir -p $(BUILD_PATH);
 	@rm -f $(XDC_FILE) $(SRC_FILE);
-	@for s in $(abspath $(HDL_SOURCE)) ; do \
+	@for s in $(abspath $(RTL_SOURCE)) ; do \
 		echo "$$s" >> $(SRC_FILE); \
 	done
 	@for s in $(abspath $(CONSTRIANTS)) ; do \

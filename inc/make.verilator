@@ -3,8 +3,8 @@
 ifndef TOP
 	$(error TOP is not set)
 endif
-ifndef HDL_SOURCE
-	$(error HDL_SOURCE is not set)
+ifndef RTL_SOURCE
+	$(error RTL_SOURCE is not set)
 endif
 
 LOG_PATH=$(BUILD_PATH)/logs
@@ -56,7 +56,7 @@ VERILATOR_FLAGS += --Mdir $(BUILD_PATH)
 
 # Input files for Verilator
 VERILATE_INCL=$(BUILD_PATH)/input.vc
-VERILATOR_INPUT = -f $(VERILATE_INCL) $(HDL_SOURCE) $(VERILATE_TOP)
+VERILATOR_INPUT = -f $(VERILATE_INCL) $(RTL_SOURCE) $(VERILATE_TOP)
 
 CCFLAGS += -DDUMP_WAVE_FILE=$(WAVEFILE)
 CCFLAGS += $(VERILATORLIBS) $(VERILATOR_CFLAGS)
@@ -86,14 +86,14 @@ $(VERILATE_INCL):
 	@mkdir -p $(LOG_PATH)
 	echo "+libext+.v+.sv+.vh+.svh" > $@
 	echo "-y $(abspath .) " >> $@
-	echo "-y $(PROJ_ROOT)/hdl/" >> $@
-	echo "-y $(PROJ_ROOT)/hdl/debug" >> $@
+	echo "-y $(PROJ_ROOT)/rtl/" >> $@
+	echo "-y $(PROJ_ROOT)/rtl/debug" >> $@
 	echo "--top-module $(TOP)" >> $@
 
 
 lib: $(VMODEL)
 
-$(VMODEL): $(VERILATE_INCL) $(HDL_SOURCE) $(VERILATE_TOP)
+$(VMODEL): $(VERILATE_INCL) $(RTL_SOURCE) $(VERILATE_TOP)
 	make prebuild
 	$(VERILATOR) $(VERILATOR_FLAGS) $(VERILATOR_INPUT)
 

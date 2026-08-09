@@ -1,10 +1,8 @@
 `timescale 1ns/1ps
 `include "6502_defs.vh"
 
-// 6502 core with synchronous memory,
-// output address bus appears one clock earlier than in a real 6502
-
 module core #(
+    parameter MEM_REG    = 1,           // memory is registered if true
     parameter NMI_VECTOR = 16'hfffa,
     parameter RST_VECTOR = 16'hfffc,
     parameter IRQ_VECTOR = 16'hfffe,
@@ -43,7 +41,6 @@ module core #(
     // ADDRESS BUS
     (* mark_debug = "true" *) logic [7:0] adl, adh;
     logic [7:0] adl_r, adh_r;
-    assign addr = {adh,adl};
     always_ff @(posedge clk ) begin
         if (rst) begin
             adl_r <= 0;
@@ -53,6 +50,19 @@ module core #(
             adh_r <= adh;
         end
     end
+
+    generate
+        if (MEM_REG) begin : gen_mem_sync
+            assign addr = {adh,adl};
+            assign data_o = db_result;
+            assign rw = !write_mem | rst | rst_event;
+        end else begin : gen_mem_async
+            assign addr = {adh_r,adl_r};
+            always_ff @(posedge clk ) data_o <= db_result;
+            always_ff @(posedge clk ) rw <= !write_mem | rst | rst_event;
+        end
+    endgenerate
+
     always @(*) begin
         unique case(1'b1)
             adl_src[0]: adl = pcl;  // ADDR_PC
@@ -87,8 +97,6 @@ module core #(
     // in order to represent the same timing with a single clock, we implement two sets of busses
     (* mark_debug = "true" *) logic [7:0] sb, sb_result, db, db_result;
     logic dummy_write;
-    assign data_o = db_result;
-    assign rw = !write_mem | rst | rst_event;
     logic [3:0] stack_push, stack_read; // one-hot control for push/pull registers
 
     // db read bus
