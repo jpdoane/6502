@@ -135,9 +135,12 @@ int run_test(Abstract6502* sim, const UnitTest &test, int verbose) {
 int main(int argc, char** argv) {
 
     char* testfile = NULL;
+    int wave = 0;
     for(int i=1; i<argc; i++)
     {
-        if(strncmp(argv[i], "+ver", 4) != 0) // all verilator flags start with +verilator...
+        if(strncmp(argv[i], "-w", 2) == 0) // all verilator flags start with +verilator...
+    		wave = 1;
+        else if(strncmp(argv[i], "+ver", 4) != 0) // all verilator flags start with +verilator...
     		testfile = argv[i];
     }
     if( testfile == NULL)
@@ -151,6 +154,10 @@ int main(int argc, char** argv) {
     std::cout << "Loading testfile " << testfile << std::endl;
     auto testset = read_testset(testfile);
     int rv = 0;
+
+    if(wave)
+        sim->openWaveTrace(QUOTE(DUMP_WAVE_FILE));
+
     for(std::size_t i = 0; i < testset.size(); ++i)
         if(run_test(sim, testset[i], 0))
         {
